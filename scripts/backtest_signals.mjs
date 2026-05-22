@@ -2,6 +2,9 @@ const START_DATE = process.argv[2] || "2025-01-01";
 const END_DATE = process.argv[3] || new Date().toISOString().slice(0, 10);
 const HORIZON_DAYS = Number(process.env.BACKTEST_HORIZON_DAYS || process.argv[4] || 20);
 const MIN_COVERAGE = Number(process.env.BACKTEST_MIN_COVERAGE || process.argv[5] || 0.7);
+const TRANSACTION_COST_BPS = Number(
+  process.env.BACKTEST_TRANSACTION_COST_BPS || process.argv[6] || 10,
+);
 const TREND_POINTS = 28;
 const ANALYSIS_POINTS = 260;
 const FORWARD_HORIZONS = [...new Set([5, HORIZON_DAYS, 60])].sort((a, b) => a - b);
@@ -70,10 +73,12 @@ const payload = {
     horizonTradingDaysTested: FORWARD_HORIZONS,
     minimumPortfolioCoverage: MIN_COVERAGE,
     startDate: START_DATE,
+    transactionCostBps: TRANSACTION_COST_BPS,
   },
   assumptions: [
     "DDR5 spot, server DRAM contract, DXI, and historical foreign/institution flow are excluded where full historical public data is unavailable.",
     "Portfolio strategy exposure: split buy/new buy = 100%, hold = 60%, trim/sell = 20%.",
+    "Transaction costs are charged when exposure changes, including initial entry exposure.",
     "A recovery-pulse overlay reduces false sell/trim signals when volatility is cooling and risk assets are confirming a rebound.",
     "VIX minus 22-day realized S&P 500 volatility is used as a variance-risk-premium proxy.",
     "Market and portfolio momentum are scored across 1, 3, 6, and 12 month windows.",
@@ -266,6 +271,7 @@ function runBacktest({
       ),
       marketAction: marketSignal.action,
       marketConfidence: marketSignal.confidence,
+      marketExposure: exposureForMarket(marketSignal.action),
       marketRecoveryScore: marketSignal.recoveryScore,
       marketScore: marketSignal.score,
       nextDayReturn: round(nextDay.return, 4),
@@ -275,6 +281,7 @@ function runBacktest({
         Math.min(nextDay.coverage, ...forwardValues.map((forward) => forward.coverage)) * 100,
         1,
       ),
+      portfolioExposure: exposureForPortfolio(portfolioSignal.action),
       portfolioRecoveryScore: portfolioSignal.recoveryScore,
       portfolioScore: portfolioSignal.score,
     });
@@ -396,20 +403,10 @@ function evaluateTradingSignal(quotes, sentiment) {
     scoreRiskAsset(quotes.kospi),
   ].filter(Number.isFinite);
   const broadScore = average(broadScores);
-  const broadMomentumScore = average([
-    scoreMultiPeriodMomentum(quotes.sp500),
-    scoreMultiPeriodMomentum(quotes.nasdaq),
-    scoreMultiPeriodMomentum(quotes.kospi),
-  ]);
-  const semiconductorCycleScore = scoreSemiconductorCycle(quotes);
-  const variancePremiumScore = scoreVarianceRiskPremium(quotes, sentiment);
-
-  add(broadScore, 1.7);
-  add(broadMomentumScore, 1.1);
-  add(semiconductorCycleScore, 1.35);
+  add(broadScore, 2.1);
+  add(scoreRiskAsset(quotes.sox), 1.3);
   add(scoreFearGreed(sentiment.fearGreed), 1.15);
-  add(scoreVix(sentiment.vix), 1.05);
-  add(variancePremiumScore, 0.9);
+  add(scoreVix(sentiment.vix), 1.45);
   add(scoreYield(quotes.us10y), 0.85);
   add(scoreUsdKrw(quotes.usdKrw), 0.65);
   add(scoreWti(quotes.wti), 0.45);
@@ -525,7 +522,7 @@ function summarizeBacktest(rows) {
     lastDate: rows.at(-1)?.date || null,
     marketSignal: {
       actionBuckets: bucketStats(rows, "marketAction"),
-      curve: summarizeCurve(dailyReturns, marketExposure),
+      curve: summarizeCurve(dailyReturns, marketExposure, TRANSACTION_COST_BPS),
     },
     observations: rows.length,
     averagePortfolioCoverage: round(
@@ -534,8 +531,11 @@ function summarizeBacktest(rows) {
     ),
     portfolioSignal: {
       actionBuckets: bucketStats(rows, "portfolioAction"),
-      curve: summarizeCurve(dailyReturns, portfolioExposure),
+      curve: summarizeCurve(dailyReturns, portfolioExposure, TRANSACTION_COST_BPS),
     },
+    transactionCostBps: TRANSACTION_COST_BPS,
+    yearly: summarizeByYear(rows),
+    walkForward: summarizeWalkForward(rows),
   };
 }
 
@@ -586,20 +586,103 @@ function bucketStats(rows, key) {
   );
 }
 
-function summarizeCurve(dailyReturns, exposures) {
+function summarizeCurve(dailyReturns, exposures, transactionCostBps = 0) {
   let equity = 1;
+  let netEquity = 1;
   let peak = 1;
+  let netPeak = 1;
   let maxDrawdown = 0;
+  let netMaxDrawdown = 0;
+  let totalTurnover = 0;
+  let previousExposure = 0;
   for (let index = 0; index < dailyReturns.length; index += 1) {
-    equity *= 1 + dailyReturns[index] * exposures[index];
+    const exposure = Number(exposures[index]) || 0;
+    const turnover = Math.abs(exposure - previousExposure);
+    const cost = turnover * (transactionCostBps / 10000);
+    totalTurnover += turnover;
+    equity *= 1 + dailyReturns[index] * exposure;
+    netEquity *= Math.max(0, 1 + dailyReturns[index] * exposure - cost);
     peak = Math.max(peak, equity);
+    netPeak = Math.max(netPeak, netEquity);
     maxDrawdown = Math.min(maxDrawdown, equity / peak - 1);
+    netMaxDrawdown = Math.min(netMaxDrawdown, netEquity / netPeak - 1);
+    previousExposure = exposure;
   }
   return {
     averageExposure: round(average(exposures) * 100, 1),
+    costDrag: round((equity - netEquity) * 100, 2),
     maxDrawdown: round(maxDrawdown * 100, 2),
+    netMaxDrawdown: round(netMaxDrawdown * 100, 2),
+    netTotalReturn: round((netEquity - 1) * 100, 2),
+    transactionCostBps,
     totalReturn: round((equity - 1) * 100, 2),
+    turnover: round(totalTurnover, 2),
   };
+}
+
+function summarizeByYear(rows) {
+  const groups = groupRows(rows, (row) => row.date.slice(0, 4));
+  return Object.fromEntries(
+    [...groups.entries()].map(([year, yearRows]) => [
+      year,
+      summarizePeriod(yearRows),
+    ]),
+  );
+}
+
+function summarizeWalkForward(rows) {
+  const years = [...new Set(rows.map((row) => row.date.slice(0, 4)))].sort();
+  const folds = [];
+  for (let index = 1; index < years.length; index += 1) {
+    const testYear = years[index];
+    const trainRows = rows.filter((row) => row.date.slice(0, 4) < testYear);
+    const testRows = rows.filter((row) => row.date.slice(0, 4) === testYear);
+    if (!trainRows.length || !testRows.length) continue;
+    folds.push({
+      testPeriod: periodLabel(testRows),
+      testRows: testRows.length,
+      testYear,
+      trainPeriod: periodLabel(trainRows),
+      trainRows: trainRows.length,
+      trainSummary: summarizePeriod(trainRows),
+      validationSummary: summarizePeriod(testRows),
+    });
+  }
+  const validationRows = folds.flatMap((fold) =>
+    rows.filter((row) => row.date.slice(0, 4) === fold.testYear),
+  );
+  return {
+    folds,
+    validationAggregate: summarizePeriod(validationRows),
+  };
+}
+
+function summarizePeriod(rows) {
+  const dailyReturns = rows.map((row) => row.nextDayReturn / 100);
+  const portfolioExposure = rows.map((row) => exposureForPortfolio(row.portfolioAction));
+  const marketExposure = rows.map((row) => exposureForMarket(row.marketAction));
+  return {
+    benchmark: summarizeCurve(dailyReturns, dailyReturns.map(() => 1)),
+    firstDate: rows[0]?.date || null,
+    lastDate: rows.at(-1)?.date || null,
+    marketSignal: summarizeCurve(dailyReturns, marketExposure, TRANSACTION_COST_BPS),
+    observations: rows.length,
+    portfolioSignal: summarizeCurve(dailyReturns, portfolioExposure, TRANSACTION_COST_BPS),
+  };
+}
+
+function groupRows(rows, keyForRow) {
+  const groups = new Map();
+  for (const row of rows) {
+    const key = keyForRow(row);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+  return groups;
+}
+
+function periodLabel(rows) {
+  return rows.length ? `${rows[0].date}..${rows.at(-1).date}` : null;
 }
 
 function exposureForPortfolio(action) {
@@ -1136,11 +1219,13 @@ function toCsv(rows) {
     "date",
     "portfolioAction",
     "portfolioConfidence",
+    "portfolioExposure",
     "portfolioScore",
     "portfolioCoverage",
     "portfolioRecoveryScore",
     "marketAction",
     "marketConfidence",
+    "marketExposure",
     "marketScore",
     "marketRecoveryScore",
     "nextDayReturn",
@@ -1167,11 +1252,13 @@ function printSummary(summary, outStem) {
   );
   console.log(`benchmark total return: ${summary.benchmark.totalReturn}%`);
   console.log(
-    `portfolio-signal total return: ${summary.portfolioSignal.curve.totalReturn}% / max DD ${summary.portfolioSignal.curve.maxDrawdown}%`,
+    `portfolio-signal gross/net return: ${summary.portfolioSignal.curve.totalReturn}% / ${summary.portfolioSignal.curve.netTotalReturn}% / net max DD ${summary.portfolioSignal.curve.netMaxDrawdown}%`,
   );
   console.log(
-    `market-signal total return: ${summary.marketSignal.curve.totalReturn}% / max DD ${summary.marketSignal.curve.maxDrawdown}%`,
+    `market-signal gross/net return: ${summary.marketSignal.curve.totalReturn}% / ${summary.marketSignal.curve.netTotalReturn}% / net max DD ${summary.marketSignal.curve.netMaxDrawdown}%`,
   );
+  console.log(`transaction cost: ${summary.transactionCostBps} bps per exposure change`);
+  console.log("walk-forward aggregate:", summary.walkForward.validationAggregate);
   console.log("portfolio buckets:", summary.portfolioSignal.actionBuckets);
   console.log("market buckets:", summary.marketSignal.actionBuckets);
   console.log(`saved: ${outStem}.json, ${outStem}.csv`);

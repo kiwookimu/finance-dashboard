@@ -145,22 +145,12 @@ function evaluateTradingSignal(quotes, sentiment) {
     scoreRiskAsset(quotes.kospi),
   ].filter(Number.isFinite);
   const broadScore = average(broadScores);
-  const broadMomentumScore = average([
-    scoreMultiPeriodMomentum(quotes.sp500),
-    scoreMultiPeriodMomentum(quotes.nasdaq),
-    scoreMultiPeriodMomentum(quotes.kospi),
-  ]);
-  const semiconductorCycleScore = scoreSemiconductorCycle(quotes);
-  const variancePremiumScore = scoreVarianceRiskPremium(quotes, sentiment);
-
-  add("주가지수", broadScore, 1.7);
-  add("중기 모멘텀", broadMomentumScore, 1.1);
-  add("반도체 사이클", semiconductorCycleScore, 1.35);
+  add("주가지수", broadScore, 2.1);
+  add("반도체", scoreRiskAsset(quotes.sox), 1.3);
   add("DDR5", scoreMemoryPrice(quotes.ddr5Spot), 0.45);
   add("서버 DRAM", scoreServerContract(quotes.serverDdr5Contract), 0.25);
   add("공포·탐욕", scoreFearGreed(sentiment.fearGreed), 1.15);
-  add("VIX", scoreVix(sentiment.vix), 1.05);
-  add("변동성 프리미엄", variancePremiumScore, 0.9);
+  add("VIX", scoreVix(sentiment.vix), 1.45);
   add("미국 10년물", scoreYield(quotes.us10y), 0.85);
   add("달러/원", scoreUsdKrw(quotes.usdKrw), 0.65);
   add("WTI", scoreWti(quotes.wti), 0.45);
