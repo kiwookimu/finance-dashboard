@@ -79,7 +79,7 @@ function renderTradingSignal(quotes, sentiment) {
   renderSignalState(signal);
 }
 
-function renderSignalState({ action, className, score, summary }) {
+function renderSignalState({ action, className, confidence, score, summary }) {
   const panel = document.querySelector("#marketSignal");
   if (!panel) return;
 
@@ -87,7 +87,10 @@ function renderSignalState({ action, className, score, summary }) {
   panel.classList.add(className);
   panel.setAttribute("aria-label", `시장 신호: ${action}`);
   setText("#signalAction", action);
-  setText("#signalSummary", `${formatSignedScore(score)}점 · ${summary}`);
+  setText(
+    "#signalSummary",
+    `${formatSignedScore(score)}점 · ${confidence || signalConfidence(className, score)} · ${summary}`,
+  );
 }
 
 function renderPortfolioSignal(quotes, sentiment, portfolioMetrics) {
@@ -103,7 +106,7 @@ function renderPortfolioSnapshot() {
   setText("#portfolioBondMixWeight", formatPercent(portfolioTagWeight("bondMix")));
 }
 
-function renderPortfolioState({ action, checks, className, score, summary }) {
+function renderPortfolioState({ action, checks, className, confidence, score, summary }) {
   const panel = document.querySelector("#portfolioSignal");
   if (!panel) return;
 
@@ -112,7 +115,7 @@ function renderPortfolioState({ action, checks, className, score, summary }) {
   panel.setAttribute("aria-label", `보유 포트폴리오 신호: ${action}`);
   setText("#portfolioAction", action);
   setText("#portfolioScore", `${formatSignedScore(score)}점`);
-  setText("#portfolioSummary", summary);
+  setText("#portfolioSummary", `${confidence || signalConfidence(className, score)} · ${summary}`);
 
   const checksElement = document.querySelector("#portfolioChecks");
   if (!checksElement) return;
@@ -142,13 +145,22 @@ function evaluateTradingSignal(quotes, sentiment) {
     scoreRiskAsset(quotes.kospi),
   ].filter(Number.isFinite);
   const broadScore = average(broadScores);
+  const broadMomentumScore = average([
+    scoreMultiPeriodMomentum(quotes.sp500),
+    scoreMultiPeriodMomentum(quotes.nasdaq),
+    scoreMultiPeriodMomentum(quotes.kospi),
+  ]);
+  const semiconductorCycleScore = scoreSemiconductorCycle(quotes);
+  const variancePremiumScore = scoreVarianceRiskPremium(quotes, sentiment);
 
-  add("주가지수", broadScore, 2.1);
-  add("반도체", scoreRiskAsset(quotes.sox), 1.3);
+  add("주가지수", broadScore, 1.7);
+  add("중기 모멘텀", broadMomentumScore, 1.1);
+  add("반도체 사이클", semiconductorCycleScore, 1.35);
   add("DDR5", scoreMemoryPrice(quotes.ddr5Spot), 0.45);
   add("서버 DRAM", scoreServerContract(quotes.serverDdr5Contract), 0.25);
   add("공포·탐욕", scoreFearGreed(sentiment.fearGreed), 1.15);
-  add("VIX", scoreVix(sentiment.vix), 1.45);
+  add("VIX", scoreVix(sentiment.vix), 1.05);
+  add("변동성 프리미엄", variancePremiumScore, 0.9);
   add("미국 10년물", scoreYield(quotes.us10y), 0.85);
   add("달러/원", scoreUsdKrw(quotes.usdKrw), 0.65);
   add("WTI", scoreWti(quotes.wti), 0.45);
@@ -181,6 +193,7 @@ function evaluateTradingSignal(quotes, sentiment) {
   return {
     action,
     className,
+    confidence: signalConfidence(className, score),
     score,
     summary: summarizeSignal(components, className),
   };
@@ -206,23 +219,29 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   const usdKrwScore = scoreUsdKrw(quotes.usdKrw);
   const vixScore = scoreVix(sentiment.vix);
   const relativeScore = scorePortfolioRelativeStrength(portfolioMetrics, quotes);
+  const multiRelativeScore = scorePortfolioMultiPeriodRelativeStrength(portfolioMetrics, quotes);
   const movingAverageScore = scorePortfolioMovingAverage(portfolioMetrics);
   const investorFlowScore = scorePortfolioInvestorFlow(portfolioMetrics);
   const regimeScore = scoreMarketRegime(quotes);
   const recoveryScore = scoreRecoveryPulse(quotes, sentiment, portfolioMetrics);
+  const semiconductorCycleScore = scoreSemiconductorCycle(quotes);
+  const variancePremiumScore = scoreVarianceRiskPremium(quotes, sentiment);
 
   add("SOX", semiScore, 2.4);
   add("NASDAQ", nasdaqScore, 1.25);
   add("KOSPI", kospiScore, 0.75);
   add("상대강도", relativeScore, 1.35);
+  add("장기 상대강도", multiRelativeScore, 1.1);
   add("50/200일선", movingAverageScore, 1.15);
   add("외국인·기관", investorFlowScore, 0.9);
   add("시장 레짐", regimeScore, 1.35);
+  add("반도체 사이클", semiconductorCycleScore, 1.25);
   add("DDR5", scoreMemoryPrice(quotes.ddr5Spot), 0.95);
   add("서버 DRAM", scoreServerContract(quotes.serverDdr5Contract), 0.35);
   add("미국 10년물", rateScore, 1.2);
   add("달러/원", usdKrwScore, 0.85);
-  add("VIX", vixScore, 1.35);
+  add("VIX", vixScore, 1.05);
+  add("변동성 프리미엄", variancePremiumScore, 0.85);
   add("공포·탐욕", scoreFearGreed(sentiment.fearGreed), 0.65);
   add("WTI", scoreWti(quotes.wti), 0.2);
   add("반등 확인", recoveryScore, 0.8);
@@ -241,8 +260,10 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   if (vixLevel >= 25 && hasRecovery) score += 4;
   if (rateScore < -0.35 && semiScore < 0.2) score -= 6;
   if (relativeScore < -0.25 && movingAverageScore < 0) score -= 6;
+  if (multiRelativeScore < -0.35 && semiconductorCycleScore < 0) score -= 5;
+  if (variancePremiumScore < -0.55 && recoveryForPenalty < 0.25) score -= 4;
   if (investorFlowScore < -0.25 && semiScore < 0.25) score -= 4;
-  if (semiScore > 0.4 && scoreMemoryPrice(quotes.ddr5Spot) > 0) score += 4;
+  if (semiconductorCycleScore > 0.45 && scoreMemoryPrice(quotes.ddr5Spot) > 0) score += 4;
   score = clamp(Math.round(score), -100, 100);
 
   let action = "보유";
@@ -258,9 +279,11 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   } else if (
     score >= 30 &&
     semiScore > 0 &&
+    semiconductorCycleScore > -0.2 &&
     regimeScore > -0.25 &&
     rateScore > -0.35 &&
     vixLevel < 28 &&
+    (!Number.isFinite(variancePremiumScore) || variancePremiumScore > -0.6) &&
     (!Number.isFinite(recoveryScore) || recoveryScore > -0.2)
   ) {
     action = "분할 매수";
@@ -270,17 +293,21 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   return {
     action,
     checks: buildPortfolioChecks({
+      semiconductorCycleScore,
       investorFlowScore,
+      multiRelativeScore,
       movingAverageScore,
       nasdaqScore,
       rateScore,
       recoveryScore,
       regimeScore,
       relativeScore,
+      variancePremiumScore,
       semiScore,
       vixScore,
     }),
     className,
+    confidence: signalConfidence(className, score),
     score,
     summary: summarizePortfolioSignal(components, className, concentration),
   };
@@ -331,23 +358,29 @@ function summarizePortfolioSignal(components, className, concentration) {
 
 function buildPortfolioChecks({
   investorFlowScore,
+  multiRelativeScore,
   movingAverageScore,
   nasdaqScore,
   rateScore,
   recoveryScore,
   regimeScore,
   relativeScore,
+  semiconductorCycleScore,
   semiScore,
+  variancePremiumScore,
   vixScore,
 }) {
   return [
     portfolioCheck("상대강도", relativeScore, "벤치마크 대비"),
+    portfolioCheck("장기상대", multiRelativeScore, "1/3/6/12개월"),
     portfolioCheck("50/200일선", movingAverageScore, "추세 확인"),
     portfolioCheck("외국인·기관", investorFlowScore, "수급 확인"),
     portfolioCheck("시장레짐", regimeScore, "신용·금융상황"),
+    portfolioCheck("반도체", semiconductorCycleScore, "사이클 확인"),
     portfolioCheck("반등확인", recoveryScore, "재진입 확인"),
     portfolioCheck("SOX", semiScore, "반도체 ETF 핵심"),
     portfolioCheck("NASDAQ", nasdaqScore, "AI 성장주"),
+    portfolioCheck("VRP", variancePremiumScore, "변동성 프리미엄"),
     portfolioCheck("금리", rateScore, "채권혼합·성장주"),
     portfolioCheck("VIX", vixScore, "변동성"),
   ];
@@ -533,6 +566,89 @@ function scoreRiskAsset(quote) {
   if (daily >= 1) score += 0.15;
   if (daily <= -1) score -= 0.15;
   return clamp(score, -1, 1);
+}
+
+function scoreMultiPeriodMomentum(quote) {
+  const series = quote?.analysisHistory || quote?.history;
+  const periods = [
+    { days: 21, threshold: 4, weight: 0.25 },
+    { days: 63, threshold: 8, weight: 0.3 },
+    { days: 126, threshold: 14, weight: 0.25 },
+    { days: 252, threshold: 22, weight: 0.2 },
+  ];
+  const scores = periods
+    .map(({ days, threshold, weight }) => {
+      const trend = trendPercentOverPeriod(series, days);
+      return Number.isFinite(trend)
+        ? { score: clamp(trend / threshold, -1, 1), weight }
+        : null;
+    })
+    .filter(Boolean);
+  const totalWeight = scores.reduce((sum, item) => sum + item.weight, 0);
+  return totalWeight
+    ? scores.reduce((sum, item) => sum + item.score * item.weight, 0) / totalWeight
+    : NaN;
+}
+
+function scoreRelativeMomentum(assetQuote, benchmarkQuote) {
+  const assetSeries = assetQuote?.analysisHistory || assetQuote?.history;
+  const benchmarkSeries = benchmarkQuote?.analysisHistory || benchmarkQuote?.history;
+  const periods = [
+    { days: 21, threshold: 3, weight: 0.25 },
+    { days: 63, threshold: 6, weight: 0.3 },
+    { days: 126, threshold: 9, weight: 0.25 },
+    { days: 252, threshold: 14, weight: 0.2 },
+  ];
+  const scores = periods
+    .map(({ days, threshold, weight }) => {
+      const assetTrend = trendPercentOverPeriod(assetSeries, days);
+      const benchmarkTrend = trendPercentOverPeriod(benchmarkSeries, days);
+      if (!Number.isFinite(assetTrend) || !Number.isFinite(benchmarkTrend)) return null;
+      return { score: clamp((assetTrend - benchmarkTrend) / threshold, -1, 1), weight };
+    })
+    .filter(Boolean);
+  const totalWeight = scores.reduce((sum, item) => sum + item.weight, 0);
+  return totalWeight
+    ? scores.reduce((sum, item) => sum + item.score * item.weight, 0) / totalWeight
+    : NaN;
+}
+
+function scoreVarianceRiskPremium(quotes, sentiment) {
+  const vix = Number(sentiment?.vix?.close);
+  const realizedVol = realizedVolatility(quotes?.sp500?.analysisHistory || quotes?.sp500?.history, 22);
+  if (!Number.isFinite(vix) || !Number.isFinite(realizedVol)) return NaN;
+
+  const premium = vix - realizedVol;
+  let score = 0;
+  if (premium < 2) score = 0.35;
+  else if (premium < 6) score = 0.1;
+  else if (premium < 12) score = -0.25;
+  else score = -0.65;
+
+  const vixChange = Number(sentiment?.vix?.change);
+  if (vixChange <= -2) score += 0.15;
+  if (vixChange >= 2) score -= 0.15;
+  return clamp(score, -1, 1);
+}
+
+function scoreSemiconductorCycle(quotes) {
+  const components = [];
+  const add = (score, weight) => {
+    if (!Number.isFinite(score)) return;
+    components.push({ score: clamp(score, -1, 1), weight });
+  };
+
+  add(scoreRiskAsset(quotes?.sox), 1.15);
+  add(scoreMultiPeriodMomentum(quotes?.sox), 1.1);
+  add(scoreRelativeMomentum(quotes?.sox, quotes?.nasdaq), 0.9);
+  add(scoreMemoryPrice(quotes?.ddr5Spot), 0.75);
+  add(scoreServerContract(quotes?.serverDdr5Contract), 0.35);
+  add(scoreRiskAsset(quotes?.dxi), 0.35);
+
+  const totalWeight = components.reduce((sum, item) => sum + item.weight, 0);
+  return totalWeight
+    ? components.reduce((sum, item) => sum + item.score * item.weight, 0) / totalWeight
+    : NaN;
 }
 
 function scoreMemoryPrice(quote) {
@@ -760,6 +876,15 @@ function scorePortfolioRelativeStrength(portfolioMetrics, quotes) {
   });
 }
 
+function scorePortfolioMultiPeriodRelativeStrength(portfolioMetrics, quotes) {
+  return weightedPortfolioScore(portfolioMetrics, (holding) =>
+    scoreRelativeMomentum(
+      { analysisHistory: holding.analysisHistory, history: holding.history },
+      quotes?.[holding.benchmark],
+    ),
+  );
+}
+
 function scorePortfolioMovingAverage(portfolioMetrics) {
   return weightedPortfolioScore(portfolioMetrics, scoreHoldingMovingAverage);
 }
@@ -818,6 +943,34 @@ function trendPercent(series) {
   return ((points.at(-1) - points[0]) / points[0]) * 100;
 }
 
+function trendPercentOverPeriod(series, period) {
+  const points = numericSeries(series);
+  const start = points.at(-period - 1);
+  if (points.length < period + 1 || !Number.isFinite(start) || start === 0) return NaN;
+  return ((points.at(-1) - start) / start) * 100;
+}
+
+function realizedVolatility(series, period) {
+  const points = numericSeries(series).slice(-(period + 1));
+  if (points.length < period + 1) return NaN;
+  const returns = [];
+  for (let index = 1; index < points.length; index += 1) {
+    if (points[index - 1] > 0 && points[index] > 0) {
+      returns.push(Math.log(points[index] / points[index - 1]));
+    }
+  }
+  if (returns.length < period) return NaN;
+  return standardDeviation(returns) * Math.sqrt(252) * 100;
+}
+
+function standardDeviation(values) {
+  const clean = values.filter(Number.isFinite);
+  if (clean.length < 2) return NaN;
+  const mean = average(clean);
+  const variance = average(clean.map((value) => (value - mean) ** 2));
+  return Math.sqrt(variance);
+}
+
 function pointChange(series) {
   const points = numericSeries(series);
   if (points.length < 2) return NaN;
@@ -858,6 +1011,18 @@ function portfolioTagWeight(tag) {
     .filter((holding) => holding.tags.includes(tag))
     .reduce((sum, holding) => sum + holding.amount, 0);
   return PORTFOLIO_TOTAL ? (taggedAmount / PORTFOLIO_TOTAL) * 100 : 0;
+}
+
+function signalConfidence(className, score) {
+  const value = Math.abs(Number(score));
+  if (className === "signal-buy" || className === "portfolio-buy") {
+    return value >= 45 ? "강한 녹색" : "약한 녹색";
+  }
+  if (className === "signal-sell" || className === "portfolio-trim") {
+    return value >= 55 ? "강한 빨간색" : "약한 빨간색";
+  }
+  if (value <= 12) return "중립";
+  return score > 0 ? "녹색 대기" : "위험 경계";
 }
 
 function getFearGreedRating(score) {

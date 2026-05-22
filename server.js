@@ -10,6 +10,7 @@ const MARKET_CACHE_MS = 60 * 1000;
 const SENTIMENT_CACHE_MS = 15 * 60 * 1000;
 const PORTFOLIO_CACHE_MS = 5 * 60 * 1000;
 const TREND_POINTS = 28;
+const ANALYSIS_POINTS = 260;
 
 const MARKET_SOURCES = [
   { id: "kospi", label: "KOSPI", symbol: "^KS11", decimals: 2 },
@@ -164,6 +165,7 @@ async function fetchDramExchangeDxi() {
     changeClass: "",
     changePercent: 0,
     changeText: `${marketTimeText} 기준`,
+    analysisHistory: [],
     decimals: 0,
     history: [],
     id: "dxi",
@@ -205,6 +207,7 @@ async function fetchTrendForceServerDdr5Contract() {
     changeClass: "positive",
     changePercent: 0,
     changeText: `${extractReportMonth(title)} · 상승 지속`,
+    analysisHistory: [],
     decimals: 0,
     history: [],
     id: "serverDdr5Contract",
@@ -249,6 +252,7 @@ async function fetchTrendForceDdr5Spot() {
     currency: "USD",
     dailyHigh,
     dailyLow,
+    analysisHistory: [],
     decimals: 3,
     history: [],
     id: "ddr5Spot",
@@ -332,7 +336,7 @@ async function getPortfolioMetrics() {
 
 async function fetchYahooQuote(source) {
   const symbol = encodeURIComponent(source.symbol);
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=3mo&interval=1d`;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=2y&interval=1d`;
   const json = JSON.parse(await fetchText(url, "application/json,text/plain,*/*"));
   const result = json.chart?.result?.[0];
   const meta = result?.meta;
@@ -342,7 +346,9 @@ async function fetchYahooQuote(source) {
   }
 
   const scale = Number.isFinite(source.scale) ? source.scale : 1;
-  const history = buildYahooHistory(result, meta, scale);
+  const fullHistory = buildYahooHistory(result, meta, scale);
+  const history = fullHistory.slice(-TREND_POINTS);
+  const analysisHistory = fullHistory.slice(-ANALYSIS_POINTS);
   const price = Number.isFinite(meta.regularMarketPrice)
     ? meta.regularMarketPrice * scale
     : history.at(-1)?.value;
@@ -360,6 +366,7 @@ async function fetchYahooQuote(source) {
     change,
     changePercent,
     changeUnit: source.changeUnit || "",
+    analysisHistory,
     currency: meta.currency || "",
     decimals: source.decimals,
     history,
@@ -397,6 +404,7 @@ async function fetchFredQuote(source) {
     }))
     .filter((row) => row.date && Number.isFinite(row.value));
   const series = rows.slice(-TREND_POINTS);
+  const analysisHistory = rows.slice(-ANALYSIS_POINTS);
   const latest = rows.at(-1);
   const previous = rows.at(-2);
 
@@ -410,6 +418,7 @@ async function fetchFredQuote(source) {
     changePercent:
       previous && previous.value !== 0 ? (change / previous.value) * 100 : 0,
     changeUnit: source.changeUnit || "",
+    analysisHistory,
     decimals: source.decimals,
     history: series,
     id: source.id,
@@ -425,7 +434,7 @@ async function fetchFredQuote(source) {
 async function fetchNaverDailyHistory(code) {
   const url = `https://fchart.stock.naver.com/sise.nhn?symbol=${encodeURIComponent(
     code,
-  )}&timeframe=day&count=260&requestType=0`;
+  )}&timeframe=day&count=520&requestType=0`;
   const xml = new TextDecoder("euc-kr").decode(
     await fetchBinary(url, "application/xml,text/xml,text/plain,*/*"),
   );
@@ -522,6 +531,10 @@ function buildPortfolioHoldingMetrics(rows) {
   const ma50 = movingAverage(closes, 50);
   const ma200 = movingAverage(closes, 200);
   return {
+    analysisHistory: rows.slice(-ANALYSIS_POINTS).map((row) => ({
+      date: row.date,
+      value: row.close,
+    })),
     history: rows.slice(-TREND_POINTS).map((row) => ({
       date: row.date,
       value: row.close,
@@ -558,7 +571,7 @@ function buildYahooHistory(result, meta, scale = 1) {
     }
   }
 
-  return history.slice(-TREND_POINTS);
+  return history;
 }
 
 function getPreviousClose(result, history) {
@@ -585,6 +598,7 @@ function parseFearGreed(csv) {
     }))
     .filter((row) => row.date && Number.isFinite(row.value));
   const series = rows.slice(-TREND_POINTS);
+  const analysisSeries = rows.slice(-ANALYSIS_POINTS);
   const latest = series.at(-1);
   const previous = series.at(-2);
 
@@ -597,6 +611,7 @@ function parseFearGreed(csv) {
     date: latest.date,
     rating: latest.rating || getFearGreedRating(latest.value),
     score: latest.value,
+    analysisSeries,
     series,
   };
 }
@@ -609,6 +624,7 @@ function parseVix(csv) {
     }))
     .filter((row) => row.date && Number.isFinite(row.value));
   const series = rows.slice(-TREND_POINTS);
+  const analysisSeries = rows.slice(-ANALYSIS_POINTS);
   const latest = series.at(-1);
   const previous = series.at(-2);
 
@@ -620,6 +636,7 @@ function parseVix(csv) {
     change: previous ? latest.value - previous.value : 0,
     close: latest.value,
     date: latest.date,
+    analysisSeries,
     series,
   };
 }
