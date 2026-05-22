@@ -90,7 +90,6 @@ function renderPortfolioSignal(quotes, sentiment) {
 }
 
 function renderPortfolioSnapshot() {
-  setText("#portfolioTotal", formatKrwAmount(PORTFOLIO_TOTAL));
   setText("#portfolioSemiWeight", formatPercent(portfolioTagWeight("semi")));
   setText("#portfolioAiWeight", formatPercent(portfolioTagWeight("aiPower")));
   setText("#portfolioBondMixWeight", formatPercent(portfolioTagWeight("bondMix")));
@@ -665,14 +664,6 @@ function formatNumber(value, decimals) {
     maximumFractionDigits: decimals,
     minimumFractionDigits: decimals,
   }).format(value);
-}
-
-function formatKrwAmount(value) {
-  if (!Number.isFinite(value)) return "-";
-  if (value >= 100_000_000) {
-    return `${(value / 100_000_000).toFixed(2)}억`;
-  }
-  return new Intl.NumberFormat("ko-KR").format(value);
 }
 
 function formatPercent(value) {
