@@ -8,6 +8,7 @@ const HOST = process.env.HOST || "0.0.0.0";
 const ROOT = __dirname;
 const MARKET_CACHE_MS = 60 * 1000;
 const SENTIMENT_CACHE_MS = 15 * 60 * 1000;
+const PORTFOLIO_CACHE_MS = 5 * 60 * 1000;
 const TREND_POINTS = 28;
 
 const MARKET_SOURCES = [
@@ -36,11 +37,40 @@ const TREND_FORCE_SOURCES = {
   serverDdr5Contract: "https://www.trendforce.com/research/download/RP260430SD",
   dxi: "https://www.dramexchange.com/Market/Market_Activity/1000",
 };
+const FRED_SOURCES = [
+  {
+    id: "hySpread",
+    label: "하이일드 스프레드",
+    seriesId: "BAMLH0A0HYM2",
+    decimals: 2,
+    valueSuffix: "%",
+    changeUnit: "p",
+  },
+  {
+    id: "nfci",
+    label: "금융상황지수 NFCI",
+    seriesId: "NFCI",
+    decimals: 2,
+    changeUnit: "",
+  },
+];
+const PORTFOLIO_HOLDINGS = [
+  { amount: 30041571, benchmark: "kospi", code: "395270", id: "hanaroSemi", name: "HANARO Fn K-반도체" },
+  { amount: 30003498, benchmark: "kospi", code: "487240", id: "kodexAiPower", name: "KODEX AI전력핵심설비" },
+  { amount: 15064300, benchmark: "sox", code: "442580", id: "plusGlobalHbm", name: "PLUS 글로벌HBM반도체" },
+  { amount: 15032675, benchmark: "sox", code: "381180", id: "tigerSox", name: "TIGER 미국필라델피아반도체나스닥" },
+  { amount: 15005736, benchmark: "kospi", code: "0162Z0", id: "riseSamsungHynixBond", name: "RISE 삼성전자SK하이닉스채권혼합50" },
+  { amount: 15005730, benchmark: "nasdaq", code: "0019K0", id: "timeNasdaqBond", name: "TIME 미국나스닥100채권혼합50액티브" },
+  { amount: 15002399, benchmark: "kospi", code: "284430", id: "kodex200Treasury", name: "KODEX 200미국채혼합" },
+  { amount: 10010605, benchmark: "nasdaq", code: "456600", id: "timeGlobalAi", name: "TIME 글로벌AI인공지능액티브" },
+];
 
 let cachedMarketOverview = null;
 let cachedMarketAt = 0;
 let cachedSentiment = null;
 let cachedSentimentAt = 0;
+let cachedPortfolio = null;
+let cachedPortfolioAt = 0;
 
 const server = http.createServer(async (request, response) => {
   try {
@@ -58,6 +88,11 @@ const server = http.createServer(async (request, response) => {
 
     if (url.pathname === "/api/market-sentiment") {
       sendJson(response, await getMarketSentiment());
+      return;
+    }
+
+    if (url.pathname === "/api/portfolio-metrics") {
+      sendJson(response, await getPortfolioMetrics());
       return;
     }
 
@@ -82,8 +117,9 @@ async function getMarketOverview() {
     return { ...cachedMarketOverview, cached: true };
   }
 
-  const [quotes, ddr5Spot, serverDdr5Contract, dxi] = await Promise.all([
+  const [quotes, fredQuotes, ddr5Spot, serverDdr5Contract, dxi] = await Promise.all([
     Promise.all(MARKET_SOURCES.map(fetchYahooQuote)),
+    Promise.all(FRED_SOURCES.map(fetchFredQuote)),
     fetchTrendForceDdr5Spot(),
     fetchTrendForceServerDdr5Contract(),
     fetchDramExchangeDxi(),
@@ -92,7 +128,7 @@ async function getMarketOverview() {
     cached: false,
     generatedAt: new Date().toISOString(),
     quotes: Object.fromEntries(
-      [...quotes, ddr5Spot, serverDdr5Contract, dxi].map((quote) => [
+      [...quotes, ...fredQuotes, ddr5Spot, serverDdr5Contract, dxi].map((quote) => [
         quote.id,
         quote,
       ]),
@@ -102,6 +138,7 @@ async function getMarketOverview() {
       trendForce: "TrendForce DRAM spot price table",
       trendForceServerDimm: "TrendForce Server DIMM Contract Price report summary",
       dxi: "DRAMeXchange Market Activity DXI timestamp",
+      fred: "FRED CSV series",
     },
   };
   cachedMarketAt = now;
@@ -251,6 +288,48 @@ async function getMarketSentiment() {
   return cachedSentiment;
 }
 
+async function getPortfolioMetrics() {
+  const now = Date.now();
+  if (cachedPortfolio && now - cachedPortfolioAt < PORTFOLIO_CACHE_MS) {
+    return { ...cachedPortfolio, cached: true };
+  }
+
+  const holdings = await Promise.all(
+    PORTFOLIO_HOLDINGS.map(async (holding) => {
+      const [history, flow] = await Promise.all([
+        fetchNaverDailyHistory(holding.code),
+        fetchNaverInvestorFlow(holding.code).catch((error) => ({
+          error: error.message,
+          rows: [],
+          score: null,
+        })),
+      ]);
+      const metrics = buildPortfolioHoldingMetrics(history);
+      return {
+        ...holding,
+        ...metrics,
+        flow,
+      };
+    }),
+  );
+
+  cachedPortfolio = {
+    cached: false,
+    generatedAt: new Date().toISOString(),
+    holdings,
+    sources: {
+      flow: "Naver Finance foreign/institution net trading table",
+      price: "Naver Finance daily OHLCV chart",
+    },
+    totalAmount: PORTFOLIO_HOLDINGS.reduce(
+      (sum, holding) => sum + holding.amount,
+      0,
+    ),
+  };
+  cachedPortfolioAt = now;
+  return cachedPortfolio;
+}
+
 async function fetchYahooQuote(source) {
   const symbol = encodeURIComponent(source.symbol);
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=3mo&interval=1d`;
@@ -295,6 +374,167 @@ async function fetchYahooQuote(source) {
     valueSuffix: source.valueSuffix || "",
   };
 }
+
+async function fetchFredQuote(source) {
+  const url = `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${source.seriesId}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  const response = await fetch(url, {
+    headers: {
+      Accept: "text/csv,text/plain,*/*",
+      "User-Agent": "Mozilla/5.0",
+    },
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timeout));
+  if (!response.ok) {
+    throw new Error(`FRED series unavailable: ${source.seriesId}`);
+  }
+
+  const rows = parseCsv(await response.text())
+    .map((row) => ({
+      date: row.observation_date,
+      value: Number.parseFloat(row[source.seriesId]),
+    }))
+    .filter((row) => row.date && Number.isFinite(row.value));
+  const series = rows.slice(-TREND_POINTS);
+  const latest = rows.at(-1);
+  const previous = rows.at(-2);
+
+  if (!latest) {
+    throw new Error(`FRED series unavailable: ${source.seriesId}`);
+  }
+
+  const change = previous ? latest.value - previous.value : 0;
+  return {
+    change,
+    changePercent:
+      previous && previous.value !== 0 ? (change / previous.value) * 100 : 0,
+    changeUnit: source.changeUnit || "",
+    decimals: source.decimals,
+    history: series,
+    id: source.id,
+    label: source.label,
+    marketTime: `${latest.date}T00:00:00Z`,
+    previous: previous?.value ?? null,
+    price: latest.value,
+    symbol: source.seriesId,
+    valueSuffix: source.valueSuffix || "",
+  };
+}
+
+async function fetchNaverDailyHistory(code) {
+  const url = `https://fchart.stock.naver.com/sise.nhn?symbol=${encodeURIComponent(
+    code,
+  )}&timeframe=day&count=260&requestType=0`;
+  const xml = new TextDecoder("euc-kr").decode(
+    await fetchBinary(url, "application/xml,text/xml,text/plain,*/*"),
+  );
+  const rows = [...xml.matchAll(/<item data="([^"]+)"/g)]
+    .map((match) => {
+      const [date, open, high, low, close, volume] = match[1].split("|");
+      return {
+        close: finiteNumber(close),
+        date: `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`,
+        high: finiteNumber(high),
+        low: finiteNumber(low),
+        open: finiteNumber(open),
+        volume: finiteNumber(volume),
+      };
+    })
+    .filter(
+      (row) =>
+        row.date &&
+        Number.isFinite(row.close) &&
+        Number.isFinite(row.volume) &&
+        row.close > 0,
+    );
+
+  if (!rows.length) {
+    throw new Error(`Naver chart unavailable: ${code}`);
+  }
+  return rows;
+}
+
+async function fetchNaverInvestorFlow(code) {
+  const url = `https://finance.naver.com/item/frgn.naver?code=${encodeURIComponent(code)}`;
+  const html = new TextDecoder("euc-kr").decode(
+    await fetchBinary(url, "text/html,*/*"),
+  );
+  const tableStart = html.indexOf("외국인ㆍ기관");
+  if (tableStart < 0) {
+    throw new Error(`Naver investor flow unavailable: ${code}`);
+  }
+  const table = html.slice(tableStart, tableStart + 50000);
+  const rows = [...table.matchAll(/<tr[^>]*onMouseOver[\s\S]*?<\/tr>/gi)]
+    .map((match) => {
+      const cells = [...match[0].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map(
+        (cell) => cleanHtml(cell[1]),
+      );
+      if (cells.length < 9) return null;
+      const close = parseKoreanNumber(cells[1]);
+      const volume = parseKoreanNumber(cells[4]);
+      const institutionNet = parseKoreanNumber(cells[5]);
+      const foreignNet = parseKoreanNumber(cells[6]);
+      return {
+        close,
+        date: cells[0].replace(/\./g, "-"),
+        foreignNet,
+        holdingRate: Number.parseFloat(cells[8].replace(/%/g, "")),
+        institutionNet,
+        netShares: institutionNet + foreignNet,
+        tradedValue: close * volume,
+        volume,
+      };
+    })
+    .filter(
+      (row) =>
+        row &&
+        row.date &&
+        Number.isFinite(row.close) &&
+        Number.isFinite(row.volume) &&
+        Number.isFinite(row.netShares),
+    );
+
+  if (!rows.length) {
+    throw new Error(`Naver investor flow rows unavailable: ${code}`);
+  }
+
+  const netValue5 = sum(rows.slice(0, 5).map((row) => row.netShares * row.close));
+  const tradedValue5 = sum(rows.slice(0, 5).map((row) => row.tradedValue));
+  const netValue20 = sum(rows.slice(0, 20).map((row) => row.netShares * row.close));
+  const tradedValue20 = sum(rows.slice(0, 20).map((row) => row.tradedValue));
+  const ratio5 = tradedValue5 ? netValue5 / tradedValue5 : NaN;
+  const ratio20 = tradedValue20 ? netValue20 / tradedValue20 : NaN;
+
+  return {
+    latestDate: rows[0]?.date || "",
+    netValue5,
+    netValue20,
+    ratio5,
+    ratio20,
+    score: scoreFlowRatio(ratio5, ratio20),
+  };
+}
+
+function buildPortfolioHoldingMetrics(rows) {
+  const closes = rows.map((row) => row.close);
+  const latest = rows.at(-1);
+  const ma50 = movingAverage(closes, 50);
+  const ma200 = movingAverage(closes, 200);
+  return {
+    history: rows.slice(-TREND_POINTS).map((row) => ({
+      date: row.date,
+      value: row.close,
+    })),
+    latestClose: latest?.close ?? null,
+    latestDate: latest?.date || "",
+    ma50,
+    ma200,
+    pointCount: rows.length,
+    trend28: trendPercentFromRows(rows.slice(-TREND_POINTS)),
+  };
+}
+
 
 function buildYahooHistory(result, meta, scale = 1) {
   const timestamps = result.timestamp || [];
@@ -391,9 +631,9 @@ function fetchText(url, accept = "text/csv,text/plain,*/*") {
       {
         headers: {
           Accept: accept,
-          "User-Agent": "FinanceDashboard/1.0",
+          "User-Agent": "Mozilla/5.0",
         },
-        timeout: 10000,
+        timeout: 20000,
       },
       (response) => {
         if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -408,6 +648,37 @@ function fetchText(url, accept = "text/csv,text/plain,*/*") {
           body += chunk;
         });
         response.on("end", () => resolve(body));
+      },
+    );
+
+    request.on("timeout", () => request.destroy(new Error(`Timeout: ${url}`)));
+    request.on("error", reject);
+  });
+}
+
+function fetchBinary(url, accept = "application/octet-stream,*/*") {
+  return new Promise((resolve, reject) => {
+    const request = https.get(
+      url,
+      {
+        headers: {
+          Accept: accept,
+          "User-Agent": "Mozilla/5.0",
+        },
+        timeout: 20000,
+      },
+      (response) => {
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          reject(new Error(`Request failed: ${response.statusCode} ${url}`));
+          response.resume();
+          return;
+        }
+
+        const chunks = [];
+        response.on("data", (chunk) => {
+          chunks.push(chunk);
+        });
+        response.on("end", () => resolve(Buffer.concat(chunks)));
       },
     );
 
@@ -538,6 +809,67 @@ function normalizeText(value) {
   return String(value || "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function cleanHtml(value) {
+  return decodeHtmlEntity(
+    String(value || "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim(),
+  );
+}
+
+function parseKoreanNumber(value) {
+  const text = String(value || "")
+    .replace(/,/g, "")
+    .replace(/\s+/g, "")
+    .replace(/[％%]/g, "");
+  if (!text || text === "-") return 0;
+  const number = Number(text);
+  return Number.isFinite(number) ? number : NaN;
+}
+
+function finiteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : NaN;
+}
+
+function sum(values) {
+  return values.reduce((total, value) => total + (Number(value) || 0), 0);
+}
+
+function movingAverage(values, period) {
+  if (values.length < period) return null;
+  const recent = values.slice(-period).filter(Number.isFinite);
+  if (recent.length < period) return null;
+  return sum(recent) / period;
+}
+
+function trendPercentFromRows(rows) {
+  const first = rows[0]?.close;
+  const last = rows.at(-1)?.close;
+  if (!Number.isFinite(first) || !Number.isFinite(last) || first === 0) {
+    return null;
+  }
+  return ((last - first) / first) * 100;
+}
+
+function scoreFlowRatio(ratio5, ratio20) {
+  if (!Number.isFinite(ratio5) && !Number.isFinite(ratio20)) return null;
+
+  let score = 0;
+  if (Number.isFinite(ratio5)) {
+    if (ratio5 >= 0.04) score += 0.7;
+    else if (ratio5 >= 0.015) score += 0.35;
+    else if (ratio5 <= -0.04) score -= 0.7;
+    else if (ratio5 <= -0.015) score -= 0.35;
+  }
+  if (Number.isFinite(ratio20)) {
+    if (ratio20 >= 0.025) score += 0.25;
+    else if (ratio20 <= -0.025) score -= 0.25;
+  }
+  return Math.max(-1, Math.min(1, score));
 }
 
 function getFearGreedRating(score) {

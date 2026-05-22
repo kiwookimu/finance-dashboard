@@ -1,4 +1,4 @@
-const GOOD_WHEN_FALLING = new Set(["usdKrw", "wti", "us10y"]);
+const GOOD_WHEN_FALLING = new Set(["usdKrw", "wti", "us10y", "hySpread", "nfci"]);
 const PORTFOLIO_HOLDINGS = [
   { amount: 30041571, name: "HANARO Fn K-반도체", tags: ["semi", "korea"] },
   { amount: 30003498, name: "KODEX AI전력핵심설비", tags: ["aiPower", "korea"] },
@@ -18,9 +18,10 @@ loadIndicators();
 
 async function loadIndicators() {
   try {
-    const [marketResponse, sentimentResponse] = await Promise.all([
+    const [marketResponse, sentimentResponse, portfolioResponse] = await Promise.all([
       fetch("/api/market-overview", { cache: "no-store" }),
       fetch("/api/market-sentiment", { cache: "no-store" }),
+      fetch("/api/portfolio-metrics", { cache: "no-store" }).catch(() => null),
     ]);
 
     if (!marketResponse.ok || !sentimentResponse.ok) {
@@ -29,6 +30,9 @@ async function loadIndicators() {
 
     const market = await marketResponse.json();
     const sentiment = await sentimentResponse.json();
+    const portfolioMetrics = portfolioResponse?.ok
+      ? await portfolioResponse.json()
+      : null;
 
     renderMarketIndicator("kospi", market.quotes.kospi);
     renderMarketIndicator("sp500", market.quotes.sp500);
@@ -40,14 +44,16 @@ async function loadIndicators() {
     renderMarketIndicator("usdKrw", market.quotes.usdKrw);
     renderMarketIndicator("wti", market.quotes.wti);
     renderMarketIndicator("us10y", market.quotes.us10y);
+    renderMarketIndicator("hySpread", market.quotes.hySpread);
+    renderMarketIndicator("nfci", market.quotes.nfci);
     renderFearGreed(sentiment.fearGreed);
     renderVix(sentiment.vix);
     renderTradingSignal(market.quotes, sentiment);
-    renderPortfolioSignal(market.quotes, sentiment);
+    renderPortfolioSignal(market.quotes, sentiment, portfolioMetrics);
     renderTimestamp(market.quotes);
     setText(
       "#marketSource",
-      `Yahoo Finance · TrendForce · DRAMeXchange · 공포·탐욕 ${formatIsoDate(sentiment.fearGreed.date)} · VIX ${formatIsoDate(sentiment.vix.date)} 기준 지연 데이터`,
+      `Yahoo Finance · FRED · Naver Finance · TrendForce · DRAMeXchange · 공포·탐욕 ${formatIsoDate(sentiment.fearGreed.date)} · VIX ${formatIsoDate(sentiment.vix.date)} 기준 지연 데이터`,
     );
   } catch (error) {
     console.warn("Indicator data unavailable", error);
@@ -84,9 +90,11 @@ function renderSignalState({ action, className, score, summary }) {
   setText("#signalSummary", `${formatSignedScore(score)}점 · ${summary}`);
 }
 
-function renderPortfolioSignal(quotes, sentiment) {
+function renderPortfolioSignal(quotes, sentiment, portfolioMetrics) {
   renderPortfolioSnapshot();
-  renderPortfolioState(evaluatePortfolioSignal(quotes || {}, sentiment || {}));
+  renderPortfolioState(
+    evaluatePortfolioSignal(quotes || {}, sentiment || {}, portfolioMetrics),
+  );
 }
 
 function renderPortfolioSnapshot() {
@@ -144,6 +152,7 @@ function evaluateTradingSignal(quotes, sentiment) {
   add("미국 10년물", scoreYield(quotes.us10y), 0.85);
   add("달러/원", scoreUsdKrw(quotes.usdKrw), 0.65);
   add("WTI", scoreWti(quotes.wti), 0.45);
+  add("시장 레짐", scoreMarketRegime(quotes), 1.25);
 
   const totalWeight = components.reduce((sum, item) => sum + item.weight, 0);
   const weightedScore = components.reduce((sum, item) => sum + item.weighted, 0);
@@ -168,7 +177,7 @@ function evaluateTradingSignal(quotes, sentiment) {
   };
 }
 
-function evaluatePortfolioSignal(quotes, sentiment) {
+function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   const components = [];
   const add = (label, score, weight) => {
     if (!Number.isFinite(score)) return;
@@ -187,10 +196,18 @@ function evaluatePortfolioSignal(quotes, sentiment) {
   const rateScore = scoreYield(quotes.us10y);
   const usdKrwScore = scoreUsdKrw(quotes.usdKrw);
   const vixScore = scoreVix(sentiment.vix);
+  const relativeScore = scorePortfolioRelativeStrength(portfolioMetrics, quotes);
+  const movingAverageScore = scorePortfolioMovingAverage(portfolioMetrics);
+  const investorFlowScore = scorePortfolioInvestorFlow(portfolioMetrics);
+  const regimeScore = scoreMarketRegime(quotes);
 
   add("SOX", semiScore, 2.4);
   add("NASDAQ", nasdaqScore, 1.25);
   add("KOSPI", kospiScore, 0.75);
+  add("상대강도", relativeScore, 1.35);
+  add("50/200일선", movingAverageScore, 1.15);
+  add("외국인·기관", investorFlowScore, 0.9);
+  add("시장 레짐", regimeScore, 1.35);
   add("DDR5", scoreMemoryPrice(quotes.ddr5Spot), 0.95);
   add("서버 DRAM", scoreServerContract(quotes.serverDdr5Contract), 0.35);
   add("미국 10년물", rateScore, 1.2);
@@ -208,6 +225,8 @@ function evaluatePortfolioSignal(quotes, sentiment) {
   if (concentration >= 75 && (semiScore < 0 || nasdaqScore < 0)) score -= 8;
   if (vixLevel >= 25) score -= 8;
   if (rateScore < -0.35 && semiScore < 0.2) score -= 6;
+  if (relativeScore < -0.25 && movingAverageScore < 0) score -= 6;
+  if (investorFlowScore < -0.25 && semiScore < 0.25) score -= 4;
   if (semiScore > 0.4 && scoreMemoryPrice(quotes.ddr5Spot) > 0) score += 4;
   score = clamp(Math.round(score), -100, 100);
 
@@ -224,10 +243,13 @@ function evaluatePortfolioSignal(quotes, sentiment) {
   return {
     action,
     checks: buildPortfolioChecks({
+      investorFlowScore,
+      movingAverageScore,
       nasdaqScore,
       rateScore,
+      regimeScore,
+      relativeScore,
       semiScore,
-      usdKrwScore,
       vixScore,
     }),
     className,
@@ -279,12 +301,24 @@ function summarizePortfolioSignal(components, className, concentration) {
   return `${[...positives.slice(0, 1), ...negatives.slice(0, 1)].join(" · ") || "중립 구간"} · ${concentrationText}`;
 }
 
-function buildPortfolioChecks({ nasdaqScore, rateScore, semiScore, usdKrwScore, vixScore }) {
+function buildPortfolioChecks({
+  investorFlowScore,
+  movingAverageScore,
+  nasdaqScore,
+  rateScore,
+  regimeScore,
+  relativeScore,
+  semiScore,
+  vixScore,
+}) {
   return [
+    portfolioCheck("상대강도", relativeScore, "벤치마크 대비"),
+    portfolioCheck("50/200일선", movingAverageScore, "추세 확인"),
+    portfolioCheck("외국인·기관", investorFlowScore, "수급 확인"),
+    portfolioCheck("시장레짐", regimeScore, "신용·금융상황"),
     portfolioCheck("SOX", semiScore, "반도체 ETF 핵심"),
     portfolioCheck("NASDAQ", nasdaqScore, "AI 성장주"),
     portfolioCheck("금리", rateScore, "채권혼합·성장주"),
-    portfolioCheck("USD/KRW", usdKrwScore, "환율 부담"),
     portfolioCheck("VIX", vixScore, "변동성"),
   ];
 }
@@ -560,6 +594,91 @@ function scoreUsdKrw(quote) {
   return clamp(score, -1, 1);
 }
 
+function scoreMarketRegime(quotes) {
+  return average([
+    scoreHySpread(quotes?.hySpread),
+    scoreNfci(quotes?.nfci),
+  ]);
+}
+
+function scoreHySpread(quote) {
+  const value = Number(quote?.price);
+  if (!Number.isFinite(value)) return NaN;
+
+  let score = 0;
+  if (value < 3.5) score = 0.75;
+  else if (value < 4.5) score = 0.35;
+  else if (value < 5.5) score = -0.15;
+  else if (value < 7) score = -0.55;
+  else score = -0.95;
+
+  const move = pointChange(quote.history);
+  if (move <= -0.3) score += 0.15;
+  if (move >= 0.4) score -= 0.2;
+  return clamp(score, -1, 1);
+}
+
+function scoreNfci(quote) {
+  const value = Number(quote?.price);
+  if (!Number.isFinite(value)) return NaN;
+
+  let score = 0;
+  if (value <= -0.4) score = 0.75;
+  else if (value <= -0.15) score = 0.35;
+  else if (value <= 0.15) score = -0.05;
+  else if (value <= 0.5) score = -0.5;
+  else score = -0.9;
+
+  const move = pointChange(quote.history);
+  if (move <= -0.05) score += 0.1;
+  if (move >= 0.08) score -= 0.15;
+  return clamp(score, -1, 1);
+}
+
+function scorePortfolioRelativeStrength(portfolioMetrics, quotes) {
+  return weightedPortfolioScore(portfolioMetrics, (holding) => {
+    const ownTrend = Number(holding.trend28);
+    const benchmarkTrend = trendPercent(quotes?.[holding.benchmark]?.history);
+    if (!Number.isFinite(ownTrend) || !Number.isFinite(benchmarkTrend)) {
+      return NaN;
+    }
+
+    const spread = ownTrend - benchmarkTrend;
+    if (spread >= 8) return 0.9;
+    if (spread >= 3) return 0.55;
+    if (spread > -3) return 0.05;
+    if (spread > -8) return -0.55;
+    return -0.9;
+  });
+}
+
+function scorePortfolioMovingAverage(portfolioMetrics) {
+  return weightedPortfolioScore(portfolioMetrics, scoreHoldingMovingAverage);
+}
+
+function scoreHoldingMovingAverage(holding) {
+  const price = Number(holding.latestClose);
+  const ma50 = Number(holding.ma50);
+  const ma200 = Number(holding.ma200);
+  if (!Number.isFinite(price) || !Number.isFinite(ma50)) return NaN;
+
+  if (Number.isFinite(ma200)) {
+    if (price > ma50 && price > ma200 && ma50 > ma200) return 0.9;
+    if (price > ma50 && price > ma200) return 0.55;
+    if (price > ma50) return 0.2;
+    if (price < ma200) return -0.8;
+    return -0.35;
+  }
+
+  return price > ma50 ? 0.35 : -0.35;
+}
+
+function scorePortfolioInvestorFlow(portfolioMetrics) {
+  return weightedPortfolioScore(portfolioMetrics, (holding) =>
+    Number(holding.flow?.score),
+  );
+}
+
 function scoreWti(quote) {
   const price = Number(quote?.price);
   const trend = trendPercent(quote?.history);
@@ -607,6 +726,23 @@ function average(values) {
   const clean = values.filter(Number.isFinite);
   if (!clean.length) return NaN;
   return clean.reduce((sum, value) => sum + value, 0) / clean.length;
+}
+
+function weightedPortfolioScore(portfolioMetrics, scoreForHolding) {
+  const holdings = portfolioMetrics?.holdings || [];
+  const totalAmount = Number(portfolioMetrics?.totalAmount) || PORTFOLIO_TOTAL;
+  let weighted = 0;
+  let weight = 0;
+
+  for (const holding of holdings) {
+    const score = scoreForHolding(holding);
+    const holdingWeight = totalAmount ? Number(holding.amount) / totalAmount : 0;
+    if (!Number.isFinite(score) || !Number.isFinite(holdingWeight)) continue;
+    weighted += clamp(score, -1, 1) * holdingWeight;
+    weight += holdingWeight;
+  }
+
+  return weight ? weighted / weight : NaN;
 }
 
 function portfolioTagWeight(tag) {

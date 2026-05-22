@@ -29,7 +29,7 @@ Render에서는 `render.yaml`의 `startCommand`와 `/api/health` 헬스체크를
 - `scripts/screen_mfi_volume.mjs`: 월간 거래량 급증 + MFI 조건 스크리닝
 - `scripts/screen_us_mfi_volume.mjs`: 미국 상장 보통주/ADR 대상 월간 거래량 급증 + MFI 조건 스크리닝
 
-KOSPI, S&P 500, NASDAQ, SOX 반도체지수, USD/KRW, WTI 유가, 미국 10년물 금리는 Yahoo Finance chart endpoint를 사용합니다. DDR5 16Gb 4800/5600 Spot Price는 TrendForce 공개 DRAM spot price 표를 사용합니다. Server DDR5 Contract Price는 TrendForce Server DIMM Contract Price 공개 요약을 사용하며, 숫자 가격은 멤버십 영역이라 공개값이 있을 때만 표시됩니다. DXI Index는 DRAMeXchange 공개 Market Activity의 업데이트 시각을 사용하며, 숫자 지수와 히스토리는 로그인 영역이라 공개값이 있을 때만 표시됩니다. 공포·탐욕 지수는 GitHub CSV 미러, VIX는 Cboe 일별 CSV를 사용합니다. 모두 실시간이 아닌 무료 지연 데이터입니다.
+KOSPI, S&P 500, NASDAQ, SOX 반도체지수, USD/KRW, WTI 유가, 미국 10년물 금리는 Yahoo Finance chart endpoint를 사용합니다. 하이일드 스프레드와 NFCI는 FRED CSV를 사용합니다. DDR5 16Gb 4800/5600 Spot Price는 TrendForce 공개 DRAM spot price 표를 사용합니다. Server DDR5 Contract Price는 TrendForce Server DIMM Contract Price 공개 요약을 사용하며, 숫자 가격은 멤버십 영역이라 공개값이 있을 때만 표시됩니다. DXI Index는 DRAMeXchange 공개 Market Activity의 업데이트 시각을 사용하며, 숫자 지수와 히스토리는 로그인 영역이라 공개값이 있을 때만 표시됩니다. 공포·탐욕 지수는 GitHub CSV 미러, VIX는 Cboe 일별 CSV를 사용합니다. 모두 실시간이 아닌 무료 지연 데이터입니다.
 
 월간 거래량/MFI 스크리너는 KRX 상장법인 목록과 Naver Finance 일별 OHLCV/시가총액 데이터를 사용합니다. 기본 비교 기준은 대상월 직전 5개월 월간 거래량 평균이고, 기본 시가총액 조건은 `1조원 이상`입니다. 네 번째 인자로 `KOSPI` 또는 `KOSPI,KOSDAQ`처럼 시장 필터를 줄 수 있고, 다섯 번째 인자에 `true`를 주면 대상월 말 종가가 직전월 말 종가보다 오른 종목만 남깁니다. 여섯 번째 인자로 최소 시가총액 원화 금액을 바꿀 수 있습니다.
 
@@ -44,3 +44,5 @@ KOSPI, S&P 500, NASDAQ, SOX 반도체지수, USD/KRW, WTI 유가, 미국 10년�
 ## 보유 포트폴리오 신호
 
 사용자 보유 ETF 기준 별도 신호를 표시합니다. 사진으로 확인한 보유 종목은 반도체/HBM, AI 전력설비, 글로벌 AI, 채권혼합 ETF로 분류했습니다. 이 포트폴리오는 반도체·AI 노출이 높기 때문에 SOX, NASDAQ, DDR5, 서버 DRAM, VIX, 미국 10년물 금리, USD/KRW에 더 높은 가중치를 둡니다. 시장 전체 신호와 별개로 `분할 매수`, `보유`, `비중 축소`를 표시합니다.
+
+포트폴리오 신호에는 네 가지 추가 로직을 반영합니다. 보유 ETF의 28일 수익률을 SOX/NASDAQ/KOSPI 벤치마크와 비교해 상대강도를 계산하고, 각 ETF의 50일/200일 이동평균 위치와 정배열 여부를 점수화합니다. Naver Finance의 외국인·기관 순매매 거래량 표에서 최근 5일/20일 순매수 강도를 계산합니다. 시장 레짐은 FRED의 ICE BofA US High Yield OAS와 Chicago Fed NFCI를 함께 반영합니다.
