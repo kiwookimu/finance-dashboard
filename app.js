@@ -1,17 +1,23 @@
 const GOOD_WHEN_FALLING = new Set(["usdKrw", "wti", "us10y", "hySpread", "nfci"]);
 const PORTFOLIO_HOLDINGS = [
-  { amount: 30041571, name: "HANARO Fn K-반도체", tags: ["semi", "korea"] },
-  { amount: 30003498, name: "KODEX AI전력핵심설비", tags: ["aiPower", "korea"] },
-  { amount: 15064300, name: "PLUS 글로벌 HBM반도체", tags: ["semi", "global"] },
-  { amount: 15032675, name: "TIGER 미국필라델피아반도체", tags: ["semi", "us"] },
-  { amount: 15005736, name: "RISE 삼성전자SK하이닉스채권혼합", tags: ["semi", "bondMix", "korea"] },
-  { amount: 15005730, name: "TIME 미국나스닥100채권혼합", tags: ["nasdaq", "bondMix", "us"] },
-  { amount: 15002399, name: "KODEX 200 미국채혼합", tags: ["kospi", "bondMix", "korea"] },
-  { amount: 10010605, name: "TIME 글로벌AI인공지능액티브", tags: ["aiPower", "global"] },
+  { amount: 30041571, benchmark: "kospi", code: "395270", id: "hanaroSemi", name: "HANARO Fn K-반도체", tags: ["semi", "korea"] },
+  { amount: 30003498, benchmark: "kospi", code: "487240", id: "kodexAiPower", name: "KODEX AI전력핵심설비", tags: ["aiPower", "korea"] },
+  { amount: 15064300, benchmark: "sox", code: "442580", id: "plusGlobalHbm", name: "PLUS 글로벌HBM반도체", tags: ["semi", "global"] },
+  { amount: 15032675, benchmark: "sox", code: "381180", id: "tigerSox", name: "TIGER 미국필라델피아반도체", tags: ["semi", "us"] },
+  { amount: 15005736, benchmark: "kospi", code: "0162Z0", id: "riseSamsungHynixBond", name: "RISE 삼성전자SK하이닉스채권혼합", tags: ["semi", "bondMix", "korea"] },
+  { amount: 15005730, benchmark: "nasdaq", code: "0019K0", id: "timeNasdaqBond", name: "TIME 미국나스닥100채권혼합", tags: ["nasdaq", "bondMix", "us"] },
+  { amount: 15002399, benchmark: "kospi", code: "284430", id: "kodex200Treasury", name: "KODEX 200미국채혼합", tags: ["kospi", "bondMix", "korea"] },
+  { amount: 10010605, benchmark: "nasdaq", code: "456600", id: "timeGlobalAi", name: "TIME 글로벌AI인공지능액티브", tags: ["aiPower", "global"] },
 ];
 const PORTFOLIO_TOTAL = PORTFOLIO_HOLDINGS.reduce(
   (sum, holding) => sum + holding.amount,
   0,
+);
+const PORTFOLIO_HOLDING_META_BY_ID = new Map(
+  PORTFOLIO_HOLDINGS.map((holding) => [holding.id, holding]),
+);
+const PORTFOLIO_HOLDING_META_BY_CODE = new Map(
+  PORTFOLIO_HOLDINGS.map((holding) => [holding.code, holding]),
 );
 const DEFAULT_PORTFOLIO_EXPOSURE_CONFIG = {
   crisis: 0.5,
@@ -121,6 +127,7 @@ function renderPortfolioState({
   checks,
   className,
   confidence,
+  holdingSignals,
   score,
   summary,
 }) {
@@ -146,6 +153,36 @@ function renderPortfolioState({
     .map(
       (check) =>
         `<span class="${check.tone}"><b>${escapeHtml(check.label)}</b>${escapeHtml(check.text)}</span>`,
+    )
+    .join("");
+  renderHoldingSignals(holdingSignals || []);
+}
+
+function renderHoldingSignals(signals) {
+  const element = document.querySelector("#holdingSignals");
+  if (!element) return;
+
+  if (!signals.length) {
+    element.innerHTML = `<p class="holding-empty">종목 데이터 수집 중</p>`;
+    return;
+  }
+
+  element.innerHTML = signals
+    .map(
+      (signal) => `
+        <article class="holding-signal ${signal.className}">
+          <span class="holding-lamps" aria-hidden="true">
+            <i class="holding-green"></i>
+            <i class="holding-yellow"></i>
+            <i class="holding-red"></i>
+          </span>
+          <div class="holding-copy">
+            <strong>${escapeHtml(signal.name)}</strong>
+            <small>${formatSignedScore(signal.score)}점 · ${escapeHtml(signal.confidence)} · ${escapeHtml(signal.summary)}</small>
+          </div>
+          <span class="holding-action">${escapeHtml(signal.action)}</span>
+        </article>
+      `,
     )
     .join("");
 }
@@ -330,8 +367,100 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
     className,
     confidence,
     crisisMode,
+    holdingSignals: evaluateHoldingSignals(
+      portfolioMetrics?.holdings || [],
+      quotes,
+      sentiment,
+      crisisMode,
+    ),
     score,
     summary: summarizePortfolioSignal(components, className, concentration, crisisMode),
+  };
+}
+
+function evaluateHoldingSignals(holdings, quotes, sentiment, crisisMode) {
+  return holdings
+    .map((holding) => evaluateHoldingSignal(holding, quotes, sentiment, crisisMode))
+    .filter(Boolean);
+}
+
+function evaluateHoldingSignal(holding, quotes, sentiment, crisisMode) {
+  const meta = portfolioHoldingMeta(holding);
+  const benchmarkQuote = quotes?.[holding.benchmark || meta?.benchmark];
+  const components = [];
+  const add = (label, score, weight) => {
+    if (!Number.isFinite(score)) return;
+    const cleanScore = clamp(score, -1, 1);
+    components.push({
+      label,
+      score: cleanScore,
+      weight,
+      weighted: cleanScore * weight,
+    });
+  };
+
+  const relativeScore = scoreSingleHoldingRelativeStrength(holding, benchmarkQuote);
+  const multiRelativeScore = scoreRelativeMomentum(
+    { analysisHistory: holding.analysisHistory, history: holding.history },
+    benchmarkQuote,
+  );
+  const movingAverageScore = scoreHoldingMovingAverage(holding);
+  const investorFlowScore = Number(holding.flow?.score);
+  const benchmarkScore = scoreRiskAsset(benchmarkQuote);
+  const sectorScore = scoreHoldingSector(meta, quotes, sentiment);
+  const regimeScore = scoreMarketRegime(quotes);
+  const vixScore = scoreVix(sentiment?.vix);
+
+  add("상대강도", relativeScore, 1.45);
+  add("장기상대", multiRelativeScore, 1.15);
+  add("50/200일선", movingAverageScore, 1.25);
+  add("수급", investorFlowScore, 0.85);
+  add("벤치마크", benchmarkScore, 0.9);
+  add("섹터", sectorScore, 1);
+  add("시장레짐", regimeScore, 0.75);
+  add("VIX", vixScore, 0.55);
+
+  const totalWeight = components.reduce((sum, item) => sum + item.weight, 0);
+  if (!totalWeight) return null;
+  let score = Math.round(
+    (components.reduce((sum, item) => sum + item.weighted, 0) / totalWeight) * 100,
+  );
+
+  if (crisisMode?.tailRisk) score -= 12;
+  if (movingAverageScore < -0.25 && relativeScore < -0.25) score -= 6;
+  if (sectorScore < -0.35 && (meta?.tags || []).some((tag) => ["semi", "aiPower"].includes(tag))) {
+    score -= 5;
+  }
+  score = clamp(score, -100, 100);
+
+  let action = "보유";
+  let className = "holding-hold";
+  if (
+    crisisMode?.tailRisk ||
+    score <= -45 ||
+    (score <= -25 && movingAverageScore <= -0.35) ||
+    (score <= -18 && relativeScore <= -0.55 && movingAverageScore < 0)
+  ) {
+    action = "비중 축소";
+    className = "holding-trim";
+  } else if (
+    score >= 32 &&
+    movingAverageScore > 0 &&
+    relativeScore > -0.2 &&
+    benchmarkScore > -0.25 &&
+    !crisisMode?.active
+  ) {
+    action = "분할 매수";
+    className = "holding-buy";
+  }
+
+  return {
+    action,
+    className,
+    confidence: signalConfidence(className, score),
+    name: compactHoldingName(meta?.name || holding.name || holding.id),
+    score,
+    summary: summarizeHoldingSignal(components, className),
   };
 }
 
@@ -379,6 +508,25 @@ function summarizePortfolioSignal(components, className, concentration, crisisMo
   }
 
   return `${[...positives.slice(0, 1), ...negatives.slice(0, 1)].join(" · ") || "중립 구간"} · ${concentrationText}`;
+}
+
+function summarizeHoldingSignal(components, className) {
+  const positives = components
+    .filter((item) => item.weighted > 0.08)
+    .sort((a, b) => b.weighted - a.weighted)
+    .map((item) => `${item.label} 양호`);
+  const negatives = components
+    .filter((item) => item.weighted < -0.08)
+    .sort((a, b) => a.weighted - b.weighted)
+    .map((item) => `${item.label} 부담`);
+
+  if (className === "holding-buy") {
+    return (positives.length ? positives : ["가격 흐름 양호"]).slice(0, 2).join(" · ");
+  }
+  if (className === "holding-trim") {
+    return (negatives.length ? negatives : ["위험 신호 우세"]).slice(0, 2).join(" · ");
+  }
+  return [...positives.slice(0, 1), ...negatives.slice(0, 1)].join(" · ") || "중립";
 }
 
 function buildPortfolioChecks({
@@ -950,6 +1098,44 @@ function scorePortfolioInvestorFlow(portfolioMetrics) {
   );
 }
 
+function scoreSingleHoldingRelativeStrength(holding, benchmarkQuote) {
+  const ownTrend = Number(holding?.trend28);
+  const benchmarkTrend = trendPercent(benchmarkQuote?.history);
+  if (!Number.isFinite(ownTrend) || !Number.isFinite(benchmarkTrend)) {
+    return NaN;
+  }
+
+  const spread = ownTrend - benchmarkTrend;
+  if (spread >= 8) return 0.9;
+  if (spread >= 3) return 0.55;
+  if (spread > -3) return 0.05;
+  if (spread > -8) return -0.55;
+  return -0.9;
+}
+
+function scoreHoldingSector(meta, quotes, sentiment) {
+  const tags = meta?.tags || [];
+  if (tags.includes("semi")) {
+    return scoreSemiconductorCycle(quotes);
+  }
+  if (tags.includes("aiPower") || tags.includes("nasdaq")) {
+    return average([
+      scoreRiskAsset(quotes?.nasdaq),
+      scoreRiskAsset(quotes?.sp500),
+      scoreMarketRegime(quotes),
+      scoreVix(sentiment?.vix),
+    ]);
+  }
+  if (tags.includes("bondMix")) {
+    return average([
+      scoreYield(quotes?.us10y),
+      scoreMarketRegime(quotes),
+      scoreVix(sentiment?.vix),
+    ]);
+  }
+  return NaN;
+}
+
 function scoreWti(quote) {
   const price = Number(quote?.price);
   const trend = trendPercent(quote?.history);
@@ -1061,6 +1247,22 @@ function weightedPortfolioScore(portfolioMetrics, scoreForHolding) {
   return weight ? weighted / weight : NaN;
 }
 
+function portfolioHoldingMeta(holding) {
+  return (
+    PORTFOLIO_HOLDING_META_BY_ID.get(holding?.id) ||
+    PORTFOLIO_HOLDING_META_BY_CODE.get(holding?.code) ||
+    null
+  );
+}
+
+function compactHoldingName(name) {
+  return String(name || "")
+    .replace(/액티브$/u, "")
+    .replace(/50$/u, "")
+    .replace(/나스닥$/u, "")
+    .trim();
+}
+
 function portfolioTagWeight(tag) {
   const taggedAmount = PORTFOLIO_HOLDINGS
     .filter((holding) => holding.tags.includes(tag))
@@ -1070,10 +1272,18 @@ function portfolioTagWeight(tag) {
 
 function signalConfidence(className, score) {
   const value = Math.abs(Number(score));
-  if (className === "signal-buy" || className === "portfolio-buy") {
+  if (
+    className === "signal-buy" ||
+    className === "portfolio-buy" ||
+    className === "holding-buy"
+  ) {
     return value >= 45 ? "강한 녹색" : "약한 녹색";
   }
-  if (className === "signal-sell" || className === "portfolio-trim") {
+  if (
+    className === "signal-sell" ||
+    className === "portfolio-trim" ||
+    className === "holding-trim"
+  ) {
     return value >= 55 ? "강한 빨간색" : "약한 빨간색";
   }
   if (value <= 12) return "중립";
