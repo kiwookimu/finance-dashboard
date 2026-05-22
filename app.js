@@ -106,7 +106,15 @@ function renderPortfolioSnapshot() {
   setText("#portfolioBondMixWeight", formatPercent(portfolioTagWeight("bondMix")));
 }
 
-function renderPortfolioState({ action, checks, className, confidence, score, summary }) {
+function renderPortfolioState({
+  action,
+  allocation,
+  checks,
+  className,
+  confidence,
+  score,
+  summary,
+}) {
   const panel = document.querySelector("#portfolioSignal");
   if (!panel) return;
 
@@ -115,7 +123,13 @@ function renderPortfolioState({ action, checks, className, confidence, score, su
   panel.setAttribute("aria-label", `보유 포트폴리오 신호: ${action}`);
   setText("#portfolioAction", action);
   setText("#portfolioScore", `${formatSignedScore(score)}점`);
-  setText("#portfolioSummary", `${confidence || signalConfidence(className, score)} · ${summary}`);
+  const allocationText = Number.isFinite(allocation)
+    ? `권장비중 ${formatPercent(allocation * 100)}`
+    : "권장비중 산정중";
+  setText(
+    "#portfolioSummary",
+    `${allocationText} · ${confidence || signalConfidence(className, score)} · ${summary}`,
+  );
 
   const checksElement = document.querySelector("#portfolioChecks");
   if (!checksElement) return;
@@ -282,6 +296,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
 
   return {
     action,
+    allocation: targetPortfolioExposure(score, action),
     checks: buildPortfolioChecks({
       semiconductorCycleScore,
       investorFlowScore,
@@ -1013,6 +1028,16 @@ function signalConfidence(className, score) {
   }
   if (value <= 12) return "중립";
   return score > 0 ? "녹색 대기" : "위험 경계";
+}
+
+function targetPortfolioExposure(score, action) {
+  const cleanScore = Number(score);
+  if (!Number.isFinite(cleanScore)) return NaN;
+  if (action === "분할 매수") return 1;
+  if (action === "비중 축소") {
+    return clamp(0.2 + ((cleanScore + 60) / 36) * 0.08, 0.18, 0.28);
+  }
+  return clamp(0.6 + (cleanScore / 100) * 0.15, 0.55, 0.75);
 }
 
 function getFearGreedRating(score) {

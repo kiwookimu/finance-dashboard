@@ -5,9 +5,14 @@ const MIN_COVERAGE = Number(process.env.BACKTEST_MIN_COVERAGE || process.argv[5]
 const TRANSACTION_COST_BPS = Number(
   process.env.BACKTEST_TRANSACTION_COST_BPS || process.argv[6] || 10,
 );
+const ENTRY_MODE = normalizeEntryMode(
+  process.env.BACKTEST_ENTRY_MODE || process.argv[7] || "nextOpen",
+);
+const BACKTEST_TRIALS = Number(process.env.BACKTEST_TRIALS || process.argv[8] || 12);
 const TREND_POINTS = 28;
 const ANALYSIS_POINTS = 260;
 const FORWARD_HORIZONS = [...new Set([5, HORIZON_DAYS, 60])].sort((a, b) => a - b);
+const ENTRY_MODES = ["close", "nextOpen", "nextClose"];
 
 const MARKET_SOURCES = [
   { id: "kospi", symbol: "^KS11" },
@@ -73,11 +78,15 @@ const payload = {
     horizonTradingDaysTested: FORWARD_HORIZONS,
     minimumPortfolioCoverage: MIN_COVERAGE,
     startDate: START_DATE,
+    entryMode: ENTRY_MODE,
+    estimatedStrategyTrials: BACKTEST_TRIALS,
     transactionCostBps: TRANSACTION_COST_BPS,
   },
   assumptions: [
     "DDR5 spot, server DRAM contract, DXI, and historical foreign/institution flow are excluded where full historical public data is unavailable.",
-    "Portfolio strategy exposure: split buy/new buy = 100%, hold = 60%, trim/sell = 20%.",
+    "Portfolio strategy exposure is score-based: split buy = 100%, hold and trim zones scale by signal score.",
+    "Market strategy exposure remains action-based: new buy = 100%, hold = 60%, sell = 20%.",
+    "The primary strategy return uses the configured entry mode. Default is nextOpen.",
     "Transaction costs are charged when exposure changes, including initial entry exposure.",
     "A recovery-pulse overlay reduces false sell/trim signals when volatility is cooling and risk assets are confirming a rebound.",
     "VIX minus 22-day realized S&P 500 volatility is used as a variance-risk-premium proxy.",
@@ -244,18 +253,29 @@ function runBacktest({
     const forwards = Object.fromEntries(
       FORWARD_HORIZONS.map((horizon) => [
         horizon,
-        portfolioForwardReturn(date, portfolioHistories, horizon),
+        portfolioForwardReturn(date, portfolioHistories, horizon, ENTRY_MODE),
       ]),
     );
-    const nextDay = portfolioForwardReturn(date, portfolioHistories, 1);
+    const strategyDay = portfolioForwardReturn(date, portfolioHistories, 1, ENTRY_MODE);
+    const entryModeReturns = Object.fromEntries(
+      ENTRY_MODES.map((mode) => [
+        mode,
+        portfolioForwardReturn(date, portfolioHistories, 1, mode),
+      ]),
+    );
     const forwardValues = Object.values(forwards);
+    const entryModeValues = Object.values(entryModeReturns);
 
     if (
-      !Number.isFinite(nextDay.return) ||
-      nextDay.coverage < MIN_COVERAGE ||
+      !Number.isFinite(strategyDay.return) ||
+      strategyDay.coverage < MIN_COVERAGE ||
       forwardValues.some(
         (forward) =>
           !Number.isFinite(forward.return) || forward.coverage < MIN_COVERAGE,
+      ) ||
+      entryModeValues.some(
+        (entryReturn) =>
+          !Number.isFinite(entryReturn.return) || entryReturn.coverage < MIN_COVERAGE,
       )
     ) {
       continue;
@@ -271,19 +291,31 @@ function runBacktest({
       ),
       marketAction: marketSignal.action,
       marketConfidence: marketSignal.confidence,
-      marketExposure: exposureForMarket(marketSignal.action),
+      marketExposure: actionExposureForMarket(marketSignal.action),
       marketRecoveryScore: marketSignal.recoveryScore,
       marketScore: marketSignal.score,
-      nextDayReturn: round(nextDay.return, 4),
+      closeToCloseReturn: round(entryModeReturns.close.return, 4),
+      nextCloseReturn: round(entryModeReturns.nextClose.return, 4),
+      nextDayReturn: round(strategyDay.return, 4),
+      nextOpenReturn: round(entryModeReturns.nextOpen.return, 4),
       portfolioAction: portfolioSignal.action,
       portfolioConfidence: portfolioSignal.confidence,
       portfolioCoverage: round(
-        Math.min(nextDay.coverage, ...forwardValues.map((forward) => forward.coverage)) * 100,
+        Math.min(
+          strategyDay.coverage,
+          ...forwardValues.map((forward) => forward.coverage),
+          ...entryModeValues.map((entryReturn) => entryReturn.coverage),
+        ) * 100,
         1,
       ),
-      portfolioExposure: exposureForPortfolio(portfolioSignal.action),
+      portfolioExposure: targetPortfolioExposure(
+        portfolioSignal.score,
+        portfolioSignal.action,
+      ),
+      portfolioFixedExposure: actionExposureForPortfolio(portfolioSignal.action),
       portfolioRecoveryScore: portfolioSignal.recoveryScore,
       portfolioScore: portfolioSignal.score,
+      strategyReturn: round(strategyDay.return, 4),
     });
   }
 
@@ -372,15 +404,23 @@ function buildPortfolioMetricsAsOf(date, portfolioHistories) {
   };
 }
 
-function portfolioForwardReturn(date, portfolioHistories, horizon) {
+function portfolioForwardReturn(date, portfolioHistories, horizon, entryMode = "close") {
   let weighted = 0;
   let weight = 0;
   for (const holding of Object.values(portfolioHistories)) {
     const index = holding.history.findIndex((row) => row.date >= date);
     if (index === 0 && holding.history[index]?.date > date) continue;
-    if (index < 0 || index + horizon >= holding.history.length) continue;
-    const start = holding.history[index].value;
-    const end = holding.history[index + horizon].value;
+    const entryOffset = entryMode === "close" ? 0 : 1;
+    const exitOffset = entryMode === "close" ? horizon : horizon + 1;
+    const entryIndex = index + entryOffset;
+    const exitIndex = index + exitOffset;
+    if (index < 0 || entryIndex >= holding.history.length || exitIndex >= holding.history.length) {
+      continue;
+    }
+    const entryRow = holding.history[entryIndex];
+    const exitRow = holding.history[exitIndex];
+    const start = entryMode === "nextOpen" ? entryRow.open : entryRow.value;
+    const end = entryMode === "nextOpen" ? exitRow.open : exitRow.value;
     if (!Number.isFinite(start) || !Number.isFinite(end) || start <= 0) continue;
     weighted += ((end - start) / start) * holding.amount;
     weight += holding.amount;
@@ -513,11 +553,14 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
 }
 
 function summarizeBacktest(rows) {
-  const dailyReturns = rows.map((row) => row.nextDayReturn / 100);
-  const portfolioExposure = rows.map((row) => exposureForPortfolio(row.portfolioAction));
-  const marketExposure = rows.map((row) => exposureForMarket(row.marketAction));
+  const dailyReturns = rows.map((row) => row.strategyReturn / 100);
+  const portfolioExposure = rows.map((row) => Number(row.portfolioExposure));
+  const portfolioFixedExposure = rows.map((row) => Number(row.portfolioFixedExposure));
+  const marketExposure = rows.map((row) => Number(row.marketExposure));
   return {
-    benchmark: summarizeCurve(dailyReturns, dailyReturns.map(() => 1)),
+    benchmark: summarizeCurve(dailyReturns, dailyReturns.map(() => 1), 0),
+    entryMode: ENTRY_MODE,
+    entryModeComparison: summarizeEntryModes(rows),
     firstDate: rows[0]?.date || null,
     lastDate: rows.at(-1)?.date || null,
     marketSignal: {
@@ -532,6 +575,11 @@ function summarizeBacktest(rows) {
     portfolioSignal: {
       actionBuckets: bucketStats(rows, "portfolioAction"),
       curve: summarizeCurve(dailyReturns, portfolioExposure, TRANSACTION_COST_BPS),
+      fixedExposureCurve: summarizeCurve(
+        dailyReturns,
+        portfolioFixedExposure,
+        TRANSACTION_COST_BPS,
+      ),
     },
     transactionCostBps: TRANSACTION_COST_BPS,
     yearly: summarizeByYear(rows),
@@ -547,7 +595,9 @@ function bucketStats(rows, key) {
   }
   return Object.fromEntries(
     [...groups.entries()].map(([label, groupRows]) => {
-      const nextDayValues = groupRows.map((row) => row.nextDayReturn);
+      const closeToCloseValues = groupRows.map((row) => row.closeToCloseReturn);
+      const nextOpenValues = groupRows.map((row) => row.nextOpenReturn);
+      const strategyValues = groupRows.map((row) => row.strategyReturn);
       const horizonStats = Object.fromEntries(
         FORWARD_HORIZONS.flatMap((horizon) => {
           const forwardValues = groupRows
@@ -572,11 +622,13 @@ function bucketStats(rows, key) {
         label,
         {
           ...horizonStats,
-          avgNextDay: round(average(nextDayValues), 2),
+          avgCloseToClose: round(average(closeToCloseValues), 2),
+          avgNextOpen: round(average(nextOpenValues), 2),
+          avgStrategyDay: round(average(strategyValues), 2),
           count: groupRows.length,
-          nextDayWinRate: round(
-            (nextDayValues.filter((value) => value > 0).length /
-              nextDayValues.length) *
+          strategyDayWinRate: round(
+            (strategyValues.filter((value) => value > 0).length /
+              strategyValues.length) *
               100,
             1,
           ),
@@ -595,23 +647,33 @@ function summarizeCurve(dailyReturns, exposures, transactionCostBps = 0) {
   let netMaxDrawdown = 0;
   let totalTurnover = 0;
   let previousExposure = 0;
+  const grossReturns = [];
+  const netReturns = [];
   for (let index = 0; index < dailyReturns.length; index += 1) {
     const exposure = Number(exposures[index]) || 0;
     const turnover = Math.abs(exposure - previousExposure);
     const cost = turnover * (transactionCostBps / 10000);
+    const grossReturn = dailyReturns[index] * exposure;
+    const netReturn = grossReturn - cost;
     totalTurnover += turnover;
-    equity *= 1 + dailyReturns[index] * exposure;
-    netEquity *= Math.max(0, 1 + dailyReturns[index] * exposure - cost);
+    grossReturns.push(grossReturn);
+    netReturns.push(netReturn);
+    equity *= 1 + grossReturn;
+    netEquity *= Math.max(0, 1 + netReturn);
     peak = Math.max(peak, equity);
     netPeak = Math.max(netPeak, netEquity);
     maxDrawdown = Math.min(maxDrawdown, equity / peak - 1);
     netMaxDrawdown = Math.min(netMaxDrawdown, netEquity / netPeak - 1);
     previousExposure = exposure;
   }
+  const grossMetrics = performanceMetrics(grossReturns, maxDrawdown, BACKTEST_TRIALS);
+  const netMetrics = performanceMetrics(netReturns, netMaxDrawdown, BACKTEST_TRIALS);
   return {
     averageExposure: round(average(exposures) * 100, 1),
     costDrag: round((equity - netEquity) * 100, 2),
+    grossMetrics,
     maxDrawdown: round(maxDrawdown * 100, 2),
+    netMetrics,
     netMaxDrawdown: round(netMaxDrawdown * 100, 2),
     netTotalReturn: round((netEquity - 1) * 100, 2),
     transactionCostBps,
@@ -658,17 +720,249 @@ function summarizeWalkForward(rows) {
 }
 
 function summarizePeriod(rows) {
-  const dailyReturns = rows.map((row) => row.nextDayReturn / 100);
-  const portfolioExposure = rows.map((row) => exposureForPortfolio(row.portfolioAction));
-  const marketExposure = rows.map((row) => exposureForMarket(row.marketAction));
+  const dailyReturns = rows.map((row) => row.strategyReturn / 100);
+  const portfolioExposure = rows.map((row) => Number(row.portfolioExposure));
+  const portfolioFixedExposure = rows.map((row) => Number(row.portfolioFixedExposure));
+  const marketExposure = rows.map((row) => Number(row.marketExposure));
   return {
-    benchmark: summarizeCurve(dailyReturns, dailyReturns.map(() => 1)),
+    benchmark: summarizeCurve(dailyReturns, dailyReturns.map(() => 1), 0),
     firstDate: rows[0]?.date || null,
     lastDate: rows.at(-1)?.date || null,
     marketSignal: summarizeCurve(dailyReturns, marketExposure, TRANSACTION_COST_BPS),
     observations: rows.length,
     portfolioSignal: summarizeCurve(dailyReturns, portfolioExposure, TRANSACTION_COST_BPS),
+    portfolioSignalFixedExposure: summarizeCurve(
+      dailyReturns,
+      portfolioFixedExposure,
+      TRANSACTION_COST_BPS,
+    ),
   };
+}
+
+function summarizeEntryModes(rows) {
+  const returnFieldByMode = {
+    close: "closeToCloseReturn",
+    nextClose: "nextCloseReturn",
+    nextOpen: "nextOpenReturn",
+  };
+  return Object.fromEntries(
+    ENTRY_MODES.map((mode) => {
+      const modeRows = rows.filter((row) => Number.isFinite(row[returnFieldByMode[mode]]));
+      const dailyReturns = modeRows.map((row) => row[returnFieldByMode[mode]] / 100);
+      const portfolioExposure = modeRows.map((row) => Number(row.portfolioExposure));
+      const portfolioFixedExposure = modeRows.map((row) => Number(row.portfolioFixedExposure));
+      const marketExposure = modeRows.map((row) => Number(row.marketExposure));
+      return [
+        mode,
+        {
+          benchmark: summarizeCurve(dailyReturns, dailyReturns.map(() => 1), 0),
+          firstDate: modeRows[0]?.date || null,
+          lastDate: modeRows.at(-1)?.date || null,
+          marketSignal: summarizeCurve(dailyReturns, marketExposure, TRANSACTION_COST_BPS),
+          observations: modeRows.length,
+          portfolioSignal: summarizeCurve(dailyReturns, portfolioExposure, TRANSACTION_COST_BPS),
+          portfolioSignalFixedExposure: summarizeCurve(
+            dailyReturns,
+            portfolioFixedExposure,
+            TRANSACTION_COST_BPS,
+          ),
+        },
+      ];
+    }),
+  );
+}
+
+function performanceMetrics(dailyReturns, maxDrawdown, strategyTrials) {
+  const returns = dailyReturns.filter(Number.isFinite);
+  if (returns.length < 2) {
+    return {
+      annualReturn: null,
+      annualVolatility: null,
+      calmar: null,
+      deflatedSharpeProbability: null,
+      probabilisticSharpeRatio: null,
+      sharpe: null,
+      sortino: null,
+      winRate: null,
+    };
+  }
+
+  const mean = average(returns);
+  const volatility = standardDeviation(returns);
+  const downside = returns.filter((value) => value < 0);
+  const downsideDeviation = downside.length
+    ? Math.sqrt(average(downside.map((value) => value ** 2)))
+    : NaN;
+  const cumulative = returns.reduce((equity, value) => equity * (1 + value), 1);
+  const annualReturn = cumulative > 0
+    ? cumulative ** (252 / returns.length) - 1
+    : NaN;
+  const annualVolatility = Number.isFinite(volatility) ? volatility * Math.sqrt(252) : NaN;
+  const sharpe = annualVolatility ? (mean * 252) / annualVolatility : NaN;
+  const sortino = downsideDeviation ? (mean * 252) / (downsideDeviation * Math.sqrt(252)) : NaN;
+  const calmar = Number.isFinite(annualReturn) && maxDrawdown < 0
+    ? annualReturn / Math.abs(maxDrawdown)
+    : NaN;
+
+  return {
+    annualReturn: round(annualReturn * 100, 2),
+    annualVolatility: round(annualVolatility * 100, 2),
+    calmar: round(calmar, 2),
+    deflatedSharpeProbability: round(
+      deflatedSharpeProbability(returns, strategyTrials) * 100,
+      1,
+    ),
+    probabilisticSharpeRatio: round(
+      probabilisticSharpeRatio(returns, 0) * 100,
+      1,
+    ),
+    sharpe: round(sharpe, 2),
+    sortino: round(sortino, 2),
+    winRate: round(
+      (returns.filter((value) => value > 0).length / returns.length) * 100,
+      1,
+    ),
+  };
+}
+
+function probabilisticSharpeRatio(returns, benchmarkSharpe = 0) {
+  const clean = returns.filter(Number.isFinite);
+  if (clean.length < 3) return NaN;
+  const sr = sharpeRatio(clean);
+  const skew = skewness(clean);
+  const kurt = kurtosis(clean);
+  const denominator = Math.sqrt(
+    Math.max(1e-12, 1 - skew * sr + ((kurt - 1) / 4) * sr ** 2),
+  );
+  const z = ((sr - benchmarkSharpe) * Math.sqrt(clean.length - 1)) / denominator;
+  return normalCdf(z);
+}
+
+function deflatedSharpeProbability(returns, strategyTrials) {
+  const clean = returns.filter(Number.isFinite);
+  if (clean.length < 3) return NaN;
+  const sr = sharpeRatio(clean);
+  const skew = skewness(clean);
+  const kurt = kurtosis(clean);
+  const srStdError = Math.sqrt(
+    Math.max(1e-12, 1 - skew * sr + ((kurt - 1) / 4) * sr ** 2) /
+      (clean.length - 1),
+  );
+  const benchmarkSharpe = expectedMaxZ(strategyTrials) * srStdError;
+  return probabilisticSharpeRatio(clean, benchmarkSharpe);
+}
+
+function sharpeRatio(returns) {
+  const mean = average(returns);
+  const volatility = standardDeviation(returns);
+  return volatility ? (mean / volatility) * Math.sqrt(252) : NaN;
+}
+
+function skewness(values) {
+  const clean = values.filter(Number.isFinite);
+  const mean = average(clean);
+  const sd = standardDeviation(clean);
+  if (!sd) return 0;
+  return average(clean.map((value) => ((value - mean) / sd) ** 3));
+}
+
+function kurtosis(values) {
+  const clean = values.filter(Number.isFinite);
+  const mean = average(clean);
+  const sd = standardDeviation(clean);
+  if (!sd) return 3;
+  return average(clean.map((value) => ((value - mean) / sd) ** 4));
+}
+
+function expectedMaxZ(strategyTrials) {
+  const trials = Math.max(1, Number(strategyTrials) || 1);
+  if (trials <= 1) return 0;
+  const eulerGamma = 0.5772156649;
+  return (
+    (1 - eulerGamma) * inverseNormalCdf(1 - 1 / trials) +
+    eulerGamma * inverseNormalCdf(1 - 1 / (trials * Math.E))
+  );
+}
+
+function normalCdf(value) {
+  return 0.5 * (1 + erf(value / Math.SQRT2));
+}
+
+function erf(value) {
+  const sign = value < 0 ? -1 : 1;
+  const x = Math.abs(value);
+  const a1 = 0.254829592;
+  const a2 = -0.284496736;
+  const a3 = 1.421413741;
+  const a4 = -1.453152027;
+  const a5 = 1.061405429;
+  const p = 0.3275911;
+  const t = 1 / (1 + p * x);
+  const y =
+    1 -
+    (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) *
+      t *
+      Math.exp(-x * x));
+  return sign * y;
+}
+
+function inverseNormalCdf(probability) {
+  const p = clamp(probability, 1e-12, 1 - 1e-12);
+  const a = [
+    -39.69683028665376,
+    220.9460984245205,
+    -275.9285104469687,
+    138.357751867269,
+    -30.66479806614716,
+    2.506628277459239,
+  ];
+  const b = [
+    -54.47609879822406,
+    161.5858368580409,
+    -155.6989798598866,
+    66.80131188771972,
+    -13.28068155288572,
+  ];
+  const c = [
+    -0.007784894002430293,
+    -0.3223964580411365,
+    -2.400758277161838,
+    -2.549732539343734,
+    4.374664141464968,
+    2.938163982698783,
+  ];
+  const d = [
+    0.007784695709041462,
+    0.3224671290700398,
+    2.445134137142996,
+    3.754408661907416,
+  ];
+  const plow = 0.02425;
+  const phigh = 1 - plow;
+
+  if (p < plow) {
+    const q = Math.sqrt(-2 * Math.log(p));
+    return (
+      (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+    );
+  }
+
+  if (p > phigh) {
+    const q = Math.sqrt(-2 * Math.log(1 - p));
+    return -(
+      (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+    );
+  }
+
+  const q = p - 0.5;
+  const r = q * q;
+  return (
+    (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) *
+    q /
+    (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
+  );
 }
 
 function groupRows(rows, keyForRow) {
@@ -685,16 +979,26 @@ function periodLabel(rows) {
   return rows.length ? `${rows[0].date}..${rows.at(-1).date}` : null;
 }
 
-function exposureForPortfolio(action) {
+function actionExposureForPortfolio(action) {
   if (action === "분할 매수") return 1;
   if (action === "비중 축소") return 0.2;
   return 0.6;
 }
 
-function exposureForMarket(action) {
+function actionExposureForMarket(action) {
   if (action === "신규 매수") return 1;
   if (action === "매도") return 0.2;
   return 0.6;
+}
+
+function targetPortfolioExposure(score, action) {
+  const cleanScore = Number(score);
+  if (!Number.isFinite(cleanScore)) return actionExposureForPortfolio(action);
+  if (action === "분할 매수") return 1;
+  if (action === "비중 축소") {
+    return clamp(0.2 + ((cleanScore + 60) / 36) * 0.08, 0.18, 0.28);
+  }
+  return clamp(0.6 + (cleanScore / 100) * 0.15, 0.55, 0.75);
 }
 
 function scoreRiskAsset(quote) {
@@ -1197,6 +1501,14 @@ function toIsoDate(usDate) {
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
+function normalizeEntryMode(value) {
+  const normalized = String(value || "").trim();
+  if (["close", "nextOpen", "nextClose"].includes(normalized)) return normalized;
+  if (normalized === "next-open") return "nextOpen";
+  if (normalized === "next-close") return "nextClose";
+  return "nextOpen";
+}
+
 function shiftDate(date, days) {
   const value = new Date(`${date}T00:00:00Z`);
   value.setUTCDate(value.getUTCDate() + days);
@@ -1220,6 +1532,7 @@ function toCsv(rows) {
     "portfolioAction",
     "portfolioConfidence",
     "portfolioExposure",
+    "portfolioFixedExposure",
     "portfolioScore",
     "portfolioCoverage",
     "portfolioRecoveryScore",
@@ -1228,7 +1541,11 @@ function toCsv(rows) {
     "marketExposure",
     "marketScore",
     "marketRecoveryScore",
+    "closeToCloseReturn",
+    "nextOpenReturn",
+    "nextCloseReturn",
     "nextDayReturn",
+    "strategyReturn",
     ...FORWARD_HORIZONS.map((horizon) => `forwardReturn${horizon}d`),
   ];
   return [
@@ -1250,13 +1567,19 @@ function printSummary(summary, outStem) {
   console.log(
     `tested range: ${summary.firstDate}..${summary.lastDate} / avg coverage ${summary.averagePortfolioCoverage}%`,
   );
+  console.log(`entry mode: ${summary.entryMode}`);
   console.log(`benchmark total return: ${summary.benchmark.totalReturn}%`);
   console.log(
     `portfolio-signal gross/net return: ${summary.portfolioSignal.curve.totalReturn}% / ${summary.portfolioSignal.curve.netTotalReturn}% / net max DD ${summary.portfolioSignal.curve.netMaxDrawdown}%`,
   );
   console.log(
+    `portfolio fixed-exposure net return: ${summary.portfolioSignal.fixedExposureCurve.netTotalReturn}%`,
+  );
+  console.log(
     `market-signal gross/net return: ${summary.marketSignal.curve.totalReturn}% / ${summary.marketSignal.curve.netTotalReturn}% / net max DD ${summary.marketSignal.curve.netMaxDrawdown}%`,
   );
+  console.log("portfolio net metrics:", summary.portfolioSignal.curve.netMetrics);
+  console.log("entry mode comparison:", summary.entryModeComparison);
   console.log(`transaction cost: ${summary.transactionCostBps} bps per exposure change`);
   console.log("walk-forward aggregate:", summary.walkForward.validationAggregate);
   console.log("portfolio buckets:", summary.portfolioSignal.actionBuckets);
