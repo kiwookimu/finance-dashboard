@@ -78,13 +78,13 @@ async function loadIndicators() {
   } catch (error) {
     console.warn("Indicator data unavailable", error);
     renderSignalState({
-      action: "판단 보류",
+      action: "횡보",
       className: "signal-hold",
       score: 0,
       summary: "데이터 갱신 실패",
     });
     renderPortfolioState({
-      action: "판단 보류",
+      action: "횡보",
       checks: [],
       className: "portfolio-hold",
       score: 0,
@@ -230,7 +230,7 @@ function evaluateTradingSignal(quotes, sentiment) {
   const hasRecovery = Number.isFinite(recoveryScore) && recoveryScore >= 0.35;
   const recoveryForAction = Number.isFinite(recoveryScore) ? recoveryScore : -1;
 
-  let action = "홀딩";
+  let action = "횡보";
   let className = "signal-hold";
   if (
     (vixLevel >= 35 && recoveryForAction < -0.5) ||
@@ -238,10 +238,10 @@ function evaluateTradingSignal(quotes, sentiment) {
     (score <= -32 && recoveryForAction < -0.45) ||
     (score <= -22 && recoveryForAction < -0.65)
   ) {
-    action = "매도";
+    action = "하락";
     className = "signal-sell";
   } else if (score >= 25 && broadScore > 0 && vixLevel < 28 && (hasRecovery || vixLevel < 25)) {
-    action = "신규 매수";
+    action = "상승";
     className = "signal-buy";
   }
 
@@ -323,7 +323,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   if (crisisMode.tailRisk) score -= crisisMode.severity === "severe" ? 18 : 12;
   score = clamp(Math.round(score), -100, 100);
 
-  let action = "보유";
+  let action = "횡보";
   let className = "portfolio-hold";
   if (
     (crisisMode.tailRisk && recoveryForAction < 0.35) ||
@@ -332,7 +332,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
     (score <= -35 && recoveryForAction < -0.5) ||
     (score <= -24 && recoveryForAction < -0.65)
   ) {
-    action = "비중 축소";
+    action = "하락";
     className = "portfolio-trim";
   } else if (
     score >= 30 &&
@@ -345,7 +345,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
     (!Number.isFinite(variancePremiumScore) || variancePremiumScore > -0.6) &&
     (!Number.isFinite(recoveryScore) || recoveryScore > -0.2)
   ) {
-    action = "분할 매수";
+    action = "상승";
     className = "portfolio-buy";
   }
 
@@ -438,7 +438,7 @@ function evaluateHoldingSignal(holding, quotes, sentiment, crisisMode) {
   }
   score = clamp(score, -100, 100);
 
-  let action = "보유";
+  let action = "횡보";
   let className = "holding-hold";
   if (
     crisisMode?.tailRisk ||
@@ -446,7 +446,7 @@ function evaluateHoldingSignal(holding, quotes, sentiment, crisisMode) {
     (score <= -25 && movingAverageScore <= -0.35) ||
     (score <= -18 && relativeScore <= -0.55 && movingAverageScore < 0)
   ) {
-    action = "비중 축소";
+    action = "하락";
     className = "holding-trim";
   } else if (
     score >= 32 &&
@@ -455,7 +455,7 @@ function evaluateHoldingSignal(holding, quotes, sentiment, crisisMode) {
     benchmarkScore > -0.25 &&
     !crisisMode?.active
   ) {
-    action = "분할 매수";
+    action = "상승";
     className = "holding-buy";
   }
 
@@ -509,7 +509,7 @@ function summarizePortfolioSignal(components, className, concentration, crisisMo
   }
 
   if (className === "portfolio-buy") {
-    return `${(positives.length ? positives : ["성장주 환경 양호"]).slice(0, 2).join(" · ")} · 분할 접근`;
+    return `${(positives.length ? positives : ["성장주 환경 양호"]).slice(0, 2).join(" · ")} · 상승 우세`;
   }
 
   return `${[...positives.slice(0, 1), ...negatives.slice(0, 1)].join(" · ") || "중립 구간"} · ${concentrationText}`;
@@ -1336,14 +1336,14 @@ function targetPortfolioExposure(
   if (confidence === "약한 빨간색") exposure = config.weakRed;
   else if (confidence === "위험 경계") exposure = config.riskWatch;
   else if (confidence === "중립") exposure = config.neutral;
-  else if (action === "비중 축소") exposure = config.strongTrim;
+  else if (action === "하락") exposure = config.strongTrim;
 
   if (crisisMode?.tailRisk) {
     const crisisExposure =
       crisisMode.severity === "severe" ? config.severeCrisis : config.crisis;
     const crisisCap =
       crisisMode.severity === "severe" ? config.severeCrisis : config.crisisCap;
-    if (action === "비중 축소" || confidence.includes("빨간색")) {
+    if (action === "하락" || confidence.includes("빨간색")) {
       return Math.min(exposure, crisisExposure);
     }
     return Math.min(exposure, crisisCap);

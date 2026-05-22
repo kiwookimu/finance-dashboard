@@ -484,16 +484,16 @@ function evaluateTradingSignal(quotes, sentiment) {
   const vixLevel = Number(sentiment.vix?.close);
   const hasRecovery = Number.isFinite(recoveryScore) && recoveryScore >= 0.35;
   const recoveryForAction = Number.isFinite(recoveryScore) ? recoveryScore : -1;
-  let action = "홀딩";
+  let action = "횡보";
   if (
     (vixLevel >= 35 && recoveryForAction < -0.5) ||
     score <= -55 ||
     (score <= -32 && recoveryForAction < -0.45) ||
     (score <= -22 && recoveryForAction < -0.65)
   ) {
-    action = "매도";
+    action = "하락";
   } else if (score >= 25 && broadScore > 0 && vixLevel < 28 && (hasRecovery || vixLevel < 25)) {
-    action = "신규 매수";
+    action = "상승";
   }
   return {
     action,
@@ -552,7 +552,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   if (crisisMode.tailRisk) score -= crisisMode.severity === "severe" ? 18 : 12;
   score = clamp(Math.round(score), -100, 100);
 
-  let action = "보유";
+  let action = "횡보";
   if (
     (crisisMode.tailRisk && recoveryForAction < 0.35) ||
     (vixLevel >= 35 && recoveryForAction < -0.5) ||
@@ -560,7 +560,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
     (score <= -35 && recoveryForAction < -0.5) ||
     (score <= -24 && recoveryForAction < -0.65)
   ) {
-    action = "비중 축소";
+    action = "하락";
   } else if (
     score >= 30 &&
     semiScore > 0 &&
@@ -572,7 +572,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
     (!Number.isFinite(variancePremiumScore) || variancePremiumScore > -0.6) &&
     (!Number.isFinite(recoveryScore) || recoveryScore > -0.2)
   ) {
-    action = "분할 매수";
+    action = "상승";
   }
   return {
     action,
@@ -1177,14 +1177,14 @@ function periodLabel(rows) {
 }
 
 function actionExposureForPortfolio(action) {
-  if (action === "분할 매수") return 1;
-  if (action === "비중 축소") return 0.2;
+  if (action === "상승") return 1;
+  if (action === "하락") return 0.2;
   return 0.6;
 }
 
 function actionExposureForMarket(action) {
-  if (action === "신규 매수") return 1;
-  if (action === "매도") return 0.2;
+  if (action === "상승") return 1;
+  if (action === "하락") return 0.2;
   return 0.6;
 }
 
@@ -1201,14 +1201,14 @@ function targetPortfolioExposure(
   if (confidence === "약한 빨간색") exposure = config.weakRed;
   else if (confidence === "위험 경계") exposure = config.riskWatch;
   else if (confidence === "중립") exposure = config.neutral;
-  else if (action === "비중 축소") exposure = config.strongTrim;
+  else if (action === "하락") exposure = config.strongTrim;
 
   if (crisisMode?.tailRisk) {
     const crisisExposure =
       crisisMode.severity === "severe" ? config.severeCrisis : config.crisis;
     const crisisCap =
       crisisMode.severity === "severe" ? config.severeCrisis : config.crisisCap;
-    if (action === "비중 축소" || confidence.includes("빨간색")) {
+    if (action === "하락" || confidence.includes("빨간색")) {
       return Math.min(exposure, crisisExposure);
     }
     return Math.min(exposure, crisisCap);
@@ -1623,10 +1623,10 @@ function weightedScore(components) {
 
 function signalConfidence(action, score) {
   const value = Math.abs(Number(score));
-  if (action === "신규 매수" || action === "분할 매수") {
+  if (action === "상승") {
     return value >= 45 ? "강한 녹색" : "약한 녹색";
   }
-  if (action === "매도" || action === "비중 축소") {
+  if (action === "하락") {
     return value >= 55 ? "강한 빨간색" : "약한 빨간색";
   }
   if (value <= 12) return "중립";
