@@ -8,6 +8,11 @@ const PORTFOLIO_HOLDINGS = [
   { amount: 15005730, benchmark: "nasdaq", code: "0019K0", id: "timeNasdaqBond", name: "TIME 미국나스닥100채권혼합", tags: ["nasdaq", "bondMix", "us"] },
   { amount: 15002399, benchmark: "kospi", code: "284430", id: "kodex200Treasury", name: "KODEX 200미국채혼합", tags: ["kospi", "bondMix", "korea"] },
   { amount: 10010605, benchmark: "nasdaq", code: "456600", id: "timeGlobalAi", name: "TIME 글로벌AI인공지능액티브", tags: ["aiPower", "global"] },
+  { amount: 5000440, benchmark: "kospi", code: "466930", id: "solAutoTop3", name: "SOL 자동차TOP3플러스", tags: ["auto", "korea"] },
+  { amount: 5003575, benchmark: "nasdaq", code: "418670", id: "tigerAiCyber", name: "TIGER 글로벌AI사이버보안", tags: ["aiPower", "cyber", "global"] },
+  { amount: 5006750, benchmark: "nasdaq", code: "0183J0", id: "tigerUsSpaceTech", name: "TIGER 미국우주테크", tags: ["space", "us"] },
+  { amount: 5012995, benchmark: "nasdaq", code: "0173Y0", id: "kodexAiOpticalNetwork", name: "KODEX 미국AI광통신네트워크", tags: ["aiPower", "network", "us"] },
+  { amount: 5035970, benchmark: "nasdaq", code: "0023A0", id: "solUsQuantumTop10", name: "SOL 미국양자컴퓨팅TOP10", tags: ["quantum", "us"] },
 ];
 const PORTFOLIO_TOTAL = PORTFOLIO_HOLDINGS.reduce(
   (sum, holding) => sum + holding.amount,
@@ -117,7 +122,7 @@ function renderPortfolioSignal(quotes, sentiment, portfolioMetrics) {
 
 function renderPortfolioSnapshot() {
   setText("#portfolioSemiWeight", formatPercent(portfolioTagWeight("semi")));
-  setText("#portfolioAiWeight", formatPercent(portfolioTagWeight("aiPower")));
+  setText("#portfolioAiWeight", formatPercent(portfolioGrowthThemeWeight()));
   setText("#portfolioBondMixWeight", formatPercent(portfolioTagWeight("bondMix")));
 }
 
@@ -302,7 +307,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   let score = totalWeight ? Math.round((weightedScore / totalWeight) * 100) : 0;
 
   const vixLevel = Number(sentiment.vix?.close);
-  const concentration = portfolioTagWeight("semi") + portfolioTagWeight("aiPower");
+  const concentration = portfolioRiskThemeWeight();
   if (concentration >= 75 && (semiScore < 0 || nasdaqScore < 0)) score -= 8;
   const hasRecovery = Number.isFinite(recoveryScore) && recoveryScore >= 0.35;
   const recoveryForPenalty = Number.isFinite(recoveryScore) ? recoveryScore : -1;
@@ -428,7 +433,7 @@ function evaluateHoldingSignal(holding, quotes, sentiment, crisisMode) {
 
   if (crisisMode?.tailRisk) score -= 12;
   if (movingAverageScore < -0.25 && relativeScore < -0.25) score -= 6;
-  if (sectorScore < -0.35 && (meta?.tags || []).some((tag) => ["semi", "aiPower"].includes(tag))) {
+  if (sectorScore < -0.35 && hasAnyTag(meta, ["semi", "aiPower", "nasdaq", "cyber", "network", "space", "quantum", "auto"])) {
     score -= 5;
   }
   score = clamp(score, -100, 100);
@@ -494,7 +499,7 @@ function summarizePortfolioSignal(components, className, concentration, crisisMo
     .filter((item) => item.weighted < -0.09)
     .sort((a, b) => a.weighted - b.weighted)
     .map((item) => `${item.label} 부담`);
-  const concentrationText = `반도체·AI 노출 ${formatPercent(concentration)}`;
+  const concentrationText = `반도체·성장테마 노출 ${formatPercent(concentration)}`;
   const crisisText = crisisMode?.active
     ? `${crisisMode.severity === "severe" ? "위기모드" : "위험경계"}`
     : "";
@@ -1118,7 +1123,15 @@ function scoreHoldingSector(meta, quotes, sentiment) {
   if (tags.includes("semi")) {
     return scoreSemiconductorCycle(quotes);
   }
-  if (tags.includes("aiPower") || tags.includes("nasdaq")) {
+  if (tags.includes("auto")) {
+    return average([
+      scoreRiskAsset(quotes?.kospi),
+      scoreMarketRegime(quotes),
+      scoreUsdKrw(quotes?.usdKrw),
+      scoreWti(quotes?.wti),
+    ]);
+  }
+  if (hasAnyTag(meta, ["aiPower", "nasdaq", "cyber", "network", "space", "quantum"])) {
     return average([
       scoreRiskAsset(quotes?.nasdaq),
       scoreRiskAsset(quotes?.sp500),
@@ -1268,6 +1281,26 @@ function portfolioTagWeight(tag) {
     .filter((holding) => holding.tags.includes(tag))
     .reduce((sum, holding) => sum + holding.amount, 0);
   return PORTFOLIO_TOTAL ? (taggedAmount / PORTFOLIO_TOTAL) * 100 : 0;
+}
+
+function portfolioGrowthThemeWeight() {
+  return portfolioAnyTagWeight(["aiPower", "nasdaq", "cyber", "network", "space", "quantum"]);
+}
+
+function portfolioRiskThemeWeight() {
+  return portfolioAnyTagWeight(["semi", "aiPower", "nasdaq", "cyber", "network", "space", "quantum"]);
+}
+
+function portfolioAnyTagWeight(tags) {
+  const taggedAmount = PORTFOLIO_HOLDINGS
+    .filter((holding) => tags.some((tag) => holding.tags.includes(tag)))
+    .reduce((sum, holding) => sum + holding.amount, 0);
+  return PORTFOLIO_TOTAL ? (taggedAmount / PORTFOLIO_TOTAL) * 100 : 0;
+}
+
+function hasAnyTag(meta, tags) {
+  const holdingTags = meta?.tags || [];
+  return tags.some((tag) => holdingTags.includes(tag));
 }
 
 function signalConfidence(className, score) {
