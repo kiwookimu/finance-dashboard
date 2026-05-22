@@ -1,6 +1,7 @@
 const START_DATE = process.argv[2] || "2025-01-01";
 const END_DATE = process.argv[3] || new Date().toISOString().slice(0, 10);
 const HORIZON_DAYS = Number(process.env.BACKTEST_HORIZON_DAYS || process.argv[4] || 20);
+const MIN_COVERAGE = Number(process.env.BACKTEST_MIN_COVERAGE || process.argv[5] || 0.7);
 const TREND_POINTS = 28;
 
 const MARKET_SOURCES = [
@@ -64,18 +65,22 @@ const payload = {
     fetchEndDate,
     fetchStartDate,
     horizonTradingDays: HORIZON_DAYS,
+    minimumPortfolioCoverage: MIN_COVERAGE,
     startDate: START_DATE,
   },
   assumptions: [
     "DDR5 spot, server DRAM contract, DXI, and historical foreign/institution flow are excluded where full historical public data is unavailable.",
     "Portfolio strategy exposure: split buy/new buy = 100%, hold = 60%, trim/sell = 20%.",
+    "A recovery-pulse overlay reduces false sell/trim signals when volatility is cooling and risk assets are confirming a rebound.",
+    "Backtest dates use the KOSPI trading calendar because the portfolio holdings are Korea-listed ETFs.",
     "Forward-return buckets use current portfolio weights and available ETF prices on each date.",
   ],
   summary,
   rows,
 };
 
-const outStem = `screen_results/backtest_signals_${START_DATE}_${END_DATE}`;
+const coverageLabel = `cov${Math.round(MIN_COVERAGE * 100)}`;
+const outStem = `screen_results/backtest_signals_${START_DATE}_${END_DATE}_${coverageLabel}`;
 await writeFile(`${outStem}.json`, `${JSON.stringify(payload, null, 2)}\n`);
 await writeFile(`${outStem}.csv`, toCsv(rows));
 
@@ -118,7 +123,7 @@ async function fetchPortfolioHistories() {
       holding.id,
       {
         ...holding,
-        history: await fetchNaverDaily(holding.code, 900),
+        history: await fetchNaverDaily(holding.code, 1400),
       },
     ]),
   );
@@ -215,7 +220,7 @@ function runBacktest({
   sentiment,
   startDate,
 }) {
-  const dates = marketHistories.nasdaq
+  const dates = marketHistories.kospi
     .map((row) => row.date)
     .filter((date) => date >= startDate && date <= endDate);
   const rows = [];
@@ -226,24 +231,32 @@ function runBacktest({
     const portfolioMetrics = buildPortfolioMetricsAsOf(date, portfolioHistories);
     const marketSignal = evaluateTradingSignal(quotes, sentimentAsOf);
     const portfolioSignal = evaluatePortfolioSignal(quotes, sentimentAsOf, portfolioMetrics);
-    const forwardReturn = portfolioForwardReturn(
+    const forward = portfolioForwardReturn(
       date,
       portfolioHistories,
       HORIZON_DAYS,
     );
-    const nextDayReturn = portfolioForwardReturn(date, portfolioHistories, 1);
+    const nextDay = portfolioForwardReturn(date, portfolioHistories, 1);
 
-    if (!Number.isFinite(forwardReturn) || !Number.isFinite(nextDayReturn)) {
+    if (
+      !Number.isFinite(forward.return) ||
+      !Number.isFinite(nextDay.return) ||
+      forward.coverage < MIN_COVERAGE ||
+      nextDay.coverage < MIN_COVERAGE
+    ) {
       continue;
     }
 
     rows.push({
       date,
-      forwardReturn20d: round(forwardReturn, 4),
+      forwardReturn20d: round(forward.return, 4),
       marketAction: marketSignal.action,
+      marketRecoveryScore: marketSignal.recoveryScore,
       marketScore: marketSignal.score,
-      nextDayReturn: round(nextDayReturn, 4),
+      nextDayReturn: round(nextDay.return, 4),
       portfolioAction: portfolioSignal.action,
+      portfolioCoverage: round(Math.min(forward.coverage, nextDay.coverage) * 100, 1),
+      portfolioRecoveryScore: portfolioSignal.recoveryScore,
       portfolioScore: portfolioSignal.score,
     });
   }
@@ -331,6 +344,7 @@ function portfolioForwardReturn(date, portfolioHistories, horizon) {
   let weight = 0;
   for (const holding of Object.values(portfolioHistories)) {
     const index = holding.history.findIndex((row) => row.date >= date);
+    if (index === 0 && holding.history[index]?.date > date) continue;
     if (index < 0 || index + horizon >= holding.history.length) continue;
     const start = holding.history[index].value;
     const end = holding.history[index + horizon].value;
@@ -338,7 +352,10 @@ function portfolioForwardReturn(date, portfolioHistories, horizon) {
     weighted += ((end - start) / start) * holding.amount;
     weight += holding.amount;
   }
-  return weight ? (weighted / weight) * 100 : NaN;
+  return {
+    coverage: PORTFOLIO_TOTAL ? weight / PORTFOLIO_TOTAL : 0,
+    return: weight ? (weighted / weight) * 100 : NaN,
+  };
 }
 
 function evaluateTradingSignal(quotes, sentiment) {
@@ -362,13 +379,25 @@ function evaluateTradingSignal(quotes, sentiment) {
   add(scoreUsdKrw(quotes.usdKrw), 0.65);
   add(scoreWti(quotes.wti), 0.45);
   add(scoreMarketRegime(quotes), 1.25);
+  const recoveryScore = scoreRecoveryPulse(quotes, sentiment);
+  add(recoveryScore, 0.75);
 
   const score = weightedScore(components);
   const vixLevel = Number(sentiment.vix?.close);
+  const hasRecovery = Number.isFinite(recoveryScore) && recoveryScore >= 0.35;
+  const recoveryForAction = Number.isFinite(recoveryScore) ? recoveryScore : -1;
   let action = "홀딩";
-  if (vixLevel >= 30 || score <= -20) action = "매도";
-  else if (score >= 25 && broadScore > 0 && vixLevel < 25) action = "신규 매수";
-  return { action, score };
+  if (
+    (vixLevel >= 35 && recoveryForAction < -0.5) ||
+    score <= -55 ||
+    (score <= -32 && recoveryForAction < -0.45) ||
+    (score <= -22 && recoveryForAction < -0.65)
+  ) {
+    action = "매도";
+  } else if (score >= 25 && broadScore > 0 && vixLevel < 28 && (hasRecovery || vixLevel < 25)) {
+    action = "신규 매수";
+  }
+  return { action, recoveryScore: round(recoveryScore, 4), score };
 }
 
 function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
@@ -384,6 +413,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   const relativeScore = scorePortfolioRelativeStrength(portfolioMetrics, quotes);
   const movingAverageScore = scorePortfolioMovingAverage(portfolioMetrics);
   const regimeScore = scoreMarketRegime(quotes);
+  const recoveryScore = scoreRecoveryPulse(quotes, sentiment, portfolioMetrics);
 
   add(semiScore, 2.4);
   add(nasdaqScore, 1.25);
@@ -396,20 +426,38 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   add(scoreVix(sentiment.vix), 1.35);
   add(scoreFearGreed(sentiment.fearGreed), 0.65);
   add(scoreWti(quotes.wti), 0.2);
+  add(recoveryScore, 0.8);
 
   let score = weightedScore(components);
   const vixLevel = Number(sentiment.vix?.close);
-  if (vixLevel >= 25) score -= 8;
+  const hasRecovery = Number.isFinite(recoveryScore) && recoveryScore >= 0.35;
+  const recoveryForPenalty = Number.isFinite(recoveryScore) ? recoveryScore : -1;
+  const recoveryForAction = Number.isFinite(recoveryScore) ? recoveryScore : -1;
+  if (vixLevel >= 25 && recoveryForPenalty < 0.25) score -= 8;
+  if (vixLevel >= 25 && hasRecovery) score += 4;
   if (rateScore < -0.35 && semiScore < 0.2) score -= 6;
   if (relativeScore < -0.25 && movingAverageScore < 0) score -= 6;
   score = clamp(Math.round(score), -100, 100);
 
   let action = "보유";
-  if (vixLevel >= 30 || score <= -20) action = "비중 축소";
-  else if (score >= 30 && semiScore > 0 && rateScore > -0.35 && vixLevel < 25) {
+  if (
+    (vixLevel >= 35 && recoveryForAction < -0.5) ||
+    score <= -60 ||
+    (score <= -35 && recoveryForAction < -0.5) ||
+    (score <= -24 && recoveryForAction < -0.65)
+  ) {
+    action = "비중 축소";
+  } else if (
+    score >= 30 &&
+    semiScore > 0 &&
+    regimeScore > -0.25 &&
+    rateScore > -0.35 &&
+    vixLevel < 28 &&
+    (!Number.isFinite(recoveryScore) || recoveryScore > -0.2)
+  ) {
     action = "분할 매수";
   }
-  return { action, score };
+  return { action, recoveryScore: round(recoveryScore, 4), score };
 }
 
 function summarizeBacktest(rows) {
@@ -418,11 +466,17 @@ function summarizeBacktest(rows) {
   const marketExposure = rows.map((row) => exposureForMarket(row.marketAction));
   return {
     benchmark: summarizeCurve(dailyReturns, dailyReturns.map(() => 1)),
+    firstDate: rows[0]?.date || null,
+    lastDate: rows.at(-1)?.date || null,
     marketSignal: {
       actionBuckets: bucketStats(rows, "marketAction"),
       curve: summarizeCurve(dailyReturns, marketExposure),
     },
     observations: rows.length,
+    averagePortfolioCoverage: round(
+      average(rows.map((row) => Number(row.portfolioCoverage))) || 0,
+      1,
+    ),
     portfolioSignal: {
       actionBuckets: bucketStats(rows, "portfolioAction"),
       curve: summarizeCurve(dailyReturns, portfolioExposure),
@@ -580,6 +634,84 @@ function scoreWti(quote) {
 
 function scoreMarketRegime(quotes) {
   return average([scoreHySpread(quotes?.hySpread), scoreNfci(quotes?.nfci)]);
+}
+
+function scoreRecoveryPulse(quotes, sentiment, portfolioMetrics = null) {
+  const components = [];
+  const add = (score, weight) => {
+    if (!Number.isFinite(score)) return;
+    components.push({ score: clamp(score, -1, 1), weight });
+  };
+
+  add(scoreVixRelief(sentiment?.vix), 1.2);
+  add(scoreCapitulationRelief(quotes, sentiment), 0.75);
+  add(scoreRiskAsset(quotes?.sox), 1.1);
+  add(scoreRiskAsset(quotes?.nasdaq), 0.95);
+  add(scoreRiskAsset(quotes?.sp500), 0.55);
+  add(scoreRiskAsset(quotes?.kospi), 0.35);
+  add(scoreMarketRegime(quotes), 0.65);
+
+  if (portfolioMetrics) {
+    add(scorePortfolioRelativeStrength(portfolioMetrics, quotes), 0.65);
+    add(scorePortfolioMovingAverage(portfolioMetrics), 0.45);
+  }
+
+  const totalWeight = components.reduce((sum, item) => sum + item.weight, 0);
+  if (!totalWeight) return NaN;
+  return components.reduce((sum, item) => sum + item.score * item.weight, 0) / totalWeight;
+}
+
+function scoreVixRelief(data) {
+  const value = Number(data?.close);
+  const trend = trendPercent(data?.series);
+  if (!Number.isFinite(value) || !Number.isFinite(trend)) return NaN;
+
+  let score = 0;
+  if (trend <= -15) score = 0.9;
+  else if (trend <= -7) score = 0.55;
+  else if (trend <= 2) score = 0.1;
+  else if (trend <= 10) score = -0.35;
+  else score = -0.8;
+
+  if (value < 22 && trend <= 0) score += 0.1;
+  if (value >= 32 && trend > -10) score -= 0.2;
+  const daily = Number(data.change);
+  if (daily <= -4) score += 0.35;
+  else if (daily <= -2) score += 0.25;
+  else if (daily >= 5) score -= 0.35;
+  else if (daily >= 3) score -= 0.25;
+  return clamp(score, -1, 1);
+}
+
+function scoreCapitulationRelief(quotes, sentiment) {
+  const fear = Number(sentiment?.fearGreed?.score);
+  const vix = Number(sentiment?.vix?.close);
+  if (!Number.isFinite(fear) || !Number.isFinite(vix) || vix < 25 || fear > 35) {
+    return NaN;
+  }
+
+  const vixChange = Number(sentiment?.vix?.change);
+  const dailyRisk = average([
+    Number(quotes?.sox?.changePercent),
+    Number(quotes?.nasdaq?.changePercent),
+    Number(quotes?.kospi?.changePercent),
+  ]);
+
+  let score = vix >= 30 && fear <= 25 ? -0.25 : -0.05;
+  if (Number.isFinite(vixChange) && vixChange <= -3) score += 0.55;
+  else if (Number.isFinite(vixChange) && vixChange <= -1.5) score += 0.35;
+  if (Number.isFinite(dailyRisk) && dailyRisk >= 1) score += 0.35;
+  else if (Number.isFinite(dailyRisk) && dailyRisk >= 0.3) score += 0.2;
+  if (
+    vix >= 32 &&
+    Number.isFinite(vixChange) &&
+    vixChange >= 3 &&
+    Number.isFinite(dailyRisk) &&
+    dailyRisk <= -1
+  ) {
+    score -= 0.55;
+  }
+  return clamp(score, -1, 1);
 }
 
 function scoreHySpread(quote) {
@@ -808,8 +940,11 @@ function toCsv(rows) {
     "date",
     "portfolioAction",
     "portfolioScore",
+    "portfolioCoverage",
+    "portfolioRecoveryScore",
     "marketAction",
     "marketScore",
+    "marketRecoveryScore",
     "nextDayReturn",
     "forwardReturn20d",
   ];
@@ -829,6 +964,9 @@ function csvEscape(value) {
 
 function printSummary(summary, outStem) {
   console.log(`observations: ${summary.observations}`);
+  console.log(
+    `tested range: ${summary.firstDate}..${summary.lastDate} / avg coverage ${summary.averagePortfolioCoverage}%`,
+  );
   console.log(`benchmark total return: ${summary.benchmark.totalReturn}%`);
   console.log(
     `portfolio-signal total return: ${summary.portfolioSignal.curve.totalReturn}% / max DD ${summary.portfolioSignal.curve.maxDrawdown}%`,

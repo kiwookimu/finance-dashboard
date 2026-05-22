@@ -153,18 +153,27 @@ function evaluateTradingSignal(quotes, sentiment) {
   add("달러/원", scoreUsdKrw(quotes.usdKrw), 0.65);
   add("WTI", scoreWti(quotes.wti), 0.45);
   add("시장 레짐", scoreMarketRegime(quotes), 1.25);
+  const recoveryScore = scoreRecoveryPulse(quotes, sentiment);
+  add("반등 확인", recoveryScore, 0.75);
 
   const totalWeight = components.reduce((sum, item) => sum + item.weight, 0);
   const weightedScore = components.reduce((sum, item) => sum + item.weighted, 0);
   const score = totalWeight ? Math.round((weightedScore / totalWeight) * 100) : 0;
   const vixLevel = Number(sentiment.vix?.close);
+  const hasRecovery = Number.isFinite(recoveryScore) && recoveryScore >= 0.35;
+  const recoveryForAction = Number.isFinite(recoveryScore) ? recoveryScore : -1;
 
   let action = "홀딩";
   let className = "signal-hold";
-  if (vixLevel >= 30 || score <= -20) {
+  if (
+    (vixLevel >= 35 && recoveryForAction < -0.5) ||
+    score <= -55 ||
+    (score <= -32 && recoveryForAction < -0.45) ||
+    (score <= -22 && recoveryForAction < -0.65)
+  ) {
     action = "매도";
     className = "signal-sell";
-  } else if (score >= 25 && broadScore > 0 && vixLevel < 25) {
+  } else if (score >= 25 && broadScore > 0 && vixLevel < 28 && (hasRecovery || vixLevel < 25)) {
     action = "신규 매수";
     className = "signal-buy";
   }
@@ -200,6 +209,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   const movingAverageScore = scorePortfolioMovingAverage(portfolioMetrics);
   const investorFlowScore = scorePortfolioInvestorFlow(portfolioMetrics);
   const regimeScore = scoreMarketRegime(quotes);
+  const recoveryScore = scoreRecoveryPulse(quotes, sentiment, portfolioMetrics);
 
   add("SOX", semiScore, 2.4);
   add("NASDAQ", nasdaqScore, 1.25);
@@ -215,6 +225,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   add("VIX", vixScore, 1.35);
   add("공포·탐욕", scoreFearGreed(sentiment.fearGreed), 0.65);
   add("WTI", scoreWti(quotes.wti), 0.2);
+  add("반등 확인", recoveryScore, 0.8);
 
   const totalWeight = components.reduce((sum, item) => sum + item.weight, 0);
   const weightedScore = components.reduce((sum, item) => sum + item.weighted, 0);
@@ -223,7 +234,11 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   const vixLevel = Number(sentiment.vix?.close);
   const concentration = portfolioTagWeight("semi") + portfolioTagWeight("aiPower");
   if (concentration >= 75 && (semiScore < 0 || nasdaqScore < 0)) score -= 8;
-  if (vixLevel >= 25) score -= 8;
+  const hasRecovery = Number.isFinite(recoveryScore) && recoveryScore >= 0.35;
+  const recoveryForPenalty = Number.isFinite(recoveryScore) ? recoveryScore : -1;
+  const recoveryForAction = Number.isFinite(recoveryScore) ? recoveryScore : -1;
+  if (vixLevel >= 25 && recoveryForPenalty < 0.25) score -= 8;
+  if (vixLevel >= 25 && hasRecovery) score += 4;
   if (rateScore < -0.35 && semiScore < 0.2) score -= 6;
   if (relativeScore < -0.25 && movingAverageScore < 0) score -= 6;
   if (investorFlowScore < -0.25 && semiScore < 0.25) score -= 4;
@@ -232,10 +247,22 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
 
   let action = "보유";
   let className = "portfolio-hold";
-  if (vixLevel >= 30 || score <= -20) {
+  if (
+    (vixLevel >= 35 && recoveryForAction < -0.5) ||
+    score <= -60 ||
+    (score <= -35 && recoveryForAction < -0.5) ||
+    (score <= -24 && recoveryForAction < -0.65)
+  ) {
     action = "비중 축소";
     className = "portfolio-trim";
-  } else if (score >= 30 && semiScore > 0 && rateScore > -0.35 && vixLevel < 25) {
+  } else if (
+    score >= 30 &&
+    semiScore > 0 &&
+    regimeScore > -0.25 &&
+    rateScore > -0.35 &&
+    vixLevel < 28 &&
+    (!Number.isFinite(recoveryScore) || recoveryScore > -0.2)
+  ) {
     action = "분할 매수";
     className = "portfolio-buy";
   }
@@ -247,6 +274,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
       movingAverageScore,
       nasdaqScore,
       rateScore,
+      recoveryScore,
       regimeScore,
       relativeScore,
       semiScore,
@@ -306,6 +334,7 @@ function buildPortfolioChecks({
   movingAverageScore,
   nasdaqScore,
   rateScore,
+  recoveryScore,
   regimeScore,
   relativeScore,
   semiScore,
@@ -316,6 +345,7 @@ function buildPortfolioChecks({
     portfolioCheck("50/200일선", movingAverageScore, "추세 확인"),
     portfolioCheck("외국인·기관", investorFlowScore, "수급 확인"),
     portfolioCheck("시장레짐", regimeScore, "신용·금융상황"),
+    portfolioCheck("반등확인", recoveryScore, "재진입 확인"),
     portfolioCheck("SOX", semiScore, "반도체 ETF 핵심"),
     portfolioCheck("NASDAQ", nasdaqScore, "AI 성장주"),
     portfolioCheck("금리", rateScore, "채권혼합·성장주"),
@@ -599,6 +629,84 @@ function scoreMarketRegime(quotes) {
     scoreHySpread(quotes?.hySpread),
     scoreNfci(quotes?.nfci),
   ]);
+}
+
+function scoreRecoveryPulse(quotes, sentiment, portfolioMetrics = null) {
+  const components = [];
+  const add = (score, weight) => {
+    if (!Number.isFinite(score)) return;
+    components.push({ score: clamp(score, -1, 1), weight });
+  };
+
+  add(scoreVixRelief(sentiment?.vix), 1.2);
+  add(scoreCapitulationRelief(quotes, sentiment), 0.75);
+  add(scoreRiskAsset(quotes?.sox), 1.1);
+  add(scoreRiskAsset(quotes?.nasdaq), 0.95);
+  add(scoreRiskAsset(quotes?.sp500), 0.55);
+  add(scoreRiskAsset(quotes?.kospi), 0.35);
+  add(scoreMarketRegime(quotes), 0.65);
+
+  if (portfolioMetrics) {
+    add(scorePortfolioRelativeStrength(portfolioMetrics, quotes), 0.65);
+    add(scorePortfolioMovingAverage(portfolioMetrics), 0.45);
+  }
+
+  const totalWeight = components.reduce((sum, item) => sum + item.weight, 0);
+  if (!totalWeight) return NaN;
+  return components.reduce((sum, item) => sum + item.score * item.weight, 0) / totalWeight;
+}
+
+function scoreVixRelief(data) {
+  const value = Number(data?.close);
+  const trend = trendPercent(data?.series);
+  if (!Number.isFinite(value) || !Number.isFinite(trend)) return NaN;
+
+  let score = 0;
+  if (trend <= -15) score = 0.9;
+  else if (trend <= -7) score = 0.55;
+  else if (trend <= 2) score = 0.1;
+  else if (trend <= 10) score = -0.35;
+  else score = -0.8;
+
+  if (value < 22 && trend <= 0) score += 0.1;
+  if (value >= 32 && trend > -10) score -= 0.2;
+  const daily = Number(data.change);
+  if (daily <= -4) score += 0.35;
+  else if (daily <= -2) score += 0.25;
+  else if (daily >= 5) score -= 0.35;
+  else if (daily >= 3) score -= 0.25;
+  return clamp(score, -1, 1);
+}
+
+function scoreCapitulationRelief(quotes, sentiment) {
+  const fear = Number(sentiment?.fearGreed?.score);
+  const vix = Number(sentiment?.vix?.close);
+  if (!Number.isFinite(fear) || !Number.isFinite(vix) || vix < 25 || fear > 35) {
+    return NaN;
+  }
+
+  const vixChange = Number(sentiment?.vix?.change);
+  const dailyRisk = average([
+    Number(quotes?.sox?.changePercent),
+    Number(quotes?.nasdaq?.changePercent),
+    Number(quotes?.kospi?.changePercent),
+  ]);
+
+  let score = vix >= 30 && fear <= 25 ? -0.25 : -0.05;
+  if (Number.isFinite(vixChange) && vixChange <= -3) score += 0.55;
+  else if (Number.isFinite(vixChange) && vixChange <= -1.5) score += 0.35;
+  if (Number.isFinite(dailyRisk) && dailyRisk >= 1) score += 0.35;
+  else if (Number.isFinite(dailyRisk) && dailyRisk >= 0.3) score += 0.2;
+  if (
+    vix >= 32 &&
+    Number.isFinite(vixChange) &&
+    vixChange >= 3 &&
+    Number.isFinite(dailyRisk) &&
+    dailyRisk <= -1
+  ) {
+    score -= 0.55;
+  }
+  return clamp(score, -1, 1);
 }
 
 function scoreHySpread(quote) {
