@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>시장 대시보드</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell" aria-label="시장 주요 정보">
+      <section class="section-block" aria-labelledby="market-title">
+        <div class="section-heading">
+          <h1 id="market-title">시장</h1>
+          <span class="timestamp" id="marketTimestamp">지연</span>
+        </div>
+
+        <section class="signal-panel signal-hold" id="marketSignal" aria-label="시장 신호">
+          <div class="signal-lamps" aria-hidden="true">
+            <span class="signal-light signal-green"></span>
+            <span class="signal-light signal-yellow"></span>
+            <span class="signal-light signal-red"></span>
+          </div>
+          <div class="signal-copy">
+            <span class="signal-label">시장 신호</span>
+            <strong id="signalAction">판단 중</strong>
+            <small id="signalSummary">지표 수집 중</small>
+          </div>
+        </section>
+
+        <div class="indicator-list" aria-label="주요 시장 지표">
+          <article class="indicator-row" data-indicator="kospi">
+            <div class="indicator-copy">
+              <span class="indicator-label">KOSPI</span>
+              <strong id="kospiValue">불러오는 중</strong>
+              <small id="kospiChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="kospiSparkline" viewBox="0 0 132 52" role="img" aria-label="KOSPI 최근 28일 추이"></svg>
+          </article>
+
+          <article class="indicator-row" data-indicator="sp500">
+            <div class="indicator-copy">
+              <span class="indicator-label">S&amp;P 500</span>
+              <strong id="sp500Value">불러오는 중</strong>
+              <small id="sp500Change">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="sp500Sparkline" viewBox="0 0 132 52" role="img" aria-label="S&P 500 최근 28일 추이"></svg>
+          </article>
+
+          <article class="indicator-row" data-indicator="nasdaq">
+            <div class="indicator-copy">
+              <span class="indicator-label">NASDAQ</span>
+              <strong id="nasdaqValue">불러오는 중</strong>
+              <small id="nasdaqChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="nasdaqSparkline" viewBox="0 0 132 52" role="img" aria-label="NASDAQ 최근 28일 추이"></svg>
+          </article>
+
+          <article class="indicator-row" data-indicator="sox">
+            <div class="indicator-copy">
+              <span class="indicator-label">SOX 반도체지수</span>
+              <strong id="soxValue">불러오는 중</strong>
+              <small id="soxChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="soxSparkline" viewBox="0 0 132 52" role="img" aria-label="SOX 반도체지수 최근 28일 추이"></svg>
+          </article>
+
+          <article class="indicator-row" data-indicator="ddr5Spot">
+            <div class="indicator-copy">
+              <span class="indicator-label">DDR5 16Gb 4800/5600 Spot</span>
+              <strong id="ddr5SpotValue">불러오는 중</strong>
+              <small id="ddr5SpotChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="ddr5SpotSparkline" viewBox="0 0 132 52" role="img" aria-label="DDR5 16Gb 4800/5600 Spot Price"></svg>
+          </article>
+
+          <article class="indicator-row" data-indicator="serverDdr5Contract">
+            <div class="indicator-copy">
+              <span class="indicator-label">Server DDR5 Contract Price</span>
+              <strong id="serverDdr5ContractValue">불러오는 중</strong>
+              <small id="serverDdr5ContractChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="serverDdr5ContractSparkline" viewBox="0 0 132 52" role="img" aria-label="Server DDR5 Contract Price"></svg>
+          </article>
+
+          <article class="indicator-row" data-indicator="dxi">
+            <div class="indicator-copy">
+              <span class="indicator-label">DXI Index</span>
+              <strong id="dxiValue">불러오는 중</strong>
+              <small id="dxiChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="dxiSparkline" viewBox="0 0 132 52" role="img" aria-label="DXI Index"></svg>
+          </article>
+
+          <article class="indicator-row" data-indicator="usdKrw">
+            <div class="indicator-copy">
+              <span class="indicator-label">USD/KRW</span>
+              <strong id="usdKrwValue">불러오는 중</strong>
+              <small id="usdKrwChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="usdKrwSparkline" viewBox="0 0 132 52" role="img" aria-label="USD/KRW 최근 28일 추이"></svg>
+          </article>
+
+          <article class="indicator-row" data-indicator="wti">
+            <div class="indicator-copy">
+              <span class="indicator-label">WTI 유가</span>
+              <strong id="wtiValue">불러오는 중</strong>
+              <small id="wtiChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="wtiSparkline" viewBox="0 0 132 52" role="img" aria-label="WTI 유가 최근 28일 추이"></svg>
+          </article>
+
+          <article class="indicator-row" data-indicator="us10y">
+            <div class="indicator-copy">
+              <span class="indicator-label">미국 10년물 금리</span>
+              <strong id="us10yValue">불러오는 중</strong>
+              <small id="us10yChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="us10ySparkline" viewBox="0 0 132 52" role="img" aria-label="미국 10년물 금리 최근 28일 추이"></svg>
+          </article>
+
+          <article class="indicator-row" data-indicator="fearGreed">
+            <div class="indicator-copy">
+              <span class="indicator-label">공포·탐욕 지수</span>
+              <strong id="fearGreedValue">불러오는 중</strong>
+              <small id="fearGreedChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="fearGreedSparkline" viewBox="0 0 132 52" role="img" aria-label="공포·탐욕 지수 최근 28일 추이"></svg>
+          </article>
+
+          <article class="indicator-row" data-indicator="vix">
+            <div class="indicator-copy">
+              <span class="indicator-label">VIX 지수</span>
+              <strong id="vixValue">불러오는 중</strong>
+              <small id="vixChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="vixSparkline" viewBox="0 0 132 52" role="img" aria-label="VIX 지수 최근 28일 추이"></svg>
+          </article>
+        </div>
+
+        <p class="data-note" id="marketSource">무료 지연 데이터 기준</p>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

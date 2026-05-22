@@ -1,0 +1,46 @@
+{
+  "generatedAt": "2026-05-21T14:42:17.074Z",
+  "comparisonMonthCount": 5,
+  "marketMonth": "2026-04",
+  "previousMonths": [
+    "2025-11",
+    "2025-12",
+    "2026-01",
+    "2026-02",
+    "2026-03"
+  ],
+  "condition": {
+    "mfi": "> 90",
+    "monthlyVolumeRatio": ">= 2x vs previous 5-month average",
+    "priceUpVsPreviousMonth": true,
+    "minimumMarketCapKrw": 1000000000000,
+    "minimumMarketCapUsd": 663455542
+  },
+  "exchangeRate": {
+    "pair": "USD/KRW",
+    "value": 1507.26
+  },
+  "universe": "Nasdaq Trader listed U.S. common stocks and ADRs; ETFs, units, warrants, rights, preferreds, funds, SPAC/acquisition vehicles, and test issues excluded",
+  "universeCount": 4904,
+  "matchCount": 1,
+  "failureCount": 48,
+  "results": [
+    {
+      "exchange": "NASDAQ",
+      "lastClose": 18.28,
+      "lastDate": "2026-04-30",
+      "mfi": 95.48,
+      "monthlyReturn": 98.7,
+      "name": "Everspin Technologies, Inc. - Common Stock",
+      "previousAverageVolume": 10610791,
+      "previousMonthClose": 8.79,
+      "previousMonthReturn": 107.96,
+      "rawSymbol": "MRAM",
+      "symbol": "MRAM",
+      "targetMonthVolume": 24891505,
+      "volumeRatio": 2.35,
+      "marketCapKrw": 1115380735148,
+      "marketCapUsd": 740005530
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+# Market Mobile Page
+
+모바일에서 주요 시장 지표와 시장 심리 지표를 한 줄에 하나씩 확인하는 페이지입니다. 각 지표는 현재값, 변동, 최근 28개 일별 데이터의 추이 그래프를 함께 보여줍니다.
+
+## 실행
+
+```sh
+node server.js
+```
+
+그 다음 브라우저에서 `http://127.0.0.1:5173/`를 엽니다.
+
+## 배포
+
+Node.js 20 이상이 있는 서버에서 다음 명령으로 실행합니다.
+
+```sh
+npm start
+```
+
+Render에서는 `render.yaml`의 `startCommand`와 `/api/health` 헬스체크를 사용할 수 있습니다. GitHub Pages처럼 정적 파일만 호스팅하는 환경에서는 `/api/market-overview`, `/api/market-sentiment`가 실행되지 않으므로 시장 데이터 연동이 깨집니다.
+
+## 구성
+
+- `index.html`: 시장 카드 화면 구조
+- `styles.css`: 모바일 우선 레이아웃과 카드 스타일
+- `app.js`: 시장/심리 지연 데이터 표시
+- `server.js`: 외부 데이터를 가져오는 로컬 API 서버
+- `scripts/screen_mfi_volume.mjs`: 월간 거래량 급증 + MFI 조건 스크리닝
+- `scripts/screen_us_mfi_volume.mjs`: 미국 상장 보통주/ADR 대상 월간 거래량 급증 + MFI 조건 스크리닝
+
+KOSPI, S&P 500, NASDAQ, SOX 반도체지수, USD/KRW, WTI 유가, 미국 10년물 금리는 Yahoo Finance chart endpoint를 사용합니다. DDR5 16Gb 4800/5600 Spot Price는 TrendForce 공개 DRAM spot price 표를 사용합니다. Server DDR5 Contract Price는 TrendForce Server DIMM Contract Price 공개 요약을 사용하며, 숫자 가격은 멤버십 영역이라 공개값이 있을 때만 표시됩니다. DXI Index는 DRAMeXchange 공개 Market Activity의 업데이트 시각을 사용하며, 숫자 지수와 히스토리는 로그인 영역이라 공개값이 있을 때만 표시됩니다. 공포·탐욕 지수는 GitHub CSV 미러, VIX는 Cboe 일별 CSV를 사용합니다. 모두 실시간이 아닌 무료 지연 데이터입니다.
+
+월간 거래량/MFI 스크리너는 KRX 상장법인 목록과 Naver Finance 일별 OHLCV/시가총액 데이터를 사용합니다. 기본 비교 기준은 대상월 직전 5개월 월간 거래량 평균이고, 기본 시가총액 조건은 `1조원 이상`입니다. 네 번째 인자로 `KOSPI` 또는 `KOSPI,KOSDAQ`처럼 시장 필터를 줄 수 있고, 다섯 번째 인자에 `true`를 주면 대상월 말 종가가 직전월 말 종가보다 오른 종목만 남깁니다. 여섯 번째 인자로 최소 시가총액 원화 금액을 바꿀 수 있습니다.
+
+미국 월간 거래량/MFI 스크리너는 Nasdaq Trader 상장 목록과 Nasdaq 일별 OHLCV/시가총액 데이터를 사용합니다. ETF, 유닛, 워런트, 우선주, 펀드, SPAC/인수목적회사, 테스트 종목은 제외하고 보통주/ADR 중심으로 계산합니다. 기본 시가총액 조건은 `1조원 이상`이며, USD/KRW 환율로 달러 기준 최소 시총을 환산합니다.
+
+## 신호등 로직
+
+상단 신호등은 공개 숫자 데이터가 있는 지표를 점수화합니다. 주가지수와 반도체지수의 28일 추세가 좋고 VIX, 금리, 달러/원, WTI 부담이 낮으면 녹색불(`신규 매수`)로 표시합니다. 점수가 중립이면 노란불(`홀딩`), 점수가 낮거나 VIX가 30 이상이면 빨간불(`매도`)로 표시합니다. 숫자가 비공개인 DXI와 일부 계약가격은 상태 표시는 하되 점수에는 강하게 반영하지 않습니다.
+
+그래프 색상은 방향의 좋고 나쁨 기준으로 표시합니다. 주가지수, 반도체, 메모리 가격, 공포·탐욕 지수는 오르면 녹색/내리면 붉은색이고, USD/KRW, WTI, 미국 10년물 금리, VIX는 내리면 녹색/오르면 붉은색입니다.

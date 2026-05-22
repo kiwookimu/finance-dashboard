@@ -1,0 +1,94 @@
+{
+  "generatedAt": "2026-05-21T23:08:53.429Z",
+  "comparisonMonthCount": 5,
+  "marketFilter": [
+    "KOSPI"
+  ],
+  "marketMonth": "2026-04",
+  "previousMonths": [
+    "2025-11",
+    "2025-12",
+    "2026-01",
+    "2026-02",
+    "2026-03"
+  ],
+  "condition": {
+    "mfi": "> 90",
+    "monthlyVolumeRatio": ">= 2x vs previous 5-month average",
+    "priceUpVsPreviousMonth": true,
+    "minimumMarketCapKrw": 1000000000000
+  },
+  "universeCount": 835,
+  "matchCount": 4,
+  "failureCount": 0,
+  "results": [
+    {
+      "code": "006340",
+      "lastClose": 15050,
+      "lastDate": "2026-04-30",
+      "market": "유가",
+      "marketType": "KOSPI",
+      "mfi": 98.64,
+      "monthlyReturn": 177.16,
+      "name": "대원전선",
+      "previousAverageVolume": 191407300,
+      "previousMonthClose": 4920,
+      "previousMonthReturn": 205.89,
+      "symbol": "006340.KS",
+      "targetMonthVolume": 630230899,
+      "volumeRatio": 3.29,
+      "marketCapKrw": 1193500000000
+    },
+    {
+      "code": "001440",
+      "lastClose": 56300,
+      "lastDate": "2026-04-30",
+      "market": "유가",
+      "marketType": "KOSPI",
+      "mfi": 94.09,
+      "monthlyReturn": 87.35,
+      "name": "대한전선",
+      "previousAverageVolume": 96524167,
+      "previousMonthClose": 26700,
+      "previousMonthReturn": 110.86,
+      "symbol": "001440.KS",
+      "targetMonthVolume": 268417503,
+      "volumeRatio": 2.78,
+      "marketCapKrw": 10975600000000
+    },
+    {
+      "code": "329180",
+      "lastClose": 685000,
+      "lastDate": "2026-04-30",
+      "market": "유가",
+      "marketType": "KOSPI",
+      "mfi": 91.57,
+      "monthlyReturn": 51.72,
+      "name": "HD현대중공업",
+      "previousAverageVolume": 5379370,
+      "previousMonthClose": 465000,
+      "previousMonthReturn": 47.31,
+      "symbol": "329180.KS",
+      "targetMonthVolume": 12582096,
+      "volumeRatio": 2.34,
+      "marketCapKrw": 70533900000000
+    },
+    {
+      "code": "229640",
+      "lastClose": 87100,
+      "lastDate": "2026-04-30",
+      "market": "유가",
+      "marketType": "KOSPI",
+      "mfi": 94.36,
+      "monthlyReturn": 96.39,
+      "name": "LS에코에너지",
+      "previousAverageVolume": 3984554,
+      "previousMonthClose": 40200,
+      "previousMonthReturn": 116.67,
+      "symbol": "229640.KS",
+      "targetMonthVolume": 8787072,
+      "volumeRatio": 2.21,
+      "marketCapKrw": 2737900000000
+    }
+  ]
+}
