@@ -84,7 +84,7 @@ const payload = {
   },
   assumptions: [
     "DDR5 spot, server DRAM contract, DXI, and historical foreign/institution flow are excluded where full historical public data is unavailable.",
-    "Portfolio strategy exposure is score-based: split buy = 100%, hold and trim zones scale by signal score.",
+    "Portfolio strategy exposure is score-based: weak red = 5%, risk watch = 75%, neutral = 80%, otherwise 100%.",
     "Market strategy exposure remains action-based: new buy = 100%, hold = 60%, sell = 20%.",
     "The primary strategy return uses the configured entry mode. Default is nextOpen.",
     "Transaction costs are charged when exposure changes, including initial entry exposure.",
@@ -311,6 +311,7 @@ function runBacktest({
       portfolioExposure: targetPortfolioExposure(
         portfolioSignal.score,
         portfolioSignal.action,
+        portfolioSignal.confidence,
       ),
       portfolioFixedExposure: actionExposureForPortfolio(portfolioSignal.action),
       portfolioRecoveryScore: portfolioSignal.recoveryScore,
@@ -991,14 +992,14 @@ function actionExposureForMarket(action) {
   return 0.6;
 }
 
-function targetPortfolioExposure(score, action) {
+function targetPortfolioExposure(score, action, confidence = "") {
   const cleanScore = Number(score);
   if (!Number.isFinite(cleanScore)) return actionExposureForPortfolio(action);
-  if (action === "분할 매수") return 1;
-  if (action === "비중 축소") {
-    return clamp(0.2 + ((cleanScore + 60) / 36) * 0.08, 0.18, 0.28);
-  }
-  return clamp(0.6 + (cleanScore / 100) * 0.15, 0.55, 0.75);
+  if (confidence === "약한 빨간색") return 0.05;
+  if (confidence === "위험 경계") return 0.75;
+  if (confidence === "중립") return 0.8;
+  if (action === "비중 축소") return 1;
+  return 1;
 }
 
 function scoreRiskAsset(quote) {

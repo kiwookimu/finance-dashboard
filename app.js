@@ -294,9 +294,11 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
     className = "portfolio-buy";
   }
 
+  const confidence = signalConfidence(className, score);
+
   return {
     action,
-    allocation: targetPortfolioExposure(score, action),
+    allocation: targetPortfolioExposure(score, action, confidence),
     checks: buildPortfolioChecks({
       semiconductorCycleScore,
       investorFlowScore,
@@ -312,7 +314,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
       vixScore,
     }),
     className,
-    confidence: signalConfidence(className, score),
+    confidence,
     score,
     summary: summarizePortfolioSignal(components, className, concentration),
   };
@@ -1030,14 +1032,14 @@ function signalConfidence(className, score) {
   return score > 0 ? "녹색 대기" : "위험 경계";
 }
 
-function targetPortfolioExposure(score, action) {
+function targetPortfolioExposure(score, action, confidence = "") {
   const cleanScore = Number(score);
   if (!Number.isFinite(cleanScore)) return NaN;
-  if (action === "분할 매수") return 1;
-  if (action === "비중 축소") {
-    return clamp(0.2 + ((cleanScore + 60) / 36) * 0.08, 0.18, 0.28);
-  }
-  return clamp(0.6 + (cleanScore / 100) * 0.15, 0.55, 0.75);
+  if (confidence === "약한 빨간색") return 0.05;
+  if (confidence === "위험 경계") return 0.75;
+  if (confidence === "중립") return 0.8;
+  if (action === "비중 축소") return 1;
+  return 1;
 }
 
 function getFearGreedRating(score) {
