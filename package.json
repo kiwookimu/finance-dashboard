@@ -4,6 +4,7 @@
   "private": true,
   "description": "Mobile-first market indicator dashboard with delayed public market data.",
   "scripts": {
+    "backtest": "node scripts/backtest_signals.mjs",
     "start": "node server.js",
     "screen:kospi": "node scripts/screen_mfi_volume.mjs 2026-04 5 KOSPI true",
     "screen:us": "node scripts/screen_us_mfi_volume.mjs 2026-04 5 true"

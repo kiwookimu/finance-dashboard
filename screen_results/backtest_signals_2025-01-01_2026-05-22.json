@@ -1,0 +1,3025 @@
+{
+  "generatedAt": "2026-05-22T08:39:46.547Z",
+  "range": {
+    "endDate": "2026-05-22",
+    "fetchEndDate": "2026-07-01",
+    "fetchStartDate": "2023-10-29",
+    "horizonTradingDays": 20,
+    "startDate": "2025-01-01"
+  },
+  "assumptions": [
+    "DDR5 spot, server DRAM contract, DXI, and historical foreign/institution flow are excluded where full historical public data is unavailable.",
+    "Portfolio strategy exposure: split buy/new buy = 100%, hold = 60%, trim/sell = 20%.",
+    "Forward-return buckets use current portfolio weights and available ETF prices on each date."
+  ],
+  "summary": {
+    "benchmark": {
+      "averageExposure": 100,
+      "maxDrawdown": -32.68,
+      "totalReturn": 92.23
+    },
+    "marketSignal": {
+      "actionBuckets": {
+        "홀딩": {
+          "avgForward20d": 2.9,
+          "avgNextDay": -0.05,
+          "count": 81,
+          "medianForward20d": 3.21,
+          "nextDayWinRate": 50.6,
+          "winRate": 63
+        },
+        "신규 매수": {
+          "avgForward20d": 7.94,
+          "avgNextDay": 0.43,
+          "count": 197,
+          "medianForward20d": 7.61,
+          "nextDayWinRate": 64.5,
+          "winRate": 76.1
+        },
+        "매도": {
+          "avgForward20d": 10.59,
+          "avgNextDay": -0.17,
+          "count": 48,
+          "medianForward20d": 10.38,
+          "nextDayWinRate": 47.9,
+          "winRate": 75
+        }
+      },
+      "curve": {
+        "averageExposure": 78.3,
+        "maxDrawdown": -18.95,
+        "totalReturn": 116.28
+      }
+    },
+    "observations": 326,
+    "portfolioSignal": {
+      "actionBuckets": {
+        "보유": {
+          "avgForward20d": 4.38,
+          "avgNextDay": 0.01,
+          "count": 99,
+          "medianForward20d": 4.04,
+          "nextDayWinRate": 55.6,
+          "winRate": 63.6
+        },
+        "분할 매수": {
+          "avgForward20d": 7.67,
+          "avgNextDay": 0.39,
+          "count": 181,
+          "medianForward20d": 7.35,
+          "nextDayWinRate": 62.4,
+          "winRate": 77.3
+        },
+        "비중 축소": {
+          "avgForward20d": 10.55,
+          "avgNextDay": 0.02,
+          "count": 46,
+          "medianForward20d": 10.38,
+          "nextDayWinRate": 50,
+          "winRate": 73.9
+        }
+      },
+      "curve": {
+        "averageExposure": 76.6,
+        "maxDrawdown": -18.28,
+        "totalReturn": 96.26
+      }
+    }
+  },
+  "rows": [
+    {
+      "date": "2025-01-02",
+      "forwardReturn20d": 3.2276,
+      "marketAction": "홀딩",
+      "marketScore": 3,
+      "nextDayReturn": 1.4747,
+      "portfolioAction": "보유",
+      "portfolioScore": 20
+    },
+    {
+      "date": "2025-01-03",
+      "forwardReturn20d": 3.5924,
+      "marketAction": "신규 매수",
+      "marketScore": 26,
+      "nextDayReturn": 2.3004,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 36
+    },
+    {
+      "date": "2025-01-06",
+      "forwardReturn20d": 0.7021,
+      "marketAction": "홀딩",
+      "marketScore": 23,
+      "nextDayReturn": 0.1044,
+      "portfolioAction": "보유",
+      "portfolioScore": 39
+    },
+    {
+      "date": "2025-01-07",
+      "forwardReturn20d": 0.047,
+      "marketAction": "홀딩",
+      "marketScore": 6,
+      "nextDayReturn": -0.0039,
+      "portfolioAction": "보유",
+      "portfolioScore": 25
+    },
+    {
+      "date": "2025-01-08",
+      "forwardReturn20d": 0.7517,
+      "marketAction": "홀딩",
+      "marketScore": 17,
+      "nextDayReturn": 0.5319,
+      "portfolioAction": "보유",
+      "portfolioScore": 35
+    },
+    {
+      "date": "2025-01-10",
+      "forwardReturn20d": 2.7765,
+      "marketAction": "홀딩",
+      "marketScore": 1,
+      "nextDayReturn": -1.377,
+      "portfolioAction": "보유",
+      "portfolioScore": 19
+    },
+    {
+      "date": "2025-01-13",
+      "forwardReturn20d": 3.5395,
+      "marketAction": "홀딩",
+      "marketScore": -4,
+      "nextDayReturn": 0.291,
+      "portfolioAction": "보유",
+      "portfolioScore": 4
+    },
+    {
+      "date": "2025-01-14",
+      "forwardReturn20d": 3.2782,
+      "marketAction": "홀딩",
+      "marketScore": -4,
+      "nextDayReturn": 0.6763,
+      "portfolioAction": "보유",
+      "portfolioScore": 3
+    },
+    {
+      "date": "2025-01-15",
+      "forwardReturn20d": 4.4239,
+      "marketAction": "홀딩",
+      "marketScore": 3,
+      "nextDayReturn": 2.019,
+      "portfolioAction": "보유",
+      "portfolioScore": 15
+    },
+    {
+      "date": "2025-01-16",
+      "forwardReturn20d": 3.211,
+      "marketAction": "홀딩",
+      "marketScore": 8,
+      "nextDayReturn": 1.5046,
+      "portfolioAction": "보유",
+      "portfolioScore": 22
+    },
+    {
+      "date": "2025-01-17",
+      "forwardReturn20d": 0.5037,
+      "marketAction": "홀딩",
+      "marketScore": 21,
+      "nextDayReturn": -1.0653,
+      "portfolioAction": "보유",
+      "portfolioScore": 33
+    },
+    {
+      "date": "2025-01-21",
+      "forwardReturn20d": -1.2263,
+      "marketAction": "신규 매수",
+      "marketScore": 35,
+      "nextDayReturn": 2.1819,
+      "portfolioAction": "보유",
+      "portfolioScore": 42
+    },
+    {
+      "date": "2025-01-22",
+      "forwardReturn20d": -4.3608,
+      "marketAction": "신규 매수",
+      "marketScore": 46,
+      "nextDayReturn": -0.3849,
+      "portfolioAction": "보유",
+      "portfolioScore": 52
+    },
+    {
+      "date": "2025-01-23",
+      "forwardReturn20d": -4.0694,
+      "marketAction": "신규 매수",
+      "marketScore": 33,
+      "nextDayReturn": 0.8005,
+      "portfolioAction": "보유",
+      "portfolioScore": 38
+    },
+    {
+      "date": "2025-01-24",
+      "forwardReturn20d": -4.9535,
+      "marketAction": "신규 매수",
+      "marketScore": 42,
+      "nextDayReturn": -3.6005,
+      "portfolioAction": "보유",
+      "portfolioScore": 42
+    },
+    {
+      "date": "2025-01-27",
+      "forwardReturn20d": -4.7251,
+      "marketAction": "홀딩",
+      "marketScore": 3,
+      "nextDayReturn": -2.9797,
+      "portfolioAction": "보유",
+      "portfolioScore": 3
+    },
+    {
+      "date": "2025-01-28",
+      "forwardReturn20d": -4.7251,
+      "marketAction": "홀딩",
+      "marketScore": 20,
+      "nextDayReturn": -2.9797,
+      "portfolioAction": "보유",
+      "portfolioScore": 19
+    },
+    {
+      "date": "2025-01-29",
+      "forwardReturn20d": -4.7251,
+      "marketAction": "홀딩",
+      "marketScore": 11,
+      "nextDayReturn": -2.9797,
+      "portfolioAction": "보유",
+      "portfolioScore": 9
+    },
+    {
+      "date": "2025-01-30",
+      "forwardReturn20d": -4.7251,
+      "marketAction": "신규 매수",
+      "marketScore": 55,
+      "nextDayReturn": -2.9797,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 54
+    },
+    {
+      "date": "2025-01-31",
+      "forwardReturn20d": -4.7251,
+      "marketAction": "신규 매수",
+      "marketScore": 41,
+      "nextDayReturn": -2.9797,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 42
+    },
+    {
+      "date": "2025-02-03",
+      "forwardReturn20d": -1.8739,
+      "marketAction": "홀딩",
+      "marketScore": 18,
+      "nextDayReturn": 1.5439,
+      "portfolioAction": "보유",
+      "portfolioScore": 10
+    },
+    {
+      "date": "2025-02-04",
+      "forwardReturn20d": -2.5636,
+      "marketAction": "홀딩",
+      "marketScore": 22,
+      "nextDayReturn": -0.0818,
+      "portfolioAction": "보유",
+      "portfolioScore": 17
+    },
+    {
+      "date": "2025-02-05",
+      "forwardReturn20d": -4.3972,
+      "marketAction": "신규 매수",
+      "marketScore": 26,
+      "nextDayReturn": 1.7926,
+      "portfolioAction": "보유",
+      "portfolioScore": 24
+    },
+    {
+      "date": "2025-02-06",
+      "forwardReturn20d": -7.1319,
+      "marketAction": "신규 매수",
+      "marketScore": 29,
+      "nextDayReturn": -0.5052,
+      "portfolioAction": "보유",
+      "portfolioScore": 27
+    },
+    {
+      "date": "2025-02-07",
+      "forwardReturn20d": -6.683,
+      "marketAction": "홀딩",
+      "marketScore": 18,
+      "nextDayReturn": -0.4788,
+      "portfolioAction": "보유",
+      "portfolioScore": 17
+    },
+    {
+      "date": "2025-02-10",
+      "forwardReturn20d": -7.501,
+      "marketAction": "신규 매수",
+      "marketScore": 50,
+      "nextDayReturn": 0.6571,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 50
+    },
+    {
+      "date": "2025-02-11",
+      "forwardReturn20d": -7.2338,
+      "marketAction": "신규 매수",
+      "marketScore": 54,
+      "nextDayReturn": 0.8548,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 51
+    },
+    {
+      "date": "2025-02-12",
+      "forwardReturn20d": -7.1739,
+      "marketAction": "신규 매수",
+      "marketScore": 42,
+      "nextDayReturn": 1.0501,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 42
+    },
+    {
+      "date": "2025-02-13",
+      "forwardReturn20d": -6.766,
+      "marketAction": "신규 매수",
+      "marketScore": 57,
+      "nextDayReturn": -0.5013,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 49
+    },
+    {
+      "date": "2025-02-14",
+      "forwardReturn20d": -5.2906,
+      "marketAction": "신규 매수",
+      "marketScore": 38,
+      "nextDayReturn": 0.0574,
+      "portfolioAction": "보유",
+      "portfolioScore": 31
+    },
+    {
+      "date": "2025-02-18",
+      "forwardReturn20d": -6.9854,
+      "marketAction": "신규 매수",
+      "marketScore": 51,
+      "nextDayReturn": 0.911,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 42
+    },
+    {
+      "date": "2025-02-19",
+      "forwardReturn20d": -7.0251,
+      "marketAction": "신규 매수",
+      "marketScore": 61,
+      "nextDayReturn": -1.078,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 56
+    },
+    {
+      "date": "2025-02-20",
+      "forwardReturn20d": -6.5136,
+      "marketAction": "신규 매수",
+      "marketScore": 65,
+      "nextDayReturn": -0.456,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 62
+    },
+    {
+      "date": "2025-02-21",
+      "forwardReturn20d": -6.5164,
+      "marketAction": "신규 매수",
+      "marketScore": 45,
+      "nextDayReturn": -2.0928,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 45
+    },
+    {
+      "date": "2025-02-24",
+      "forwardReturn20d": -4.8556,
+      "marketAction": "신규 매수",
+      "marketScore": 29,
+      "nextDayReturn": -1.0461,
+      "portfolioAction": "보유",
+      "portfolioScore": 26
+    },
+    {
+      "date": "2025-02-25",
+      "forwardReturn20d": -3.5453,
+      "marketAction": "홀딩",
+      "marketScore": 4,
+      "nextDayReturn": -0.1234,
+      "portfolioAction": "보유",
+      "portfolioScore": 1
+    },
+    {
+      "date": "2025-02-26",
+      "forwardReturn20d": -5.6726,
+      "marketAction": "홀딩",
+      "marketScore": 16,
+      "nextDayReturn": -0.1643,
+      "portfolioAction": "보유",
+      "portfolioScore": 16
+    },
+    {
+      "date": "2025-02-27",
+      "forwardReturn20d": -7.1811,
+      "marketAction": "홀딩",
+      "marketScore": -16,
+      "nextDayReturn": -3.3522,
+      "portfolioAction": "보유",
+      "portfolioScore": -10
+    },
+    {
+      "date": "2025-02-28",
+      "forwardReturn20d": -6.6412,
+      "marketAction": "홀딩",
+      "marketScore": -7,
+      "nextDayReturn": -0.1073,
+      "portfolioAction": "보유",
+      "portfolioScore": -14
+    },
+    {
+      "date": "2025-03-03",
+      "forwardReturn20d": -5.7509,
+      "marketAction": "매도",
+      "marketScore": -27,
+      "nextDayReturn": 0.8141,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -28
+    },
+    {
+      "date": "2025-03-04",
+      "forwardReturn20d": -5.7509,
+      "marketAction": "매도",
+      "marketScore": -24,
+      "nextDayReturn": 0.8141,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -23
+    },
+    {
+      "date": "2025-03-05",
+      "forwardReturn20d": -6.8299,
+      "marketAction": "홀딩",
+      "marketScore": -15,
+      "nextDayReturn": -1.9186,
+      "portfolioAction": "보유",
+      "portfolioScore": -15
+    },
+    {
+      "date": "2025-03-06",
+      "forwardReturn20d": -6.3799,
+      "marketAction": "매도",
+      "marketScore": -22,
+      "nextDayReturn": -1.1684,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -34
+    },
+    {
+      "date": "2025-03-07",
+      "forwardReturn20d": -7.5474,
+      "marketAction": "홀딩",
+      "marketScore": -19,
+      "nextDayReturn": -0.0046,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -31
+    },
+    {
+      "date": "2025-03-10",
+      "forwardReturn20d": -13.9482,
+      "marketAction": "매도",
+      "marketScore": -32,
+      "nextDayReturn": -1.385,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -49
+    },
+    {
+      "date": "2025-03-11",
+      "forwardReturn20d": -10.5131,
+      "marketAction": "매도",
+      "marketScore": -37,
+      "nextDayReturn": 0.9247,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -52
+    },
+    {
+      "date": "2025-03-12",
+      "forwardReturn20d": -13.2198,
+      "marketAction": "홀딩",
+      "marketScore": -14,
+      "nextDayReturn": 0.9021,
+      "portfolioAction": "보유",
+      "portfolioScore": -12
+    },
+    {
+      "date": "2025-03-13",
+      "forwardReturn20d": -7.6869,
+      "marketAction": "홀딩",
+      "marketScore": -16,
+      "nextDayReturn": 1.5162,
+      "portfolioAction": "보유",
+      "portfolioScore": -15
+    },
+    {
+      "date": "2025-03-14",
+      "forwardReturn20d": -9.7899,
+      "marketAction": "홀딩",
+      "marketScore": -15,
+      "nextDayReturn": 1.0655,
+      "portfolioAction": "보유",
+      "portfolioScore": -13
+    },
+    {
+      "date": "2025-03-17",
+      "forwardReturn20d": -10.2678,
+      "marketAction": "홀딩",
+      "marketScore": -19,
+      "nextDayReturn": 0.2312,
+      "portfolioAction": "보유",
+      "portfolioScore": -15
+    },
+    {
+      "date": "2025-03-18",
+      "forwardReturn20d": -9.7186,
+      "marketAction": "매도",
+      "marketScore": -29,
+      "nextDayReturn": -0.3691,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -27
+    },
+    {
+      "date": "2025-03-19",
+      "forwardReturn20d": -11.4075,
+      "marketAction": "홀딩",
+      "marketScore": -6,
+      "nextDayReturn": 0.9227,
+      "portfolioAction": "보유",
+      "portfolioScore": -7
+    },
+    {
+      "date": "2025-03-20",
+      "forwardReturn20d": -11.1068,
+      "marketAction": "홀딩",
+      "marketScore": -8,
+      "nextDayReturn": -0.6035,
+      "portfolioAction": "보유",
+      "portfolioScore": -7
+    },
+    {
+      "date": "2025-03-21",
+      "forwardReturn20d": -10.7453,
+      "marketAction": "홀딩",
+      "marketScore": -13,
+      "nextDayReturn": -0.3952,
+      "portfolioAction": "보유",
+      "portfolioScore": -12
+    },
+    {
+      "date": "2025-03-24",
+      "forwardReturn20d": -10.7512,
+      "marketAction": "홀딩",
+      "marketScore": -2,
+      "nextDayReturn": -0.2793,
+      "portfolioAction": "보유",
+      "portfolioScore": -5
+    },
+    {
+      "date": "2025-03-25",
+      "forwardReturn20d": -11.8214,
+      "marketAction": "홀딩",
+      "marketScore": -8,
+      "nextDayReturn": 0.297,
+      "portfolioAction": "보유",
+      "portfolioScore": -12
+    },
+    {
+      "date": "2025-03-26",
+      "forwardReturn20d": -9.7279,
+      "marketAction": "홀딩",
+      "marketScore": -17,
+      "nextDayReturn": -2.5372,
+      "portfolioAction": "보유",
+      "portfolioScore": -18
+    },
+    {
+      "date": "2025-03-27",
+      "forwardReturn20d": -7.3043,
+      "marketAction": "매도",
+      "marketScore": -20,
+      "nextDayReturn": -1.7917,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -21
+    },
+    {
+      "date": "2025-03-28",
+      "forwardReturn20d": -3.1307,
+      "marketAction": "매도",
+      "marketScore": -29,
+      "nextDayReturn": -2.977,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -29
+    },
+    {
+      "date": "2025-03-31",
+      "forwardReturn20d": -0.7375,
+      "marketAction": "매도",
+      "marketScore": -39,
+      "nextDayReturn": 0.7866,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -36
+    },
+    {
+      "date": "2025-04-01",
+      "forwardReturn20d": 0.115,
+      "marketAction": "매도",
+      "marketScore": -35,
+      "nextDayReturn": -0.3632,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -33
+    },
+    {
+      "date": "2025-04-02",
+      "forwardReturn20d": -1.022,
+      "marketAction": "매도",
+      "marketScore": -37,
+      "nextDayReturn": -1.4586,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -36
+    },
+    {
+      "date": "2025-04-03",
+      "forwardReturn20d": 1.2042,
+      "marketAction": "매도",
+      "marketScore": -53,
+      "nextDayReturn": -2.558,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -53
+    },
+    {
+      "date": "2025-04-04",
+      "forwardReturn20d": 4.9061,
+      "marketAction": "매도",
+      "marketScore": -55,
+      "nextDayReturn": -7.476,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -57
+    },
+    {
+      "date": "2025-04-07",
+      "forwardReturn20d": 14.6353,
+      "marketAction": "매도",
+      "marketScore": -59,
+      "nextDayReturn": 3.1675,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -70
+    },
+    {
+      "date": "2025-04-08",
+      "forwardReturn20d": 11.0762,
+      "marketAction": "매도",
+      "marketScore": -64,
+      "nextDayReturn": -2.3458,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -68
+    },
+    {
+      "date": "2025-04-09",
+      "forwardReturn20d": 16.7973,
+      "marketAction": "매도",
+      "marketScore": -53,
+      "nextDayReturn": 8.0563,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -75
+    },
+    {
+      "date": "2025-04-10",
+      "forwardReturn20d": 9.1995,
+      "marketAction": "매도",
+      "marketScore": -55,
+      "nextDayReturn": -0.9198,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -58
+    },
+    {
+      "date": "2025-04-11",
+      "forwardReturn20d": 13.1684,
+      "marketAction": "매도",
+      "marketScore": -56,
+      "nextDayReturn": 0.5142,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -66
+    },
+    {
+      "date": "2025-04-14",
+      "forwardReturn20d": 11.1201,
+      "marketAction": "매도",
+      "marketScore": -50,
+      "nextDayReturn": 0.8136,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -55
+    },
+    {
+      "date": "2025-04-15",
+      "forwardReturn20d": 10.5374,
+      "marketAction": "매도",
+      "marketScore": -46,
+      "nextDayReturn": -2.3693,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -49
+    },
+    {
+      "date": "2025-04-16",
+      "forwardReturn20d": 11.757,
+      "marketAction": "매도",
+      "marketScore": -57,
+      "nextDayReturn": 1.1862,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -60
+    },
+    {
+      "date": "2025-04-17",
+      "forwardReturn20d": 11.584,
+      "marketAction": "매도",
+      "marketScore": -41,
+      "nextDayReturn": -0.3041,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -47
+    },
+    {
+      "date": "2025-04-21",
+      "forwardReturn20d": 11.2099,
+      "marketAction": "매도",
+      "marketScore": -56,
+      "nextDayReturn": -1.5461,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -60
+    },
+    {
+      "date": "2025-04-22",
+      "forwardReturn20d": 13.0308,
+      "marketAction": "매도",
+      "marketScore": -45,
+      "nextDayReturn": 2.7653,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -59
+    },
+    {
+      "date": "2025-04-23",
+      "forwardReturn20d": 10.4126,
+      "marketAction": "매도",
+      "marketScore": -38,
+      "nextDayReturn": 0.0797,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -52
+    },
+    {
+      "date": "2025-04-24",
+      "forwardReturn20d": 10.339,
+      "marketAction": "매도",
+      "marketScore": -31,
+      "nextDayReturn": 2.6518,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -48
+    },
+    {
+      "date": "2025-04-25",
+      "forwardReturn20d": 8.4172,
+      "marketAction": "홀딩",
+      "marketScore": -12,
+      "nextDayReturn": -0.5914,
+      "portfolioAction": "보유",
+      "portfolioScore": -17
+    },
+    {
+      "date": "2025-04-28",
+      "forwardReturn20d": 10.578,
+      "marketAction": "매도",
+      "marketScore": -32,
+      "nextDayReturn": 1.5291,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -50
+    },
+    {
+      "date": "2025-04-29",
+      "forwardReturn20d": 7.0465,
+      "marketAction": "매도",
+      "marketScore": -22,
+      "nextDayReturn": -1.5436,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -26
+    },
+    {
+      "date": "2025-04-30",
+      "forwardReturn20d": 8.3509,
+      "marketAction": "홀딩",
+      "marketScore": -18,
+      "nextDayReturn": 0.7525,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -23
+    },
+    {
+      "date": "2025-05-01",
+      "forwardReturn20d": 10.6505,
+      "marketAction": "홀딩",
+      "marketScore": -10,
+      "nextDayReturn": 1.03,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -20
+    },
+    {
+      "date": "2025-05-02",
+      "forwardReturn20d": 10.6505,
+      "marketAction": "홀딩",
+      "marketScore": -6,
+      "nextDayReturn": 1.03,
+      "portfolioAction": "보유",
+      "portfolioScore": -17
+    },
+    {
+      "date": "2025-05-05",
+      "forwardReturn20d": 10.6321,
+      "marketAction": "홀딩",
+      "marketScore": 10,
+      "nextDayReturn": 0.551,
+      "portfolioAction": "보유",
+      "portfolioScore": -10
+    },
+    {
+      "date": "2025-05-06",
+      "forwardReturn20d": 10.6321,
+      "marketAction": "홀딩",
+      "marketScore": 7,
+      "nextDayReturn": 0.551,
+      "portfolioAction": "보유",
+      "portfolioScore": -13
+    },
+    {
+      "date": "2025-05-07",
+      "forwardReturn20d": 10.6321,
+      "marketAction": "신규 매수",
+      "marketScore": 34,
+      "nextDayReturn": 0.551,
+      "portfolioAction": "보유",
+      "portfolioScore": 16
+    },
+    {
+      "date": "2025-05-08",
+      "forwardReturn20d": 10.9023,
+      "marketAction": "신규 매수",
+      "marketScore": 33,
+      "nextDayReturn": 0.0689,
+      "portfolioAction": "보유",
+      "portfolioScore": 16
+    },
+    {
+      "date": "2025-05-09",
+      "forwardReturn20d": 12.2548,
+      "marketAction": "신규 매수",
+      "marketScore": 35,
+      "nextDayReturn": 2.5148,
+      "portfolioAction": "보유",
+      "portfolioScore": 20
+    },
+    {
+      "date": "2025-05-12",
+      "forwardReturn20d": 10.7094,
+      "marketAction": "신규 매수",
+      "marketScore": 66,
+      "nextDayReturn": 1.2537,
+      "portfolioAction": "보유",
+      "portfolioScore": 54
+    },
+    {
+      "date": "2025-05-13",
+      "forwardReturn20d": 8.8045,
+      "marketAction": "신규 매수",
+      "marketScore": 65,
+      "nextDayReturn": 2.5917,
+      "portfolioAction": "보유",
+      "portfolioScore": 51
+    },
+    {
+      "date": "2025-05-14",
+      "forwardReturn20d": 5.0485,
+      "marketAction": "신규 매수",
+      "marketScore": 57,
+      "nextDayReturn": -1.2572,
+      "portfolioAction": "보유",
+      "portfolioScore": 49
+    },
+    {
+      "date": "2025-05-15",
+      "forwardReturn20d": 8.6673,
+      "marketAction": "신규 매수",
+      "marketScore": 65,
+      "nextDayReturn": 0.3244,
+      "portfolioAction": "보유",
+      "portfolioScore": 51
+    },
+    {
+      "date": "2025-05-16",
+      "forwardReturn20d": 9.0434,
+      "marketAction": "신규 매수",
+      "marketScore": 60,
+      "nextDayReturn": -1.3463,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 52
+    },
+    {
+      "date": "2025-05-19",
+      "forwardReturn20d": 11.2519,
+      "marketAction": "신규 매수",
+      "marketScore": 68,
+      "nextDayReturn": 1.0121,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 61
+    },
+    {
+      "date": "2025-05-20",
+      "forwardReturn20d": 10.7671,
+      "marketAction": "신규 매수",
+      "marketScore": 68,
+      "nextDayReturn": -0.1506,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 58
+    },
+    {
+      "date": "2025-05-21",
+      "forwardReturn20d": 10.9664,
+      "marketAction": "신규 매수",
+      "marketScore": 55,
+      "nextDayReturn": -1.0915,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 50
+    },
+    {
+      "date": "2025-05-22",
+      "forwardReturn20d": 12.1651,
+      "marketAction": "신규 매수",
+      "marketScore": 58,
+      "nextDayReturn": -0.0668,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 46
+    },
+    {
+      "date": "2025-05-23",
+      "forwardReturn20d": 15.1329,
+      "marketAction": "신규 매수",
+      "marketScore": 57,
+      "nextDayReturn": 0.4384,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 45
+    },
+    {
+      "date": "2025-05-27",
+      "forwardReturn20d": 15.3658,
+      "marketAction": "신규 매수",
+      "marketScore": 73,
+      "nextDayReturn": 1.0749,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 57
+    },
+    {
+      "date": "2025-05-28",
+      "forwardReturn20d": 14.017,
+      "marketAction": "신규 매수",
+      "marketScore": 69,
+      "nextDayReturn": 1.3256,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 57
+    },
+    {
+      "date": "2025-05-29",
+      "forwardReturn20d": 13.7084,
+      "marketAction": "신규 매수",
+      "marketScore": 72,
+      "nextDayReturn": -1.5435,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 63
+    },
+    {
+      "date": "2025-05-30",
+      "forwardReturn20d": 15.3176,
+      "marketAction": "신규 매수",
+      "marketScore": 68,
+      "nextDayReturn": -0.3836,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 59
+    },
+    {
+      "date": "2025-06-02",
+      "forwardReturn20d": 14.1312,
+      "marketAction": "신규 매수",
+      "marketScore": 70,
+      "nextDayReturn": 2.8538,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 62
+    },
+    {
+      "date": "2025-06-03",
+      "forwardReturn20d": 11.1158,
+      "marketAction": "신규 매수",
+      "marketScore": 68,
+      "nextDayReturn": 1.0595,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 63
+    },
+    {
+      "date": "2025-06-04",
+      "forwardReturn20d": 11.1158,
+      "marketAction": "신규 매수",
+      "marketScore": 72,
+      "nextDayReturn": 1.0595,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 69
+    },
+    {
+      "date": "2025-06-05",
+      "forwardReturn20d": 8.3273,
+      "marketAction": "신규 매수",
+      "marketScore": 70,
+      "nextDayReturn": 0.78,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 63
+    },
+    {
+      "date": "2025-06-06",
+      "forwardReturn20d": 7.6127,
+      "marketAction": "신규 매수",
+      "marketScore": 67,
+      "nextDayReturn": 1.2253,
+      "portfolioAction": "보유",
+      "portfolioScore": 58
+    },
+    {
+      "date": "2025-06-09",
+      "forwardReturn20d": 7.6127,
+      "marketAction": "신규 매수",
+      "marketScore": 65,
+      "nextDayReturn": 1.2253,
+      "portfolioAction": "보유",
+      "portfolioScore": 59
+    },
+    {
+      "date": "2025-06-10",
+      "forwardReturn20d": 7.3496,
+      "marketAction": "신규 매수",
+      "marketScore": 63,
+      "nextDayReturn": 1.1764,
+      "portfolioAction": "보유",
+      "portfolioScore": 57
+    },
+    {
+      "date": "2025-06-11",
+      "forwardReturn20d": 6.2654,
+      "marketAction": "신규 매수",
+      "marketScore": 65,
+      "nextDayReturn": -0.4664,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 60
+    },
+    {
+      "date": "2025-06-12",
+      "forwardReturn20d": 7.5356,
+      "marketAction": "신규 매수",
+      "marketScore": 70,
+      "nextDayReturn": -0.8655,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 64
+    },
+    {
+      "date": "2025-06-13",
+      "forwardReturn20d": 8.731,
+      "marketAction": "신규 매수",
+      "marketScore": 51,
+      "nextDayReturn": 1.9974,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 50
+    },
+    {
+      "date": "2025-06-16",
+      "forwardReturn20d": 6.6288,
+      "marketAction": "신규 매수",
+      "marketScore": 70,
+      "nextDayReturn": 0.7396,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 66
+    },
+    {
+      "date": "2025-06-17",
+      "forwardReturn20d": 7.1672,
+      "marketAction": "신규 매수",
+      "marketScore": 55,
+      "nextDayReturn": 0.5653,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 56
+    },
+    {
+      "date": "2025-06-18",
+      "forwardReturn20d": 6.7866,
+      "marketAction": "신규 매수",
+      "marketScore": 55,
+      "nextDayReturn": 0.6347,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 55
+    },
+    {
+      "date": "2025-06-20",
+      "forwardReturn20d": 5.6397,
+      "marketAction": "신규 매수",
+      "marketScore": 48,
+      "nextDayReturn": -0.0255,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 51
+    },
+    {
+      "date": "2025-06-23",
+      "forwardReturn20d": 5.8018,
+      "marketAction": "신규 매수",
+      "marketScore": 59,
+      "nextDayReturn": 2.4735,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 57
+    },
+    {
+      "date": "2025-06-24",
+      "forwardReturn20d": 1.5833,
+      "marketAction": "신규 매수",
+      "marketScore": 70,
+      "nextDayReturn": 1.0557,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 67
+    },
+    {
+      "date": "2025-06-25",
+      "forwardReturn20d": 0.1241,
+      "marketAction": "신규 매수",
+      "marketScore": 63,
+      "nextDayReturn": -0.3812,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 63
+    },
+    {
+      "date": "2025-06-26",
+      "forwardReturn20d": 0.9772,
+      "marketAction": "신규 매수",
+      "marketScore": 64,
+      "nextDayReturn": -0.1026,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 64
+    },
+    {
+      "date": "2025-06-27",
+      "forwardReturn20d": 1.0941,
+      "marketAction": "신규 매수",
+      "marketScore": 66,
+      "nextDayReturn": 1.0014,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 67
+    },
+    {
+      "date": "2025-06-30",
+      "forwardReturn20d": 1.9952,
+      "marketAction": "신규 매수",
+      "marketScore": 77,
+      "nextDayReturn": -0.1995,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 73
+    },
+    {
+      "date": "2025-07-01",
+      "forwardReturn20d": 2.9036,
+      "marketAction": "신규 매수",
+      "marketScore": 71,
+      "nextDayReturn": -1.3038,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 67
+    },
+    {
+      "date": "2025-07-02",
+      "forwardReturn20d": 4.11,
+      "marketAction": "신규 매수",
+      "marketScore": 71,
+      "nextDayReturn": 0.2963,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 70
+    },
+    {
+      "date": "2025-07-03",
+      "forwardReturn20d": 4.7339,
+      "marketAction": "신규 매수",
+      "marketScore": 62,
+      "nextDayReturn": -1.3678,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 63
+    },
+    {
+      "date": "2025-07-07",
+      "forwardReturn20d": 3.2981,
+      "marketAction": "신규 매수",
+      "marketScore": 49,
+      "nextDayReturn": 0.9832,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 52
+    },
+    {
+      "date": "2025-07-08",
+      "forwardReturn20d": 4.1999,
+      "marketAction": "신규 매수",
+      "marketScore": 58,
+      "nextDayReturn": 0.1542,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 60
+    },
+    {
+      "date": "2025-07-09",
+      "forwardReturn20d": 3.4922,
+      "marketAction": "신규 매수",
+      "marketScore": 58,
+      "nextDayReturn": 0.704,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 59
+    },
+    {
+      "date": "2025-07-10",
+      "forwardReturn20d": 2.8081,
+      "marketAction": "신규 매수",
+      "marketScore": 59,
+      "nextDayReturn": 0.2243,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 60
+    },
+    {
+      "date": "2025-07-11",
+      "forwardReturn20d": 2.658,
+      "marketAction": "신규 매수",
+      "marketScore": 54,
+      "nextDayReturn": 0.0181,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 58
+    },
+    {
+      "date": "2025-07-14",
+      "forwardReturn20d": 3.3124,
+      "marketAction": "신규 매수",
+      "marketScore": 50,
+      "nextDayReturn": 1.2711,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 53
+    },
+    {
+      "date": "2025-07-15",
+      "forwardReturn20d": 1.4897,
+      "marketAction": "신규 매수",
+      "marketScore": 49,
+      "nextDayReturn": 0.2096,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 52
+    },
+    {
+      "date": "2025-07-16",
+      "forwardReturn20d": 2.404,
+      "marketAction": "신규 매수",
+      "marketScore": 48,
+      "nextDayReturn": -0.6264,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 52
+    },
+    {
+      "date": "2025-07-17",
+      "forwardReturn20d": 2.5698,
+      "marketAction": "신규 매수",
+      "marketScore": 50,
+      "nextDayReturn": 0.2503,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 52
+    },
+    {
+      "date": "2025-07-18",
+      "forwardReturn20d": 0.0933,
+      "marketAction": "신규 매수",
+      "marketScore": 50,
+      "nextDayReturn": 0.1232,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 52
+    },
+    {
+      "date": "2025-07-21",
+      "forwardReturn20d": -0.6757,
+      "marketAction": "신규 매수",
+      "marketScore": 52,
+      "nextDayReturn": -1.5824,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 55
+    },
+    {
+      "date": "2025-07-22",
+      "forwardReturn20d": -0.8676,
+      "marketAction": "신규 매수",
+      "marketScore": 50,
+      "nextDayReturn": -0.3868,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 51
+    },
+    {
+      "date": "2025-07-23",
+      "forwardReturn20d": -0.4,
+      "marketAction": "신규 매수",
+      "marketScore": 54,
+      "nextDayReturn": 0.4187,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 53
+    },
+    {
+      "date": "2025-07-24",
+      "forwardReturn20d": -0.1634,
+      "marketAction": "신규 매수",
+      "marketScore": 59,
+      "nextDayReturn": 0.0405,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 58
+    },
+    {
+      "date": "2025-07-25",
+      "forwardReturn20d": 1.3938,
+      "marketAction": "신규 매수",
+      "marketScore": 64,
+      "nextDayReturn": 1.8968,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 62
+    },
+    {
+      "date": "2025-07-28",
+      "forwardReturn20d": -0.6183,
+      "marketAction": "신규 매수",
+      "marketScore": 60,
+      "nextDayReturn": 0.6908,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 60
+    },
+    {
+      "date": "2025-07-29",
+      "forwardReturn20d": -0.9804,
+      "marketAction": "신규 매수",
+      "marketScore": 53,
+      "nextDayReturn": -0.1472,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 55
+    },
+    {
+      "date": "2025-07-30",
+      "forwardReturn20d": -1.0647,
+      "marketAction": "신규 매수",
+      "marketScore": 61,
+      "nextDayReturn": 0.7994,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 57
+    },
+    {
+      "date": "2025-07-31",
+      "forwardReturn20d": -1.667,
+      "marketAction": "신규 매수",
+      "marketScore": 56,
+      "nextDayReturn": -2.9923,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 52
+    },
+    {
+      "date": "2025-08-01",
+      "forwardReturn20d": -0.5847,
+      "marketAction": "홀딩",
+      "marketScore": 24,
+      "nextDayReturn": 0.3981,
+      "portfolioAction": "보유",
+      "portfolioScore": 27
+    },
+    {
+      "date": "2025-08-04",
+      "forwardReturn20d": -0.5993,
+      "marketAction": "신규 매수",
+      "marketScore": 53,
+      "nextDayReturn": 1.8511,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 50
+    },
+    {
+      "date": "2025-08-05",
+      "forwardReturn20d": -1.9214,
+      "marketAction": "신규 매수",
+      "marketScore": 41,
+      "nextDayReturn": -0.5329,
+      "portfolioAction": "보유",
+      "portfolioScore": 36
+    },
+    {
+      "date": "2025-08-06",
+      "forwardReturn20d": -1.422,
+      "marketAction": "신규 매수",
+      "marketScore": 46,
+      "nextDayReturn": 0.0827,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 42
+    },
+    {
+      "date": "2025-08-07",
+      "forwardReturn20d": -0.3347,
+      "marketAction": "신규 매수",
+      "marketScore": 53,
+      "nextDayReturn": 0.0521,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 50
+    },
+    {
+      "date": "2025-08-08",
+      "forwardReturn20d": -0.2449,
+      "marketAction": "신규 매수",
+      "marketScore": 52,
+      "nextDayReturn": 0.6936,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 48
+    },
+    {
+      "date": "2025-08-11",
+      "forwardReturn20d": 0.1863,
+      "marketAction": "신규 매수",
+      "marketScore": 47,
+      "nextDayReturn": -0.4264,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 47
+    },
+    {
+      "date": "2025-08-12",
+      "forwardReturn20d": 3.3638,
+      "marketAction": "신규 매수",
+      "marketScore": 63,
+      "nextDayReturn": 1.1126,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 59
+    },
+    {
+      "date": "2025-08-13",
+      "forwardReturn20d": 3.4791,
+      "marketAction": "신규 매수",
+      "marketScore": 68,
+      "nextDayReturn": -0.4844,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 68
+    },
+    {
+      "date": "2025-08-14",
+      "forwardReturn20d": 5.699,
+      "marketAction": "신규 매수",
+      "marketScore": 58,
+      "nextDayReturn": -2.1253,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 58
+    },
+    {
+      "date": "2025-08-15",
+      "forwardReturn20d": 8.6919,
+      "marketAction": "신규 매수",
+      "marketScore": 46,
+      "nextDayReturn": -0.6362,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 45
+    },
+    {
+      "date": "2025-08-18",
+      "forwardReturn20d": 8.6919,
+      "marketAction": "신규 매수",
+      "marketScore": 51,
+      "nextDayReturn": -0.6362,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 49
+    },
+    {
+      "date": "2025-08-19",
+      "forwardReturn20d": 10.5543,
+      "marketAction": "신규 매수",
+      "marketScore": 35,
+      "nextDayReturn": -1.7789,
+      "portfolioAction": "보유",
+      "portfolioScore": 30
+    },
+    {
+      "date": "2025-08-20",
+      "forwardReturn20d": 11.6097,
+      "marketAction": "신규 매수",
+      "marketScore": 31,
+      "nextDayReturn": 0.0825,
+      "portfolioAction": "보유",
+      "portfolioScore": 23
+    },
+    {
+      "date": "2025-08-21",
+      "forwardReturn20d": 13.161,
+      "marketAction": "신규 매수",
+      "marketScore": 26,
+      "nextDayReturn": 0.6769,
+      "portfolioAction": "보유",
+      "portfolioScore": 17
+    },
+    {
+      "date": "2025-08-22",
+      "forwardReturn20d": 13.2799,
+      "marketAction": "신규 매수",
+      "marketScore": 52,
+      "nextDayReturn": 1.5821,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 45
+    },
+    {
+      "date": "2025-08-25",
+      "forwardReturn20d": 12.2133,
+      "marketAction": "신규 매수",
+      "marketScore": 48,
+      "nextDayReturn": -0.1166,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 41
+    },
+    {
+      "date": "2025-08-26",
+      "forwardReturn20d": 12.9568,
+      "marketAction": "신규 매수",
+      "marketScore": 51,
+      "nextDayReturn": 0.3119,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 45
+    },
+    {
+      "date": "2025-08-27",
+      "forwardReturn20d": 12.0024,
+      "marketAction": "신규 매수",
+      "marketScore": 52,
+      "nextDayReturn": -0.2209,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 47
+    },
+    {
+      "date": "2025-08-28",
+      "forwardReturn20d": 11.2311,
+      "marketAction": "신규 매수",
+      "marketScore": 53,
+      "nextDayReturn": 0.1847,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 46
+    },
+    {
+      "date": "2025-08-29",
+      "forwardReturn20d": 9.141,
+      "marketAction": "신규 매수",
+      "marketScore": 36,
+      "nextDayReturn": -1.9437,
+      "portfolioAction": "보유",
+      "portfolioScore": 32
+    },
+    {
+      "date": "2025-09-02",
+      "forwardReturn20d": 12.1951,
+      "marketAction": "신규 매수",
+      "marketScore": 30,
+      "nextDayReturn": 0.4867,
+      "portfolioAction": "보유",
+      "portfolioScore": 28
+    },
+    {
+      "date": "2025-09-03",
+      "forwardReturn20d": 12.6518,
+      "marketAction": "신규 매수",
+      "marketScore": 37,
+      "nextDayReturn": -0.0626,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 35
+    },
+    {
+      "date": "2025-09-04",
+      "forwardReturn20d": 16.3112,
+      "marketAction": "신규 매수",
+      "marketScore": 37,
+      "nextDayReturn": 1.2,
+      "portfolioAction": "보유",
+      "portfolioScore": 28
+    },
+    {
+      "date": "2025-09-05",
+      "forwardReturn20d": 19.7523,
+      "marketAction": "신규 매수",
+      "marketScore": 47,
+      "nextDayReturn": 0.1404,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 42
+    },
+    {
+      "date": "2025-09-08",
+      "forwardReturn20d": 18.3455,
+      "marketAction": "신규 매수",
+      "marketScore": 42,
+      "nextDayReturn": 1.1352,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 38
+    },
+    {
+      "date": "2025-09-09",
+      "forwardReturn20d": 16.5776,
+      "marketAction": "신규 매수",
+      "marketScore": 56,
+      "nextDayReturn": 2.7291,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 50
+    },
+    {
+      "date": "2025-09-10",
+      "forwardReturn20d": 15.6928,
+      "marketAction": "신규 매수",
+      "marketScore": 68,
+      "nextDayReturn": 1.2252,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 64
+    },
+    {
+      "date": "2025-09-11",
+      "forwardReturn20d": 16.0092,
+      "marketAction": "신규 매수",
+      "marketScore": 69,
+      "nextDayReturn": 1.6026,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 64
+    },
+    {
+      "date": "2025-09-12",
+      "forwardReturn20d": 13.5209,
+      "marketAction": "신규 매수",
+      "marketScore": 70,
+      "nextDayReturn": 0.5248,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 66
+    },
+    {
+      "date": "2025-09-15",
+      "forwardReturn20d": 14.885,
+      "marketAction": "신규 매수",
+      "marketScore": 64,
+      "nextDayReturn": 0.9958,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 62
+    },
+    {
+      "date": "2025-09-16",
+      "forwardReturn20d": 13.4834,
+      "marketAction": "신규 매수",
+      "marketScore": 70,
+      "nextDayReturn": -0.8451,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 69
+    },
+    {
+      "date": "2025-09-17",
+      "forwardReturn20d": 14.3727,
+      "marketAction": "신규 매수",
+      "marketScore": 60,
+      "nextDayReturn": 1.3827,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 61
+    },
+    {
+      "date": "2025-09-18",
+      "forwardReturn20d": 13.834,
+      "marketAction": "신규 매수",
+      "marketScore": 65,
+      "nextDayReturn": 0.7254,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 62
+    },
+    {
+      "date": "2025-09-19",
+      "forwardReturn20d": 15.9353,
+      "marketAction": "신규 매수",
+      "marketScore": 59,
+      "nextDayReturn": 0.6289,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 60
+    },
+    {
+      "date": "2025-09-22",
+      "forwardReturn20d": 17.5706,
+      "marketAction": "신규 매수",
+      "marketScore": 61,
+      "nextDayReturn": 0.4941,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 64
+    },
+    {
+      "date": "2025-09-23",
+      "forwardReturn20d": 16.9525,
+      "marketAction": "신규 매수",
+      "marketScore": 52,
+      "nextDayReturn": -0.5493,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 55
+    },
+    {
+      "date": "2025-09-24",
+      "forwardReturn20d": 19.986,
+      "marketAction": "신규 매수",
+      "marketScore": 56,
+      "nextDayReturn": -0.8623,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 58
+    },
+    {
+      "date": "2025-09-25",
+      "forwardReturn20d": 22.628,
+      "marketAction": "신규 매수",
+      "marketScore": 52,
+      "nextDayReturn": -1.6112,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 54
+    },
+    {
+      "date": "2025-09-26",
+      "forwardReturn20d": 25.3589,
+      "marketAction": "신규 매수",
+      "marketScore": 56,
+      "nextDayReturn": 0.702,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 56
+    },
+    {
+      "date": "2025-09-29",
+      "forwardReturn20d": 28.6619,
+      "marketAction": "신규 매수",
+      "marketScore": 66,
+      "nextDayReturn": 0.3625,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 64
+    },
+    {
+      "date": "2025-09-30",
+      "forwardReturn20d": 26.324,
+      "marketAction": "신규 매수",
+      "marketScore": 57,
+      "nextDayReturn": 0.8216,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 57
+    },
+    {
+      "date": "2025-10-01",
+      "forwardReturn20d": 21.4542,
+      "marketAction": "신규 매수",
+      "marketScore": 58,
+      "nextDayReturn": 3.01,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 62
+    },
+    {
+      "date": "2025-10-02",
+      "forwardReturn20d": 19.2789,
+      "marketAction": "신규 매수",
+      "marketScore": 62,
+      "nextDayReturn": 4.0491,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 61
+    },
+    {
+      "date": "2025-10-03",
+      "forwardReturn20d": 11.8582,
+      "marketAction": "신규 매수",
+      "marketScore": 57,
+      "nextDayReturn": -0.9,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 58
+    },
+    {
+      "date": "2025-10-06",
+      "forwardReturn20d": 11.8582,
+      "marketAction": "신규 매수",
+      "marketScore": 57,
+      "nextDayReturn": -0.9,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 59
+    },
+    {
+      "date": "2025-10-07",
+      "forwardReturn20d": 11.8582,
+      "marketAction": "신규 매수",
+      "marketScore": 53,
+      "nextDayReturn": -0.9,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 53
+    },
+    {
+      "date": "2025-10-08",
+      "forwardReturn20d": 11.8582,
+      "marketAction": "신규 매수",
+      "marketScore": 63,
+      "nextDayReturn": -0.9,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 61
+    },
+    {
+      "date": "2025-10-09",
+      "forwardReturn20d": 11.8582,
+      "marketAction": "신규 매수",
+      "marketScore": 60,
+      "nextDayReturn": -0.9,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 56
+    },
+    {
+      "date": "2025-10-10",
+      "forwardReturn20d": 11.8582,
+      "marketAction": "홀딩",
+      "marketScore": 24,
+      "nextDayReturn": -0.9,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 39
+    },
+    {
+      "date": "2025-10-13",
+      "forwardReturn20d": 15.5009,
+      "marketAction": "신규 매수",
+      "marketScore": 43,
+      "nextDayReturn": -0.2543,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 55
+    },
+    {
+      "date": "2025-10-14",
+      "forwardReturn20d": 17.3163,
+      "marketAction": "신규 매수",
+      "marketScore": 26,
+      "nextDayReturn": 1.9643,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 39
+    },
+    {
+      "date": "2025-10-15",
+      "forwardReturn20d": 13.8016,
+      "marketAction": "신규 매수",
+      "marketScore": 32,
+      "nextDayReturn": 1.4327,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 48
+    },
+    {
+      "date": "2025-10-16",
+      "forwardReturn20d": 12.4229,
+      "marketAction": "홀딩",
+      "marketScore": 14,
+      "nextDayReturn": -0.4937,
+      "portfolioAction": "보유",
+      "portfolioScore": 28
+    },
+    {
+      "date": "2025-10-17",
+      "forwardReturn20d": 7.3456,
+      "marketAction": "홀딩",
+      "marketScore": 23,
+      "nextDayReturn": 1.7757,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 39
+    },
+    {
+      "date": "2025-10-20",
+      "forwardReturn20d": 7.5858,
+      "marketAction": "신규 매수",
+      "marketScore": 45,
+      "nextDayReturn": -0.1344,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 58
+    },
+    {
+      "date": "2025-10-21",
+      "forwardReturn20d": 4.5515,
+      "marketAction": "신규 매수",
+      "marketScore": 35,
+      "nextDayReturn": -0.114,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 46
+    },
+    {
+      "date": "2025-10-22",
+      "forwardReturn20d": 3.6067,
+      "marketAction": "신규 매수",
+      "marketScore": 35,
+      "nextDayReturn": 0.9917,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 47
+    },
+    {
+      "date": "2025-10-23",
+      "forwardReturn20d": 5.2089,
+      "marketAction": "신규 매수",
+      "marketScore": 41,
+      "nextDayReturn": 2.4791,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 54
+    },
+    {
+      "date": "2025-10-24",
+      "forwardReturn20d": -3.2057,
+      "marketAction": "신규 매수",
+      "marketScore": 47,
+      "nextDayReturn": 1.9688,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 61
+    },
+    {
+      "date": "2025-10-27",
+      "forwardReturn20d": -4.5135,
+      "marketAction": "신규 매수",
+      "marketScore": 57,
+      "nextDayReturn": -0.0172,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 63
+    },
+    {
+      "date": "2025-10-28",
+      "forwardReturn20d": -2.7794,
+      "marketAction": "신규 매수",
+      "marketScore": 50,
+      "nextDayReturn": 1.8376,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 59
+    },
+    {
+      "date": "2025-10-29",
+      "forwardReturn20d": -3.2438,
+      "marketAction": "신규 매수",
+      "marketScore": 52,
+      "nextDayReturn": 1.1055,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 61
+    },
+    {
+      "date": "2025-10-30",
+      "forwardReturn20d": -3.2148,
+      "marketAction": "신규 매수",
+      "marketScore": 45,
+      "nextDayReturn": 0.3232,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 53
+    },
+    {
+      "date": "2025-10-31",
+      "forwardReturn20d": -4.2432,
+      "marketAction": "신규 매수",
+      "marketScore": 42,
+      "nextDayReturn": 2.9901,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 55
+    },
+    {
+      "date": "2025-11-03",
+      "forwardReturn20d": -7.6258,
+      "marketAction": "신규 매수",
+      "marketScore": 43,
+      "nextDayReturn": -1.3579,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 55
+    },
+    {
+      "date": "2025-11-04",
+      "forwardReturn20d": -4.9709,
+      "marketAction": "홀딩",
+      "marketScore": 23,
+      "nextDayReturn": -2.678,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 40
+    },
+    {
+      "date": "2025-11-05",
+      "forwardReturn20d": -1.2236,
+      "marketAction": "신규 매수",
+      "marketScore": 32,
+      "nextDayReturn": 1.3014,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 48
+    },
+    {
+      "date": "2025-11-06",
+      "forwardReturn20d": -3.0273,
+      "marketAction": "홀딩",
+      "marketScore": 23,
+      "nextDayReturn": -2.142,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 43
+    },
+    {
+      "date": "2025-11-07",
+      "forwardReturn20d": 0.5007,
+      "marketAction": "홀딩",
+      "marketScore": 21,
+      "nextDayReturn": 2.1487,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 41
+    },
+    {
+      "date": "2025-11-10",
+      "forwardReturn20d": -0.8257,
+      "marketAction": "신규 매수",
+      "marketScore": 45,
+      "nextDayReturn": 1.1931,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 57
+    },
+    {
+      "date": "2025-11-11",
+      "forwardReturn20d": -2.3577,
+      "marketAction": "신규 매수",
+      "marketScore": 37,
+      "nextDayReturn": -0.783,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 48
+    },
+    {
+      "date": "2025-11-12",
+      "forwardReturn20d": -1.4081,
+      "marketAction": "신규 매수",
+      "marketScore": 44,
+      "nextDayReturn": 0.1951,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 56
+    },
+    {
+      "date": "2025-11-13",
+      "forwardReturn20d": -1.8969,
+      "marketAction": "홀딩",
+      "marketScore": 3,
+      "nextDayReturn": -4.8147,
+      "portfolioAction": "보유",
+      "portfolioScore": 23
+    },
+    {
+      "date": "2025-11-14",
+      "forwardReturn20d": 4.035,
+      "marketAction": "홀딩",
+      "marketScore": 11,
+      "nextDayReturn": 2.0591,
+      "portfolioAction": "보유",
+      "portfolioScore": 23
+    },
+    {
+      "date": "2025-11-17",
+      "forwardReturn20d": -0.8379,
+      "marketAction": "홀딩",
+      "marketScore": -8,
+      "nextDayReturn": -2.863,
+      "portfolioAction": "보유",
+      "portfolioScore": 3
+    },
+    {
+      "date": "2025-11-18",
+      "forwardReturn20d": 0.2771,
+      "marketAction": "홀딩",
+      "marketScore": 5,
+      "nextDayReturn": -0.9231,
+      "portfolioAction": "보유",
+      "portfolioScore": 18
+    },
+    {
+      "date": "2025-11-19",
+      "forwardReturn20d": 2.4811,
+      "marketAction": "홀딩",
+      "marketScore": 3,
+      "nextDayReturn": 2.665,
+      "portfolioAction": "보유",
+      "portfolioScore": 16
+    },
+    {
+      "date": "2025-11-20",
+      "forwardReturn20d": -1.9713,
+      "marketAction": "매도",
+      "marketScore": -27,
+      "nextDayReturn": -5.5541,
+      "portfolioAction": "보유",
+      "portfolioScore": -19
+    },
+    {
+      "date": "2025-11-21",
+      "forwardReturn20d": 4.7417,
+      "marketAction": "홀딩",
+      "marketScore": -17,
+      "nextDayReturn": 0.6086,
+      "portfolioAction": "보유",
+      "portfolioScore": -8
+    },
+    {
+      "date": "2025-11-24",
+      "forwardReturn20d": 6.4363,
+      "marketAction": "홀딩",
+      "marketScore": 9,
+      "nextDayReturn": 1.8119,
+      "portfolioAction": "보유",
+      "portfolioScore": 14
+    },
+    {
+      "date": "2025-11-25",
+      "forwardReturn20d": 4.232,
+      "marketAction": "홀딩",
+      "marketScore": 21,
+      "nextDayReturn": 1.3425,
+      "portfolioAction": "보유",
+      "portfolioScore": 28
+    },
+    {
+      "date": "2025-11-26",
+      "forwardReturn20d": 1.9807,
+      "marketAction": "홀딩",
+      "marketScore": 19,
+      "nextDayReturn": 1.1237,
+      "portfolioAction": "보유",
+      "portfolioScore": 26
+    },
+    {
+      "date": "2025-11-28",
+      "forwardReturn20d": 3.3585,
+      "marketAction": "신규 매수",
+      "marketScore": 27,
+      "nextDayReturn": -0.8601,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 37
+    },
+    {
+      "date": "2025-12-01",
+      "forwardReturn20d": 4.0151,
+      "marketAction": "신규 매수",
+      "marketScore": 26,
+      "nextDayReturn": 1.542,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 36
+    },
+    {
+      "date": "2025-12-02",
+      "forwardReturn20d": 5.3277,
+      "marketAction": "신규 매수",
+      "marketScore": 30,
+      "nextDayReturn": 1.2028,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 41
+    },
+    {
+      "date": "2025-12-03",
+      "forwardReturn20d": 7.557,
+      "marketAction": "홀딩",
+      "marketScore": 24,
+      "nextDayReturn": -0.5364,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 39
+    },
+    {
+      "date": "2025-12-04",
+      "forwardReturn20d": 8.8387,
+      "marketAction": "홀딩",
+      "marketScore": 21,
+      "nextDayReturn": 1.476,
+      "portfolioAction": "보유",
+      "portfolioScore": 22
+    },
+    {
+      "date": "2025-12-05",
+      "forwardReturn20d": 7.8248,
+      "marketAction": "홀딩",
+      "marketScore": 24,
+      "nextDayReturn": 0.7744,
+      "portfolioAction": "보유",
+      "portfolioScore": 25
+    },
+    {
+      "date": "2025-12-08",
+      "forwardReturn20d": 6.7401,
+      "marketAction": "홀딩",
+      "marketScore": 22,
+      "nextDayReturn": -0.3754,
+      "portfolioAction": "보유",
+      "portfolioScore": 22
+    },
+    {
+      "date": "2025-12-09",
+      "forwardReturn20d": 6.5292,
+      "marketAction": "신규 매수",
+      "marketScore": 26,
+      "nextDayReturn": 0.183,
+      "portfolioAction": "보유",
+      "portfolioScore": 26
+    },
+    {
+      "date": "2025-12-10",
+      "forwardReturn20d": 7.9233,
+      "marketAction": "홀딩",
+      "marketScore": 23,
+      "nextDayReturn": -0.2916,
+      "portfolioAction": "보유",
+      "portfolioScore": 25
+    },
+    {
+      "date": "2025-12-11",
+      "forwardReturn20d": 9.1068,
+      "marketAction": "홀딩",
+      "marketScore": 33,
+      "nextDayReturn": 0.8681,
+      "portfolioAction": "보유",
+      "portfolioScore": 29
+    },
+    {
+      "date": "2025-12-12",
+      "forwardReturn20d": 9.5457,
+      "marketAction": "홀딩",
+      "marketScore": 24,
+      "nextDayReturn": -2.654,
+      "portfolioAction": "보유",
+      "portfolioScore": 23
+    },
+    {
+      "date": "2025-12-15",
+      "forwardReturn20d": 12.9112,
+      "marketAction": "홀딩",
+      "marketScore": 25,
+      "nextDayReturn": -1.7766,
+      "portfolioAction": "보유",
+      "portfolioScore": 13
+    },
+    {
+      "date": "2025-12-16",
+      "forwardReturn20d": 16.4397,
+      "marketAction": "신규 매수",
+      "marketScore": 35,
+      "nextDayReturn": 1.2192,
+      "portfolioAction": "보유",
+      "portfolioScore": 24
+    },
+    {
+      "date": "2025-12-17",
+      "forwardReturn20d": 15.4902,
+      "marketAction": "홀딩",
+      "marketScore": 5,
+      "nextDayReturn": -1.7822,
+      "portfolioAction": "보유",
+      "portfolioScore": 0
+    },
+    {
+      "date": "2025-12-18",
+      "forwardReturn20d": 16.1342,
+      "marketAction": "홀딩",
+      "marketScore": 6,
+      "nextDayReturn": 0.7969,
+      "portfolioAction": "보유",
+      "portfolioScore": -6
+    },
+    {
+      "date": "2025-12-19",
+      "forwardReturn20d": 15.1636,
+      "marketAction": "홀딩",
+      "marketScore": 37,
+      "nextDayReturn": 2.2027,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 34
+    },
+    {
+      "date": "2025-12-22",
+      "forwardReturn20d": 14.1063,
+      "marketAction": "홀딩",
+      "marketScore": 37,
+      "nextDayReturn": -0.273,
+      "portfolioAction": "보유",
+      "portfolioScore": 28
+    },
+    {
+      "date": "2025-12-23",
+      "forwardReturn20d": 14.2362,
+      "marketAction": "신규 매수",
+      "marketScore": 58,
+      "nextDayReturn": -0.8087,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 49
+    },
+    {
+      "date": "2025-12-24",
+      "forwardReturn20d": 14.0662,
+      "marketAction": "신규 매수",
+      "marketScore": 55,
+      "nextDayReturn": 0.2661,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 44
+    },
+    {
+      "date": "2025-12-26",
+      "forwardReturn20d": 16.5147,
+      "marketAction": "신규 매수",
+      "marketScore": 68,
+      "nextDayReturn": 1.4186,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 58
+    },
+    {
+      "date": "2025-12-29",
+      "forwardReturn20d": 17.6706,
+      "marketAction": "신규 매수",
+      "marketScore": 73,
+      "nextDayReturn": -0.2467,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 61
+    },
+    {
+      "date": "2025-12-30",
+      "forwardReturn20d": 19.3142,
+      "marketAction": "신규 매수",
+      "marketScore": 68,
+      "nextDayReturn": 2.7547,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 56
+    },
+    {
+      "date": "2025-12-31",
+      "forwardReturn20d": 16.8903,
+      "marketAction": "신규 매수",
+      "marketScore": 63,
+      "nextDayReturn": 3.2445,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 50
+    },
+    {
+      "date": "2026-01-02",
+      "forwardReturn20d": 16.8903,
+      "marketAction": "신규 매수",
+      "marketScore": 71,
+      "nextDayReturn": 3.2445,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 66
+    },
+    {
+      "date": "2026-01-05",
+      "forwardReturn20d": 6.915,
+      "marketAction": "신규 매수",
+      "marketScore": 68,
+      "nextDayReturn": 0.5363,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 63
+    },
+    {
+      "date": "2026-01-06",
+      "forwardReturn20d": 12.6094,
+      "marketAction": "신규 매수",
+      "marketScore": 70,
+      "nextDayReturn": 0.4058,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 62
+    },
+    {
+      "date": "2026-01-07",
+      "forwardReturn20d": 12.8228,
+      "marketAction": "신규 매수",
+      "marketScore": 60,
+      "nextDayReturn": -0.1359,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 57
+    },
+    {
+      "date": "2026-01-08",
+      "forwardReturn20d": 8.9201,
+      "marketAction": "신규 매수",
+      "marketScore": 53,
+      "nextDayReturn": -0.4835,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 48
+    },
+    {
+      "date": "2026-01-09",
+      "forwardReturn20d": 7.9138,
+      "marketAction": "신규 매수",
+      "marketScore": 68,
+      "nextDayReturn": 1.5383,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 63
+    },
+    {
+      "date": "2026-01-12",
+      "forwardReturn20d": 10.5232,
+      "marketAction": "신규 매수",
+      "marketScore": 59,
+      "nextDayReturn": 0.7804,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 56
+    },
+    {
+      "date": "2026-01-13",
+      "forwardReturn20d": 9.274,
+      "marketAction": "신규 매수",
+      "marketScore": 56,
+      "nextDayReturn": 1.2934,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 53
+    },
+    {
+      "date": "2026-01-14",
+      "forwardReturn20d": 7.8302,
+      "marketAction": "신규 매수",
+      "marketScore": 51,
+      "nextDayReturn": 0.2144,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 48
+    },
+    {
+      "date": "2026-01-15",
+      "forwardReturn20d": 9.5771,
+      "marketAction": "신규 매수",
+      "marketScore": 60,
+      "nextDayReturn": 1.1145,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 57
+    },
+    {
+      "date": "2026-01-16",
+      "forwardReturn20d": 7.6828,
+      "marketAction": "신규 매수",
+      "marketScore": 54,
+      "nextDayReturn": 0.4191,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 52
+    },
+    {
+      "date": "2026-01-20",
+      "forwardReturn20d": 12.4217,
+      "marketAction": "신규 매수",
+      "marketScore": 26,
+      "nextDayReturn": -0.0693,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 30
+    },
+    {
+      "date": "2026-01-21",
+      "forwardReturn20d": 14.3042,
+      "marketAction": "신규 매수",
+      "marketScore": 45,
+      "nextDayReturn": 1.3194,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 44
+    },
+    {
+      "date": "2026-01-22",
+      "forwardReturn20d": 14.9907,
+      "marketAction": "신규 매수",
+      "marketScore": 50,
+      "nextDayReturn": -0.1432,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 50
+    },
+    {
+      "date": "2026-01-23",
+      "forwardReturn20d": 15.9342,
+      "marketAction": "신규 매수",
+      "marketScore": 56,
+      "nextDayReturn": -0.9791,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 52
+    },
+    {
+      "date": "2026-01-26",
+      "forwardReturn20d": 21.318,
+      "marketAction": "신규 매수",
+      "marketScore": 61,
+      "nextDayReturn": 2.3468,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 59
+    },
+    {
+      "date": "2026-01-27",
+      "forwardReturn20d": 16.7536,
+      "marketAction": "신규 매수",
+      "marketScore": 61,
+      "nextDayReturn": 2.3327,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 59
+    },
+    {
+      "date": "2026-01-28",
+      "forwardReturn20d": 7.9164,
+      "marketAction": "신규 매수",
+      "marketScore": 63,
+      "nextDayReturn": 1.1058,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 63
+    },
+    {
+      "date": "2026-01-29",
+      "forwardReturn20d": -1.8351,
+      "marketAction": "신규 매수",
+      "marketScore": 53,
+      "nextDayReturn": 0.7485,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 54
+    },
+    {
+      "date": "2026-01-30",
+      "forwardReturn20d": 5.0995,
+      "marketAction": "신규 매수",
+      "marketScore": 46,
+      "nextDayReturn": -5.1784,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 46
+    },
+    {
+      "date": "2026-02-02",
+      "forwardReturn20d": 11.1158,
+      "marketAction": "신규 매수",
+      "marketScore": 53,
+      "nextDayReturn": 5.7815,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 50
+    },
+    {
+      "date": "2026-02-03",
+      "forwardReturn20d": -0.9542,
+      "marketAction": "신규 매수",
+      "marketScore": 32,
+      "nextDayReturn": 0.5788,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 38
+    },
+    {
+      "date": "2026-02-04",
+      "forwardReturn20d": 3.0624,
+      "marketAction": "신규 매수",
+      "marketScore": 37,
+      "nextDayReturn": -3.4165,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 40
+    },
+    {
+      "date": "2026-02-05",
+      "forwardReturn20d": 7.3733,
+      "marketAction": "홀딩",
+      "marketScore": 1,
+      "nextDayReturn": -1.3838,
+      "portfolioAction": "보유",
+      "portfolioScore": 22
+    },
+    {
+      "date": "2026-02-06",
+      "forwardReturn20d": 8.7825,
+      "marketAction": "신규 매수",
+      "marketScore": 39,
+      "nextDayReturn": 3.9041,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 41
+    },
+    {
+      "date": "2026-02-09",
+      "forwardReturn20d": 3.8358,
+      "marketAction": "신규 매수",
+      "marketScore": 45,
+      "nextDayReturn": -0.315,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 50
+    },
+    {
+      "date": "2026-02-10",
+      "forwardReturn20d": 5.5309,
+      "marketAction": "신규 매수",
+      "marketScore": 46,
+      "nextDayReturn": -0.0287,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 48
+    },
+    {
+      "date": "2026-02-11",
+      "forwardReturn20d": 6.2916,
+      "marketAction": "신규 매수",
+      "marketScore": 47,
+      "nextDayReturn": 1.774,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 48
+    },
+    {
+      "date": "2026-02-12",
+      "forwardReturn20d": 8.7735,
+      "marketAction": "홀딩",
+      "marketScore": 23,
+      "nextDayReturn": -0.6138,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 36
+    },
+    {
+      "date": "2026-02-13",
+      "forwardReturn20d": 8.5065,
+      "marketAction": "홀딩",
+      "marketScore": 13,
+      "nextDayReturn": 2.0644,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 30
+    },
+    {
+      "date": "2026-02-17",
+      "forwardReturn20d": 7.0206,
+      "marketAction": "홀딩",
+      "marketScore": 13,
+      "nextDayReturn": 1.326,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 30
+    },
+    {
+      "date": "2026-02-18",
+      "forwardReturn20d": 7.0206,
+      "marketAction": "신규 매수",
+      "marketScore": 30,
+      "nextDayReturn": 1.326,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 41
+    },
+    {
+      "date": "2026-02-19",
+      "forwardReturn20d": 7.0206,
+      "marketAction": "홀딩",
+      "marketScore": 17,
+      "nextDayReturn": 1.326,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 34
+    },
+    {
+      "date": "2026-02-20",
+      "forwardReturn20d": 0.4291,
+      "marketAction": "신규 매수",
+      "marketScore": 42,
+      "nextDayReturn": 1.4346,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 50
+    },
+    {
+      "date": "2026-02-23",
+      "forwardReturn20d": 0.3576,
+      "marketAction": "홀딩",
+      "marketScore": 13,
+      "nextDayReturn": 1.8213,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 34
+    },
+    {
+      "date": "2026-02-24",
+      "forwardReturn20d": 0.5837,
+      "marketAction": "신규 매수",
+      "marketScore": 46,
+      "nextDayReturn": 0.6204,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 53
+    },
+    {
+      "date": "2026-02-25",
+      "forwardReturn20d": -2.3591,
+      "marketAction": "신규 매수",
+      "marketScore": 46,
+      "nextDayReturn": 3.3908,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 53
+    },
+    {
+      "date": "2026-02-26",
+      "forwardReturn20d": -7.5607,
+      "marketAction": "신규 매수",
+      "marketScore": 39,
+      "nextDayReturn": -1.2764,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 43
+    },
+    {
+      "date": "2026-02-27",
+      "forwardReturn20d": -8.9253,
+      "marketAction": "신규 매수",
+      "marketScore": 36,
+      "nextDayReturn": -5.3113,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 37
+    },
+    {
+      "date": "2026-03-02",
+      "forwardReturn20d": -7.3269,
+      "marketAction": "홀딩",
+      "marketScore": 17,
+      "nextDayReturn": -8.1069,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 30
+    },
+    {
+      "date": "2026-03-03",
+      "forwardReturn20d": -7.3269,
+      "marketAction": "홀딩",
+      "marketScore": -8,
+      "nextDayReturn": -8.1069,
+      "portfolioAction": "보유",
+      "portfolioScore": 3
+    },
+    {
+      "date": "2026-03-04",
+      "forwardReturn20d": 8.0948,
+      "marketAction": "홀딩",
+      "marketScore": 5,
+      "nextDayReturn": 8.4363,
+      "portfolioAction": "보유",
+      "portfolioScore": 13
+    },
+    {
+      "date": "2026-03-05",
+      "forwardReturn20d": -3.3394,
+      "marketAction": "홀딩",
+      "marketScore": -9,
+      "nextDayReturn": -0.0361,
+      "portfolioAction": "보유",
+      "portfolioScore": 2
+    },
+    {
+      "date": "2026-03-06",
+      "forwardReturn20d": -0.8181,
+      "marketAction": "매도",
+      "marketScore": -34,
+      "nextDayReturn": -5.7504,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -26
+    },
+    {
+      "date": "2026-03-09",
+      "forwardReturn20d": 6.2546,
+      "marketAction": "매도",
+      "marketScore": -33,
+      "nextDayReturn": 5.2025,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -25
+    },
+    {
+      "date": "2026-03-10",
+      "forwardReturn20d": 1.1432,
+      "marketAction": "매도",
+      "marketScore": -21,
+      "nextDayReturn": 0.7106,
+      "portfolioAction": "보유",
+      "portfolioScore": -8
+    },
+    {
+      "date": "2026-03-11",
+      "forwardReturn20d": 6.9694,
+      "marketAction": "홀딩",
+      "marketScore": -16,
+      "nextDayReturn": -0.1073,
+      "portfolioAction": "보유",
+      "portfolioScore": 2
+    },
+    {
+      "date": "2026-03-12",
+      "forwardReturn20d": 6.1609,
+      "marketAction": "매도",
+      "marketScore": -42,
+      "nextDayReturn": -0.738,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -27
+    },
+    {
+      "date": "2026-03-13",
+      "forwardReturn20d": 9.1843,
+      "marketAction": "매도",
+      "marketScore": -38,
+      "nextDayReturn": 1.5348,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -24
+    },
+    {
+      "date": "2026-03-16",
+      "forwardReturn20d": 8.6331,
+      "marketAction": "홀딩",
+      "marketScore": 8,
+      "nextDayReturn": 0.7883,
+      "portfolioAction": "보유",
+      "portfolioScore": 26
+    },
+    {
+      "date": "2026-03-17",
+      "forwardReturn20d": 10.6884,
+      "marketAction": "홀딩",
+      "marketScore": 3,
+      "nextDayReturn": 4.6352,
+      "portfolioAction": "보유",
+      "portfolioScore": 26
+    },
+    {
+      "date": "2026-03-18",
+      "forwardReturn20d": 8.3239,
+      "marketAction": "매도",
+      "marketScore": -34,
+      "nextDayReturn": -0.9318,
+      "portfolioAction": "보유",
+      "portfolioScore": -17
+    },
+    {
+      "date": "2026-03-19",
+      "forwardReturn20d": 10.6308,
+      "marketAction": "매도",
+      "marketScore": -26,
+      "nextDayReturn": 0.8071,
+      "portfolioAction": "보유",
+      "portfolioScore": -5
+    },
+    {
+      "date": "2026-03-20",
+      "forwardReturn20d": 9.7581,
+      "marketAction": "매도",
+      "marketScore": -49,
+      "nextDayReturn": -5.0151,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -39
+    },
+    {
+      "date": "2026-03-23",
+      "forwardReturn20d": 16.6218,
+      "marketAction": "매도",
+      "marketScore": -34,
+      "nextDayReturn": 1.6048,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -21
+    },
+    {
+      "date": "2026-03-24",
+      "forwardReturn20d": 17.0623,
+      "marketAction": "매도",
+      "marketScore": -32,
+      "nextDayReturn": 2.193,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -22
+    },
+    {
+      "date": "2026-03-25",
+      "forwardReturn20d": 15.9984,
+      "marketAction": "매도",
+      "marketScore": -27,
+      "nextDayReturn": -2.4981,
+      "portfolioAction": "보유",
+      "portfolioScore": -19
+    },
+    {
+      "date": "2026-03-26",
+      "forwardReturn20d": 21.403,
+      "marketAction": "매도",
+      "marketScore": -54,
+      "nextDayReturn": -2.1308,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -43
+    },
+    {
+      "date": "2026-03-27",
+      "forwardReturn20d": 26.7317,
+      "marketAction": "매도",
+      "marketScore": -63,
+      "nextDayReturn": -2.7726,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -51
+    },
+    {
+      "date": "2026-03-30",
+      "forwardReturn20d": 35.9084,
+      "marketAction": "매도",
+      "marketScore": -65,
+      "nextDayReturn": -3.6218,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -56
+    },
+    {
+      "date": "2026-03-31",
+      "forwardReturn20d": 40.6639,
+      "marketAction": "매도",
+      "marketScore": -51,
+      "nextDayReturn": 7.0473,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -53
+    },
+    {
+      "date": "2026-04-01",
+      "forwardReturn20d": 31.8467,
+      "marketAction": "매도",
+      "marketScore": -37,
+      "nextDayReturn": -3.0905,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -25
+    },
+    {
+      "date": "2026-04-02",
+      "forwardReturn20d": 37.6656,
+      "marketAction": "매도",
+      "marketScore": -48,
+      "nextDayReturn": 2.6165,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -36
+    },
+    {
+      "date": "2026-04-06",
+      "forwardReturn20d": 49.9278,
+      "marketAction": "매도",
+      "marketScore": -42,
+      "nextDayReturn": 0.1466,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -28
+    },
+    {
+      "date": "2026-04-07",
+      "forwardReturn20d": 51.1954,
+      "marketAction": "매도",
+      "marketScore": -45,
+      "nextDayReturn": 6.5272,
+      "portfolioAction": "비중 축소",
+      "portfolioScore": -33
+    },
+    {
+      "date": "2026-04-08",
+      "forwardReturn20d": 42.4,
+      "marketAction": "홀딩",
+      "marketScore": 5,
+      "nextDayReturn": -0.8591,
+      "portfolioAction": "보유",
+      "portfolioScore": 27
+    },
+    {
+      "date": "2026-04-09",
+      "forwardReturn20d": 48.5262,
+      "marketAction": "홀딩",
+      "marketScore": 22,
+      "nextDayReturn": 2.0654,
+      "portfolioAction": "보유",
+      "portfolioScore": 39
+    },
+    {
+      "date": "2026-04-10",
+      "forwardReturn20d": 43.4748,
+      "marketAction": "신규 매수",
+      "marketScore": 45,
+      "nextDayReturn": 0.9825,
+      "portfolioAction": "보유",
+      "portfolioScore": 55
+    },
+    {
+      "date": "2026-04-13",
+      "forwardReturn20d": 43.9629,
+      "marketAction": "신규 매수",
+      "marketScore": 41,
+      "nextDayReturn": 2.682,
+      "portfolioAction": "보유",
+      "portfolioScore": 52
+    },
+    {
+      "date": "2026-04-14",
+      "forwardReturn20d": 39.6157,
+      "marketAction": "신규 매수",
+      "marketScore": 62,
+      "nextDayReturn": 2.3848,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 63
+    },
+    {
+      "date": "2026-04-15",
+      "forwardReturn20d": 29.3841,
+      "marketAction": "신규 매수",
+      "marketScore": 64,
+      "nextDayReturn": 1.1931,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 64
+    },
+    {
+      "date": "2026-04-16",
+      "forwardReturn20d": 28.0926,
+      "marketAction": "신규 매수",
+      "marketScore": 59,
+      "nextDayReturn": 0.0104,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 61
+    },
+    {
+      "date": "2026-04-17",
+      "forwardReturn20d": 24.2968,
+      "marketAction": "신규 매수",
+      "marketScore": 68,
+      "nextDayReturn": 0.8396,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 66
+    },
+    {
+      "date": "2026-04-20",
+      "forwardReturn20d": 23.3956,
+      "marketAction": "신규 매수",
+      "marketScore": 65,
+      "nextDayReturn": 1.9699,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 64
+    },
+    {
+      "date": "2026-04-21",
+      "forwardReturn20d": 29.4121,
+      "marketAction": "신규 매수",
+      "marketScore": 69,
+      "nextDayReturn": 1.2548,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 66
+    },
+    {
+      "date": "2026-04-22",
+      "forwardReturn20d": 29.8917,
+      "marketAction": "신규 매수",
+      "marketScore": 71,
+      "nextDayReturn": 1.964,
+      "portfolioAction": "분할 매수",
+      "portfolioScore": 67
+    }
+  ]
+}

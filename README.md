@@ -26,6 +26,7 @@ Render에서는 `render.yaml`의 `startCommand`와 `/api/health` 헬스체크를
 - `styles.css`: 모바일 우선 레이아웃과 카드 스타일
 - `app.js`: 시장/심리 지연 데이터 표시
 - `server.js`: 외부 데이터를 가져오는 로컬 API 서버
+- `scripts/backtest_signals.mjs`: 신호등 체계 과거 데이터 백테스트
 - `scripts/screen_mfi_volume.mjs`: 월간 거래량 급증 + MFI 조건 스크리닝
 - `scripts/screen_us_mfi_volume.mjs`: 미국 상장 보통주/ADR 대상 월간 거래량 급증 + MFI 조건 스크리닝
 
@@ -46,3 +47,13 @@ KOSPI, S&P 500, NASDAQ, SOX 반도체지수, USD/KRW, WTI 유가, 미국 10년�
 사용자 보유 ETF 기준 별도 신호를 표시합니다. 사진으로 확인한 보유 종목은 반도체/HBM, AI 전력설비, 글로벌 AI, 채권혼합 ETF로 분류했습니다. 이 포트폴리오는 반도체·AI 노출이 높기 때문에 SOX, NASDAQ, DDR5, 서버 DRAM, VIX, 미국 10년물 금리, USD/KRW에 더 높은 가중치를 둡니다. 시장 전체 신호와 별개로 `분할 매수`, `보유`, `비중 축소`를 표시합니다.
 
 포트폴리오 신호에는 네 가지 추가 로직을 반영합니다. 보유 ETF의 28일 수익률을 SOX/NASDAQ/KOSPI 벤치마크와 비교해 상대강도를 계산하고, 각 ETF의 50일/200일 이동평균 위치와 정배열 여부를 점수화합니다. Naver Finance의 외국인·기관 순매매 거래량 표에서 최근 5일/20일 순매수 강도를 계산합니다. 시장 레짐은 FRED의 ICE BofA US High Yield OAS와 Chicago Fed NFCI를 함께 반영합니다.
+
+## 백테스트
+
+신호등 체계는 다음 명령으로 백테스트할 수 있습니다.
+
+```sh
+npm run backtest -- 2025-01-01 2026-05-22 20
+```
+
+세 번째 인자는 선행수익률을 계산할 거래일 수입니다. 결과는 `screen_results/backtest_signals_*.json`과 `.csv`로 저장됩니다. DDR5 spot, 서버 DRAM 계약가, DXI, 과거 외국인·기관 수급처럼 전체 과거 데이터가 공개 경로로 안정적으로 제공되지 않는 항목은 백테스트에서 제외하거나 가능한 범위만 반영합니다.
