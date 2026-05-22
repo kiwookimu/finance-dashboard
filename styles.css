@@ -154,6 +154,134 @@ h1 {
   color: var(--red);
 }
 
+.portfolio-panel {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 13px 12px;
+  background: #f8faf9;
+  border: 1px solid #e7eee9;
+  border-radius: 8px;
+}
+
+.portfolio-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.portfolio-heading > div {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.portfolio-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.portfolio-heading strong {
+  overflow-wrap: anywhere;
+  font-size: 24px;
+  line-height: 1.05;
+}
+
+.portfolio-score {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  color: #44504a;
+  background: #eef4f1;
+  border: 1px solid #dce5e0;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.portfolio-summary {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.portfolio-panel.portfolio-buy .portfolio-heading strong {
+  color: var(--green);
+}
+
+.portfolio-panel.portfolio-hold .portfolio-heading strong {
+  color: #8f6100;
+}
+
+.portfolio-panel.portfolio-trim .portfolio-heading strong {
+  color: var(--red);
+}
+
+.portfolio-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.portfolio-stats span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px;
+  background: #ffffff;
+  border: 1px solid #e7eee9;
+  border-radius: 7px;
+}
+
+.portfolio-stats small {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.portfolio-stats strong {
+  font-size: 15px;
+  line-height: 1.15;
+}
+
+.portfolio-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.portfolio-checks span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: #ffffff;
+  border: 1px solid #e7eee9;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.portfolio-checks b {
+  color: var(--ink);
+}
+
+.portfolio-checks .good {
+  color: var(--green);
+  border-color: rgba(31, 157, 114, 0.28);
+}
+
+.portfolio-checks .bad {
+  color: var(--red);
+  border-color: rgba(217, 75, 67, 0.28);
+}
+
 .indicator-list {
   display: grid;
   gap: 8px;

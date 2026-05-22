@@ -1,4 +1,18 @@
 const GOOD_WHEN_FALLING = new Set(["usdKrw", "wti", "us10y"]);
+const PORTFOLIO_HOLDINGS = [
+  { amount: 30041571, name: "HANARO Fn K-반도체", tags: ["semi", "korea"] },
+  { amount: 30003498, name: "KODEX AI전력핵심설비", tags: ["aiPower", "korea"] },
+  { amount: 15064300, name: "PLUS 글로벌 HBM반도체", tags: ["semi", "global"] },
+  { amount: 15032675, name: "TIGER 미국필라델피아반도체", tags: ["semi", "us"] },
+  { amount: 15005736, name: "RISE 삼성전자SK하이닉스채권혼합", tags: ["semi", "bondMix", "korea"] },
+  { amount: 15005730, name: "TIME 미국나스닥100채권혼합", tags: ["nasdaq", "bondMix", "us"] },
+  { amount: 15002399, name: "KODEX 200 미국채혼합", tags: ["kospi", "bondMix", "korea"] },
+  { amount: 10010605, name: "TIME 글로벌AI인공지능액티브", tags: ["aiPower", "global"] },
+];
+const PORTFOLIO_TOTAL = PORTFOLIO_HOLDINGS.reduce(
+  (sum, holding) => sum + holding.amount,
+  0,
+);
 
 loadIndicators();
 
@@ -29,6 +43,7 @@ async function loadIndicators() {
     renderFearGreed(sentiment.fearGreed);
     renderVix(sentiment.vix);
     renderTradingSignal(market.quotes, sentiment);
+    renderPortfolioSignal(market.quotes, sentiment);
     renderTimestamp(market.quotes);
     setText(
       "#marketSource",
@@ -39,6 +54,13 @@ async function loadIndicators() {
     renderSignalState({
       action: "판단 보류",
       className: "signal-hold",
+      score: 0,
+      summary: "데이터 갱신 실패",
+    });
+    renderPortfolioState({
+      action: "판단 보류",
+      checks: [],
+      className: "portfolio-hold",
       score: 0,
       summary: "데이터 갱신 실패",
     });
@@ -60,6 +82,39 @@ function renderSignalState({ action, className, score, summary }) {
   panel.setAttribute("aria-label", `시장 신호: ${action}`);
   setText("#signalAction", action);
   setText("#signalSummary", `${formatSignedScore(score)}점 · ${summary}`);
+}
+
+function renderPortfolioSignal(quotes, sentiment) {
+  renderPortfolioSnapshot();
+  renderPortfolioState(evaluatePortfolioSignal(quotes || {}, sentiment || {}));
+}
+
+function renderPortfolioSnapshot() {
+  setText("#portfolioTotal", formatKrwAmount(PORTFOLIO_TOTAL));
+  setText("#portfolioSemiWeight", formatPercent(portfolioTagWeight("semi")));
+  setText("#portfolioAiWeight", formatPercent(portfolioTagWeight("aiPower")));
+  setText("#portfolioBondMixWeight", formatPercent(portfolioTagWeight("bondMix")));
+}
+
+function renderPortfolioState({ action, checks, className, score, summary }) {
+  const panel = document.querySelector("#portfolioSignal");
+  if (!panel) return;
+
+  panel.classList.remove("portfolio-buy", "portfolio-hold", "portfolio-trim");
+  panel.classList.add(className);
+  panel.setAttribute("aria-label", `보유 포트폴리오 신호: ${action}`);
+  setText("#portfolioAction", action);
+  setText("#portfolioScore", `${formatSignedScore(score)}점`);
+  setText("#portfolioSummary", summary);
+
+  const checksElement = document.querySelector("#portfolioChecks");
+  if (!checksElement) return;
+  checksElement.innerHTML = checks
+    .map(
+      (check) =>
+        `<span class="${check.tone}"><b>${escapeHtml(check.label)}</b>${escapeHtml(check.text)}</span>`,
+    )
+    .join("");
 }
 
 function evaluateTradingSignal(quotes, sentiment) {
@@ -114,6 +169,74 @@ function evaluateTradingSignal(quotes, sentiment) {
   };
 }
 
+function evaluatePortfolioSignal(quotes, sentiment) {
+  const components = [];
+  const add = (label, score, weight) => {
+    if (!Number.isFinite(score)) return;
+    const cleanScore = clamp(score, -1, 1);
+    components.push({
+      label,
+      score: cleanScore,
+      weight,
+      weighted: cleanScore * weight,
+    });
+  };
+
+  const semiScore = scoreRiskAsset(quotes.sox);
+  const nasdaqScore = scoreRiskAsset(quotes.nasdaq);
+  const kospiScore = scoreRiskAsset(quotes.kospi);
+  const rateScore = scoreYield(quotes.us10y);
+  const usdKrwScore = scoreUsdKrw(quotes.usdKrw);
+  const vixScore = scoreVix(sentiment.vix);
+
+  add("SOX", semiScore, 2.4);
+  add("NASDAQ", nasdaqScore, 1.25);
+  add("KOSPI", kospiScore, 0.75);
+  add("DDR5", scoreMemoryPrice(quotes.ddr5Spot), 0.95);
+  add("서버 DRAM", scoreServerContract(quotes.serverDdr5Contract), 0.35);
+  add("미국 10년물", rateScore, 1.2);
+  add("달러/원", usdKrwScore, 0.85);
+  add("VIX", vixScore, 1.35);
+  add("공포·탐욕", scoreFearGreed(sentiment.fearGreed), 0.65);
+  add("WTI", scoreWti(quotes.wti), 0.2);
+
+  const totalWeight = components.reduce((sum, item) => sum + item.weight, 0);
+  const weightedScore = components.reduce((sum, item) => sum + item.weighted, 0);
+  let score = totalWeight ? Math.round((weightedScore / totalWeight) * 100) : 0;
+
+  const vixLevel = Number(sentiment.vix?.close);
+  const concentration = portfolioTagWeight("semi") + portfolioTagWeight("aiPower");
+  if (concentration >= 75 && (semiScore < 0 || nasdaqScore < 0)) score -= 8;
+  if (vixLevel >= 25) score -= 8;
+  if (rateScore < -0.35 && semiScore < 0.2) score -= 6;
+  if (semiScore > 0.4 && scoreMemoryPrice(quotes.ddr5Spot) > 0) score += 4;
+  score = clamp(Math.round(score), -100, 100);
+
+  let action = "보유";
+  let className = "portfolio-hold";
+  if (vixLevel >= 30 || score <= -20) {
+    action = "비중 축소";
+    className = "portfolio-trim";
+  } else if (score >= 30 && semiScore > 0 && rateScore > -0.35 && vixLevel < 25) {
+    action = "분할 매수";
+    className = "portfolio-buy";
+  }
+
+  return {
+    action,
+    checks: buildPortfolioChecks({
+      nasdaqScore,
+      rateScore,
+      semiScore,
+      usdKrwScore,
+      vixScore,
+    }),
+    className,
+    score,
+    summary: summarizePortfolioSignal(components, className, concentration),
+  };
+}
+
 function summarizeSignal(components, className) {
   const positives = components
     .filter((item) => item.weighted > 0.08)
@@ -133,6 +256,51 @@ function summarizeSignal(components, className) {
   }
 
   return [...positives.slice(0, 1), ...negatives.slice(0, 1)].join(" · ") || "중립 구간";
+}
+
+function summarizePortfolioSignal(components, className, concentration) {
+  const positives = components
+    .filter((item) => item.weighted > 0.09)
+    .sort((a, b) => b.weighted - a.weighted)
+    .map((item) => `${item.label} 양호`);
+  const negatives = components
+    .filter((item) => item.weighted < -0.09)
+    .sort((a, b) => a.weighted - b.weighted)
+    .map((item) => `${item.label} 부담`);
+  const concentrationText = `반도체·AI 노출 ${formatPercent(concentration)}`;
+
+  if (className === "portfolio-trim") {
+    return `${(negatives.length ? negatives : ["위험 신호 우세"]).slice(0, 2).join(" · ")} · ${concentrationText}`;
+  }
+
+  if (className === "portfolio-buy") {
+    return `${(positives.length ? positives : ["성장주 환경 양호"]).slice(0, 2).join(" · ")} · 분할 접근`;
+  }
+
+  return `${[...positives.slice(0, 1), ...negatives.slice(0, 1)].join(" · ") || "중립 구간"} · ${concentrationText}`;
+}
+
+function buildPortfolioChecks({ nasdaqScore, rateScore, semiScore, usdKrwScore, vixScore }) {
+  return [
+    portfolioCheck("SOX", semiScore, "반도체 ETF 핵심"),
+    portfolioCheck("NASDAQ", nasdaqScore, "AI 성장주"),
+    portfolioCheck("금리", rateScore, "채권혼합·성장주"),
+    portfolioCheck("USD/KRW", usdKrwScore, "환율 부담"),
+    portfolioCheck("VIX", vixScore, "변동성"),
+  ];
+}
+
+function portfolioCheck(label, score, fallback) {
+  if (!Number.isFinite(score)) {
+    return { label, text: fallback, tone: "neutral" };
+  }
+  if (score >= 0.25) {
+    return { label, text: "양호", tone: "good" };
+  }
+  if (score <= -0.25) {
+    return { label, text: "부담", tone: "bad" };
+  }
+  return { label, text: "중립", tone: "neutral" };
 }
 
 function renderMarketIndicator(id, quote) {
@@ -442,6 +610,13 @@ function average(values) {
   return clean.reduce((sum, value) => sum + value, 0) / clean.length;
 }
 
+function portfolioTagWeight(tag) {
+  const taggedAmount = PORTFOLIO_HOLDINGS
+    .filter((holding) => holding.tags.includes(tag))
+    .reduce((sum, holding) => sum + holding.amount, 0);
+  return PORTFOLIO_TOTAL ? (taggedAmount / PORTFOLIO_TOTAL) * 100 : 0;
+}
+
 function getFearGreedRating(score) {
   if (score < 25) return "extreme fear";
   if (score < 45) return "fear";
@@ -490,6 +665,19 @@ function formatNumber(value, decimals) {
     maximumFractionDigits: decimals,
     minimumFractionDigits: decimals,
   }).format(value);
+}
+
+function formatKrwAmount(value) {
+  if (!Number.isFinite(value)) return "-";
+  if (value >= 100_000_000) {
+    return `${(value / 100_000_000).toFixed(2)}억`;
+  }
+  return new Intl.NumberFormat("ko-KR").format(value);
+}
+
+function formatPercent(value) {
+  if (!Number.isFinite(value)) return "-";
+  return `${value.toFixed(1)}%`;
 }
 
 function formatSignedScore(value) {
