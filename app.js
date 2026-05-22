@@ -13,6 +13,15 @@ const PORTFOLIO_TOTAL = PORTFOLIO_HOLDINGS.reduce(
   (sum, holding) => sum + holding.amount,
   0,
 );
+const DEFAULT_PORTFOLIO_EXPOSURE_CONFIG = {
+  crisis: 0.5,
+  crisisCap: 0.65,
+  neutral: 0.8,
+  riskWatch: 0.75,
+  severeCrisis: 0.35,
+  strongTrim: 1,
+  weakRed: 0.05,
+};
 
 loadIndicators();
 
@@ -230,6 +239,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   const recoveryScore = scoreRecoveryPulse(quotes, sentiment, portfolioMetrics);
   const semiconductorCycleScore = scoreSemiconductorCycle(quotes);
   const variancePremiumScore = scoreVarianceRiskPremium(quotes, sentiment);
+  const crisisMode = detectPortfolioCrisisMode(quotes, sentiment);
 
   add("SOX", semiScore, 2.4);
   add("NASDAQ", nasdaqScore, 1.25);
@@ -268,11 +278,13 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   if (variancePremiumScore < -0.55 && recoveryForPenalty < 0.25) score -= 4;
   if (investorFlowScore < -0.25 && semiScore < 0.25) score -= 4;
   if (semiconductorCycleScore > 0.45 && scoreMemoryPrice(quotes.ddr5Spot) > 0) score += 4;
+  if (crisisMode.tailRisk) score -= crisisMode.severity === "severe" ? 18 : 12;
   score = clamp(Math.round(score), -100, 100);
 
   let action = "보유";
   let className = "portfolio-hold";
   if (
+    (crisisMode.tailRisk && recoveryForAction < 0.35) ||
     (vixLevel >= 35 && recoveryForAction < -0.5) ||
     score <= -60 ||
     (score <= -35 && recoveryForAction < -0.5) ||
@@ -286,6 +298,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
     semiconductorCycleScore > -0.2 &&
     regimeScore > -0.25 &&
     rateScore > -0.35 &&
+    !crisisMode.active &&
     vixLevel < 28 &&
     (!Number.isFinite(variancePremiumScore) || variancePremiumScore > -0.6) &&
     (!Number.isFinite(recoveryScore) || recoveryScore > -0.2)
@@ -298,8 +311,9 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
 
   return {
     action,
-    allocation: targetPortfolioExposure(score, action, confidence),
+    allocation: targetPortfolioExposure(score, action, confidence, crisisMode),
     checks: buildPortfolioChecks({
+      crisisMode,
       semiconductorCycleScore,
       investorFlowScore,
       multiRelativeScore,
@@ -315,8 +329,9 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
     }),
     className,
     confidence,
+    crisisMode,
     score,
-    summary: summarizePortfolioSignal(components, className, concentration),
+    summary: summarizePortfolioSignal(components, className, concentration, crisisMode),
   };
 }
 
@@ -341,7 +356,7 @@ function summarizeSignal(components, className) {
   return [...positives.slice(0, 1), ...negatives.slice(0, 1)].join(" · ") || "중립 구간";
 }
 
-function summarizePortfolioSignal(components, className, concentration) {
+function summarizePortfolioSignal(components, className, concentration, crisisMode) {
   const positives = components
     .filter((item) => item.weighted > 0.09)
     .sort((a, b) => b.weighted - a.weighted)
@@ -351,9 +366,12 @@ function summarizePortfolioSignal(components, className, concentration) {
     .sort((a, b) => a.weighted - b.weighted)
     .map((item) => `${item.label} 부담`);
   const concentrationText = `반도체·AI 노출 ${formatPercent(concentration)}`;
+  const crisisText = crisisMode?.active
+    ? `${crisisMode.severity === "severe" ? "위기모드" : "위험경계"}`
+    : "";
 
   if (className === "portfolio-trim") {
-    return `${(negatives.length ? negatives : ["위험 신호 우세"]).slice(0, 2).join(" · ")} · ${concentrationText}`;
+    return `${[crisisText, ...(negatives.length ? negatives : ["위험 신호 우세"]).slice(0, 2), concentrationText].filter(Boolean).join(" · ")}`;
   }
 
   if (className === "portfolio-buy") {
@@ -364,6 +382,7 @@ function summarizePortfolioSignal(components, className, concentration) {
 }
 
 function buildPortfolioChecks({
+  crisisMode,
   investorFlowScore,
   multiRelativeScore,
   movingAverageScore,
@@ -378,6 +397,7 @@ function buildPortfolioChecks({
   vixScore,
 }) {
   return [
+    portfolioCrisisCheck(crisisMode),
     portfolioCheck("상대강도", relativeScore, "벤치마크 대비"),
     portfolioCheck("장기상대", multiRelativeScore, "1/3/6/12개월"),
     portfolioCheck("50/200일선", movingAverageScore, "추세 확인"),
@@ -391,6 +411,17 @@ function buildPortfolioChecks({
     portfolioCheck("금리", rateScore, "채권혼합·성장주"),
     portfolioCheck("VIX", vixScore, "변동성"),
   ];
+}
+
+function portfolioCrisisCheck(crisisMode) {
+  if (!crisisMode?.active) {
+    return { label: "위기모드", text: "정상", tone: "good" };
+  }
+  return {
+    label: "위기모드",
+    text: crisisMode.severity === "severe" ? "위기" : "경계",
+    tone: "bad",
+  };
 }
 
 function portfolioCheck(label, score, fallback) {
@@ -984,6 +1015,23 @@ function pointChange(series) {
   return points.at(-1) - points[0];
 }
 
+function pointChangeOverPeriod(series, period) {
+  const points = numericSeries(series);
+  if (points.length < 2) return NaN;
+  const windowPoints = points.slice(-Math.min(period + 1, points.length));
+  return windowPoints.at(-1) - windowPoints[0];
+}
+
+function isBelowMovingAverage(quote, period) {
+  const points = numericSeries(quote?.analysisHistory || quote?.history);
+  if (points.length < period) return false;
+  const latest = points.at(-1);
+  const movingAverageValue = average(points.slice(-period));
+  return Number.isFinite(latest) &&
+    Number.isFinite(movingAverageValue) &&
+    latest < movingAverageValue;
+}
+
 function numericSeries(series) {
   return (series || [])
     .map((point) => Number(point.value))
@@ -1032,14 +1080,90 @@ function signalConfidence(className, score) {
   return score > 0 ? "녹색 대기" : "위험 경계";
 }
 
-function targetPortfolioExposure(score, action, confidence = "") {
+function targetPortfolioExposure(
+  score,
+  action,
+  confidence = "",
+  crisisMode = null,
+  config = DEFAULT_PORTFOLIO_EXPOSURE_CONFIG,
+) {
   const cleanScore = Number(score);
   if (!Number.isFinite(cleanScore)) return NaN;
-  if (confidence === "약한 빨간색") return 0.05;
-  if (confidence === "위험 경계") return 0.75;
-  if (confidence === "중립") return 0.8;
-  if (action === "비중 축소") return 1;
-  return 1;
+  let exposure = 1;
+  if (confidence === "약한 빨간색") exposure = config.weakRed;
+  else if (confidence === "위험 경계") exposure = config.riskWatch;
+  else if (confidence === "중립") exposure = config.neutral;
+  else if (action === "비중 축소") exposure = config.strongTrim;
+
+  if (crisisMode?.tailRisk) {
+    const crisisExposure =
+      crisisMode.severity === "severe" ? config.severeCrisis : config.crisis;
+    const crisisCap =
+      crisisMode.severity === "severe" ? config.severeCrisis : config.crisisCap;
+    if (action === "비중 축소" || confidence.includes("빨간색")) {
+      return Math.min(exposure, crisisExposure);
+    }
+    return Math.min(exposure, crisisCap);
+  }
+  return exposure;
+}
+
+function detectPortfolioCrisisMode(quotes, sentiment) {
+  const vixLevel = Number(sentiment?.vix?.close);
+  const vixChange = Number(sentiment?.vix?.change);
+  const vixTrend = trendPercent(sentiment?.vix?.series || sentiment?.vix?.analysisSeries);
+  const spreadLevel = Number(quotes?.hySpread?.price);
+  const spreadMove = pointChangeOverPeriod(
+    quotes?.hySpread?.analysisHistory || quotes?.hySpread?.history,
+    63,
+  );
+  const nasdaqBelow200 = isBelowMovingAverage(quotes?.nasdaq, 200);
+  const soxBelow200 = isBelowMovingAverage(quotes?.sox, 200);
+  const riskMove = average([
+    Number(quotes?.sox?.changePercent),
+    Number(quotes?.nasdaq?.changePercent),
+    Number(quotes?.kospi?.changePercent),
+  ]);
+  const vixStress =
+    vixLevel >= 32 ||
+    (vixLevel >= 28 && vixChange >= 3) ||
+    (vixLevel >= 25 && vixTrend >= 20);
+  const spreadStress = spreadLevel >= 5.5 || spreadMove >= 0.5;
+  const trendStress = nasdaqBelow200 || soxBelow200;
+  const active =
+    (vixStress && spreadStress && trendStress) ||
+    (vixLevel >= 35 && trendStress) ||
+    (spreadLevel >= 7 && vixLevel >= 25);
+  const severe =
+    active &&
+    ((vixLevel >= 35 && spreadLevel >= 6) ||
+      (vixLevel >= 32 && spreadStress && nasdaqBelow200 && soxBelow200));
+  const shock =
+    active &&
+    ((Number.isFinite(vixChange) &&
+      Number.isFinite(riskMove) &&
+      vixChange >= 5 &&
+      riskMove <= -1) ||
+      (Number.isFinite(vixChange) &&
+        Number.isFinite(riskMove) &&
+        vixChange >= 2 &&
+        riskMove <= -3.5));
+  const tailRisk =
+    active &&
+    ((vixLevel >= 40 && spreadLevel >= 6.5 && trendStress) ||
+      (vixLevel >= 35 && spreadLevel >= 7 && nasdaqBelow200 && soxBelow200));
+
+  return {
+    active,
+    nasdaqBelow200,
+    shock,
+    severity: severe ? "severe" : active ? "elevated" : "normal",
+    soxBelow200,
+    spreadLevel: roundFinite(spreadLevel, 2),
+    spreadMove: roundFinite(spreadMove, 2),
+    tailRisk,
+    vixLevel: roundFinite(vixLevel, 2),
+  };
 }
 
 function getFearGreedRating(score) {
@@ -1100,6 +1224,12 @@ function formatPercent(value) {
 function formatSignedScore(value) {
   const rounded = Math.round(Number(value) || 0);
   return `${rounded > 0 ? "+" : ""}${rounded}`;
+}
+
+function roundFinite(value, decimals) {
+  if (!Number.isFinite(value)) return null;
+  const scale = 10 ** decimals;
+  return Math.round(value * scale) / scale;
 }
 
 function getDirectionalClass(change, trendInverts = false) {

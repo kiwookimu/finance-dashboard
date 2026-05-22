@@ -13,6 +13,17 @@ const TREND_POINTS = 28;
 const ANALYSIS_POINTS = 260;
 const FORWARD_HORIZONS = [...new Set([5, HORIZON_DAYS, 60])].sort((a, b) => a - b);
 const ENTRY_MODES = ["close", "nextOpen", "nextClose"];
+const MIN_TUNING_TRAIN_ROWS = 500;
+const MIN_TUNING_OBJECTIVE_EDGE = 6;
+const DEFAULT_PORTFOLIO_EXPOSURE_CONFIG = {
+  crisis: 0.5,
+  crisisCap: 0.65,
+  neutral: 0.8,
+  riskWatch: 0.75,
+  severeCrisis: 0.35,
+  strongTrim: 1,
+  weakRed: 0.05,
+};
 
 const MARKET_SOURCES = [
   { id: "kospi", symbol: "^KS11" },
@@ -84,11 +95,13 @@ const payload = {
   },
   assumptions: [
     "DDR5 spot, server DRAM contract, DXI, and historical foreign/institution flow are excluded where full historical public data is unavailable.",
-    "Portfolio strategy exposure is score-based: weak red = 5%, risk watch = 75%, neutral = 80%, otherwise 100%.",
+    "Portfolio strategy exposure is score-based: weak red = 5%, risk watch = 75%, neutral = 80%, otherwise 100%, with crisis-mode caps.",
     "Market strategy exposure remains action-based: new buy = 100%, hold = 60%, sell = 20%.",
     "The primary strategy return uses the configured entry mode. Default is nextOpen.",
     "Transaction costs are charged when exposure changes, including initial entry exposure.",
     "A recovery-pulse overlay reduces false sell/trim signals when volatility is cooling and risk assets are confirming a rebound.",
+    "Crisis mode activates when volatility, high-yield spread, and NASDAQ/SOX 200-day trend stress overlap.",
+    "Walk-forward tuning chooses exposure parameters on prior years and validates them on the next year.",
     "VIX minus 22-day realized S&P 500 volatility is used as a variance-risk-premium proxy.",
     "Market and portfolio momentum are scored across 1, 3, 6, and 12 month windows.",
     "Backtest dates use the KOSPI trading calendar because the portfolio holdings are Korea-listed ETFs.",
@@ -300,6 +313,12 @@ function runBacktest({
       nextOpenReturn: round(entryModeReturns.nextOpen.return, 4),
       portfolioAction: portfolioSignal.action,
       portfolioConfidence: portfolioSignal.confidence,
+      portfolioCrisisMode: portfolioSignal.crisisMode.active
+        ? portfolioSignal.crisisMode.severity
+        : "normal",
+      portfolioCrisisScore: portfolioSignal.crisisMode.score,
+      portfolioCrisisShock: portfolioSignal.crisisMode.shock ? 1 : 0,
+      portfolioCrisisTailRisk: portfolioSignal.crisisMode.tailRisk ? 1 : 0,
       portfolioCoverage: round(
         Math.min(
           strategyDay.coverage,
@@ -312,6 +331,7 @@ function runBacktest({
         portfolioSignal.score,
         portfolioSignal.action,
         portfolioSignal.confidence,
+        portfolioSignal.crisisMode,
       ),
       portfolioFixedExposure: actionExposureForPortfolio(portfolioSignal.action),
       portfolioRecoveryScore: portfolioSignal.recoveryScore,
@@ -495,6 +515,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   const recoveryScore = scoreRecoveryPulse(quotes, sentiment, portfolioMetrics);
   const semiconductorCycleScore = scoreSemiconductorCycle(quotes);
   const variancePremiumScore = scoreVarianceRiskPremium(quotes, sentiment);
+  const crisisMode = detectPortfolioCrisisMode(quotes, sentiment);
 
   add(semiScore, 2.4);
   add(nasdaqScore, 1.25);
@@ -523,10 +544,12 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   if (relativeScore < -0.25 && movingAverageScore < 0) score -= 6;
   if (multiRelativeScore < -0.35 && semiconductorCycleScore < 0) score -= 5;
   if (variancePremiumScore < -0.55 && recoveryForPenalty < 0.25) score -= 4;
+  if (crisisMode.tailRisk) score -= crisisMode.severity === "severe" ? 18 : 12;
   score = clamp(Math.round(score), -100, 100);
 
   let action = "보유";
   if (
+    (crisisMode.tailRisk && recoveryForAction < 0.35) ||
     (vixLevel >= 35 && recoveryForAction < -0.5) ||
     score <= -60 ||
     (score <= -35 && recoveryForAction < -0.5) ||
@@ -539,6 +562,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
     semiconductorCycleScore > -0.2 &&
     regimeScore > -0.25 &&
     rateScore > -0.35 &&
+    !crisisMode.active &&
     vixLevel < 28 &&
     (!Number.isFinite(variancePremiumScore) || variancePremiumScore > -0.6) &&
     (!Number.isFinite(recoveryScore) || recoveryScore > -0.2)
@@ -548,6 +572,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   return {
     action,
     confidence: signalConfidence(action, score),
+    crisisMode,
     recoveryScore: round(recoveryScore, 4),
     score,
   };
@@ -696,11 +721,19 @@ function summarizeByYear(rows) {
 function summarizeWalkForward(rows) {
   const years = [...new Set(rows.map((row) => row.date.slice(0, 4)))].sort();
   const folds = [];
+  const tunedValidationRows = [];
   for (let index = 1; index < years.length; index += 1) {
     const testYear = years[index];
     const trainRows = rows.filter((row) => row.date.slice(0, 4) < testYear);
     const testRows = rows.filter((row) => row.date.slice(0, 4) === testYear);
     if (!trainRows.length || !testRows.length) continue;
+    const tuned = selectExposureConfig(trainRows);
+    tunedValidationRows.push(
+      ...testRows.map((row) => ({
+        config: tuned.config,
+        row,
+      })),
+    );
     folds.push({
       testPeriod: periodLabel(testRows),
       testRows: testRows.length,
@@ -708,6 +741,11 @@ function summarizeWalkForward(rows) {
       trainPeriod: periodLabel(trainRows),
       trainRows: trainRows.length,
       trainSummary: summarizePeriod(trainRows),
+      tunedConfig: tuned.config,
+      tunedReason: tuned.reason,
+      tunedTrainObjective: tuned.objective,
+      tunedTrainSummary: tuned.trainSummary,
+      tunedValidationSummary: summarizePeriodWithConfig(testRows, tuned.config),
       validationSummary: summarizePeriod(testRows),
     });
   }
@@ -716,6 +754,8 @@ function summarizeWalkForward(rows) {
   );
   return {
     folds,
+    tunedConfigCounts: summarizeTunedConfigCounts(folds),
+    tunedValidationAggregate: summarizeTunedValidationRows(tunedValidationRows),
     validationAggregate: summarizePeriod(validationRows),
   };
 }
@@ -738,6 +778,157 @@ function summarizePeriod(rows) {
       TRANSACTION_COST_BPS,
     ),
   };
+}
+
+function summarizePeriodWithConfig(rows, config) {
+  const dailyReturns = rows.map((row) => row.strategyReturn / 100);
+  const tunedExposure = rows.map((row) => exposureForConfig(row, config));
+  return {
+    benchmark: summarizeCurve(dailyReturns, dailyReturns.map(() => 1), 0),
+    firstDate: rows[0]?.date || null,
+    lastDate: rows.at(-1)?.date || null,
+    observations: rows.length,
+    portfolioSignal: summarizeCurve(dailyReturns, tunedExposure, TRANSACTION_COST_BPS),
+  };
+}
+
+function summarizeTunedValidationRows(items) {
+  const rows = items.map((item) => item.row);
+  const dailyReturns = rows.map((row) => row.strategyReturn / 100);
+  const tunedExposure = items.map((item) => exposureForConfig(item.row, item.config));
+  return {
+    benchmark: summarizeCurve(dailyReturns, dailyReturns.map(() => 1), 0),
+    firstDate: rows[0]?.date || null,
+    lastDate: rows.at(-1)?.date || null,
+    observations: rows.length,
+    portfolioSignal: summarizeCurve(dailyReturns, tunedExposure, TRANSACTION_COST_BPS),
+  };
+}
+
+function selectExposureConfig(trainRows) {
+  const defaultConfig = normalizeExposureConfig(DEFAULT_PORTFOLIO_EXPOSURE_CONFIG);
+  const defaultSummary = summarizePeriodWithConfig(trainRows, defaultConfig).portfolioSignal;
+  const defaultObjective = exposureTuningObjective(defaultSummary);
+  let selected = {
+    config: defaultConfig,
+    objective: round(defaultObjective, 4),
+    reason: "default",
+    trainSummary: defaultSummary,
+  };
+  if (trainRows.length < MIN_TUNING_TRAIN_ROWS) {
+    return {
+      ...selected,
+      reason: "insufficient_history",
+    };
+  }
+
+  for (const config of buildExposureConfigCandidates()) {
+    const trainSummary = summarizePeriodWithConfig(trainRows, config).portfolioSignal;
+    const objective = exposureTuningObjective(trainSummary);
+    if (objective > selected.objective) {
+      selected = {
+        config,
+        objective: round(objective, 4),
+        reason: "optimized",
+        trainSummary,
+      };
+    }
+  }
+  if (selected.objective < defaultObjective + MIN_TUNING_OBJECTIVE_EDGE) {
+    return {
+      config: defaultConfig,
+      objective: round(defaultObjective, 4),
+      reason: "default_guard",
+      trainSummary: defaultSummary,
+    };
+  }
+  return selected;
+}
+
+function exposureTuningObjective(curve) {
+  const sharpe = Number(curve.netMetrics?.sharpe) || 0;
+  const drawdown = Number(curve.netMaxDrawdown) || 0;
+  const turnover = Number(curve.turnover) || 0;
+  return curve.netTotalReturn + drawdown * 0.75 + sharpe * 8 - turnover * 0.05;
+}
+
+function buildExposureConfigCandidates() {
+  const candidates = [];
+  const seen = new Set();
+  const push = (config) => {
+    const normalized = normalizeExposureConfig(config);
+    const key = JSON.stringify(normalized);
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push(normalized);
+  };
+
+  push(DEFAULT_PORTFOLIO_EXPOSURE_CONFIG);
+  for (const weakRed of [0.05, 0.1, 0.15, 0.25]) {
+    for (const riskWatch of [0.65, 0.75, 0.85, 1]) {
+      for (const neutral of [0.8, 0.9, 1]) {
+        for (const strongTrim of [0.75, 1]) {
+          for (const crisis of [0.35, 0.5]) {
+            for (const crisisCap of [0.55, 0.65, 0.75]) {
+              push({
+                crisis,
+                crisisCap,
+                neutral,
+                riskWatch,
+                severeCrisis: 0.35,
+                strongTrim,
+                weakRed,
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+  return candidates;
+}
+
+function normalizeExposureConfig(config) {
+  return {
+    crisis: config.crisis,
+    crisisCap: config.crisisCap,
+    neutral: config.neutral,
+    riskWatch: config.riskWatch,
+    severeCrisis: config.severeCrisis,
+    strongTrim: config.strongTrim,
+    weakRed: config.weakRed,
+  };
+}
+
+function exposureForConfig(row, config) {
+  return targetPortfolioExposure(
+    row.portfolioScore,
+    row.portfolioAction,
+    row.portfolioConfidence,
+    crisisModeFromRow(row),
+    config,
+  );
+}
+
+function crisisModeFromRow(row) {
+  const severity = row.portfolioCrisisMode || "normal";
+  return {
+    active: severity !== "normal",
+    severity,
+    shock: Number(row.portfolioCrisisShock) === 1,
+    tailRisk: Number(row.portfolioCrisisTailRisk) === 1,
+  };
+}
+
+function summarizeTunedConfigCounts(folds) {
+  const counts = new Map();
+  for (const fold of folds) {
+    const key = JSON.stringify(fold.tunedConfig);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([config, count]) => ({ config: JSON.parse(config), count }))
+    .sort((a, b) => b.count - a.count);
 }
 
 function summarizeEntryModes(rows) {
@@ -992,14 +1183,91 @@ function actionExposureForMarket(action) {
   return 0.6;
 }
 
-function targetPortfolioExposure(score, action, confidence = "") {
+function targetPortfolioExposure(
+  score,
+  action,
+  confidence = "",
+  crisisMode = null,
+  config = DEFAULT_PORTFOLIO_EXPOSURE_CONFIG,
+) {
   const cleanScore = Number(score);
   if (!Number.isFinite(cleanScore)) return actionExposureForPortfolio(action);
-  if (confidence === "약한 빨간색") return 0.05;
-  if (confidence === "위험 경계") return 0.75;
-  if (confidence === "중립") return 0.8;
-  if (action === "비중 축소") return 1;
-  return 1;
+  let exposure = 1;
+  if (confidence === "약한 빨간색") exposure = config.weakRed;
+  else if (confidence === "위험 경계") exposure = config.riskWatch;
+  else if (confidence === "중립") exposure = config.neutral;
+  else if (action === "비중 축소") exposure = config.strongTrim;
+
+  if (crisisMode?.tailRisk) {
+    const crisisExposure =
+      crisisMode.severity === "severe" ? config.severeCrisis : config.crisis;
+    const crisisCap =
+      crisisMode.severity === "severe" ? config.severeCrisis : config.crisisCap;
+    if (action === "비중 축소" || confidence.includes("빨간색")) {
+      return Math.min(exposure, crisisExposure);
+    }
+    return Math.min(exposure, crisisCap);
+  }
+  return exposure;
+}
+
+function detectPortfolioCrisisMode(quotes, sentiment) {
+  const vixLevel = Number(sentiment?.vix?.close);
+  const vixChange = Number(sentiment?.vix?.change);
+  const vixTrend = trendPercent(sentiment?.vix?.series || sentiment?.vix?.analysisSeries);
+  const spreadLevel = Number(quotes?.hySpread?.price);
+  const spreadMove = pointChangeOverPeriod(
+    quotes?.hySpread?.analysisHistory || quotes?.hySpread?.history,
+    63,
+  );
+  const nasdaqBelow200 = isBelowMovingAverage(quotes?.nasdaq, 200);
+  const soxBelow200 = isBelowMovingAverage(quotes?.sox, 200);
+  const riskMove = average([
+    Number(quotes?.sox?.changePercent),
+    Number(quotes?.nasdaq?.changePercent),
+    Number(quotes?.kospi?.changePercent),
+  ]);
+  const vixStress =
+    vixLevel >= 32 ||
+    (vixLevel >= 28 && vixChange >= 3) ||
+    (vixLevel >= 25 && vixTrend >= 20);
+  const spreadStress = spreadLevel >= 5.5 || spreadMove >= 0.5;
+  const trendStress = nasdaqBelow200 || soxBelow200;
+  const active =
+    (vixStress && spreadStress && trendStress) ||
+    (vixLevel >= 35 && trendStress) ||
+    (spreadLevel >= 7 && vixLevel >= 25);
+  const severe =
+    active &&
+    ((vixLevel >= 35 && spreadLevel >= 6) ||
+      (vixLevel >= 32 && spreadStress && nasdaqBelow200 && soxBelow200));
+  const shock =
+    active &&
+    ((Number.isFinite(vixChange) &&
+      Number.isFinite(riskMove) &&
+      vixChange >= 5 &&
+      riskMove <= -1) ||
+      (Number.isFinite(vixChange) &&
+        Number.isFinite(riskMove) &&
+        vixChange >= 2 &&
+        riskMove <= -3.5));
+  const tailRisk =
+    active &&
+    ((vixLevel >= 40 && spreadLevel >= 6.5 && trendStress) ||
+      (vixLevel >= 35 && spreadLevel >= 7 && nasdaqBelow200 && soxBelow200));
+
+  return {
+    active,
+    nasdaqBelow200,
+    score: [vixStress, spreadStress, nasdaqBelow200, soxBelow200].filter(Boolean).length,
+    shock,
+    severity: severe ? "severe" : active ? "elevated" : "normal",
+    soxBelow200,
+    spreadLevel: round(spreadLevel, 2),
+    spreadMove: round(spreadMove, 2),
+    tailRisk,
+    vixLevel: round(vixLevel, 2),
+  };
 }
 
 function scoreRiskAsset(quote) {
@@ -1404,6 +1672,23 @@ function pointChange(series) {
   return points.at(-1) - points[0];
 }
 
+function pointChangeOverPeriod(series, period) {
+  const points = numericSeries(series);
+  if (points.length < 2) return NaN;
+  const windowPoints = points.slice(-Math.min(period + 1, points.length));
+  return windowPoints.at(-1) - windowPoints[0];
+}
+
+function isBelowMovingAverage(quote, period) {
+  const points = numericSeries(quote?.analysisHistory || quote?.history);
+  if (points.length < period) return false;
+  const latest = points.at(-1);
+  const movingAverageValue = average(points.slice(-period));
+  return Number.isFinite(latest) &&
+    Number.isFinite(movingAverageValue) &&
+    latest < movingAverageValue;
+}
+
 function numericSeries(series) {
   return (series || [])
     .map((point) => Number(point.value))
@@ -1535,6 +1820,10 @@ function toCsv(rows) {
     "portfolioExposure",
     "portfolioFixedExposure",
     "portfolioScore",
+    "portfolioCrisisMode",
+    "portfolioCrisisScore",
+    "portfolioCrisisShock",
+    "portfolioCrisisTailRisk",
     "portfolioCoverage",
     "portfolioRecoveryScore",
     "marketAction",
@@ -1583,6 +1872,8 @@ function printSummary(summary, outStem) {
   console.log("entry mode comparison:", summary.entryModeComparison);
   console.log(`transaction cost: ${summary.transactionCostBps} bps per exposure change`);
   console.log("walk-forward aggregate:", summary.walkForward.validationAggregate);
+  console.log("walk-forward tuned aggregate:", summary.walkForward.tunedValidationAggregate);
+  console.log("walk-forward tuned config counts:", summary.walkForward.tunedConfigCounts);
   console.log("portfolio buckets:", summary.portfolioSignal.actionBuckets);
   console.log("market buckets:", summary.marketSignal.actionBuckets);
   console.log(`saved: ${outStem}.json, ${outStem}.csv`);
