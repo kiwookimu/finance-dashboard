@@ -221,15 +221,17 @@ h1 {
 
 .portfolio-stats {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .portfolio-stats span {
   display: grid;
+  align-content: center;
   gap: 3px;
   min-width: 0;
-  padding: 8px;
+  min-height: 58px;
+  padding: 8px 7px;
   background: #ffffff;
   border: 1px solid #e7eee9;
   border-radius: 7px;
