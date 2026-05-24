@@ -1,0 +1,55 @@
+{
+  "generatedAt": "2026-05-24T03:23:48.198Z",
+  "benchmark": "QQQ",
+  "comparisonMonthCount": 5,
+  "condition": {
+    "breakout": "target month close exceeds previous comparison-month closing high",
+    "dailyMfi": ">= 70",
+    "minimumHistoryMonths": 4,
+    "minimumMarketCapKrw": 1000000000000,
+    "minimumMarketCapUsd": 657665419,
+    "monthlyReturn": ">= 15% vs previous month close",
+    "relativeReturn": ">= 8% vs QQQ",
+    "setupScore": ">= 70",
+    "volumeRatio": ">= 1.8x vs previous 5-month average"
+  },
+  "exchangeRate": {
+    "pair": "USD/KRW",
+    "value": 1520.53
+  },
+  "marketMonth": "2025-09",
+  "note": "Forward returns are included only for historical review and are not used in the screen.",
+  "universe": "Manual symbols: SNDK",
+  "universeCount": 1,
+  "matchCount": 1,
+  "failureCount": 0,
+  "results": [
+    {
+      "aboveTrailing3Average": true,
+      "benchmarkReturn": 5.25,
+      "breakout": true,
+      "exchange": "NASDAQ",
+      "firstToLastReturn": 119.7,
+      "lastClose": 112.2,
+      "lastDate": "2025-09-30",
+      "mfi": 81.32,
+      "monthlyReturn": 113.84,
+      "name": "Sandisk Corporation - Common Stock When-Issued",
+      "next1mReturn": 77.66,
+      "next3mReturn": 111.57,
+      "next6mReturn": 466.26,
+      "previousAverageVolume": 60439927,
+      "previousCloseHigh": 52.47,
+      "previousMonthClose": 52.47,
+      "rawSymbol": "SNDK",
+      "relativeReturn": 108.58,
+      "setupScore": 100,
+      "signal": "강한 월간 상승 후보",
+      "symbol": "SNDK",
+      "targetMonthVolume": 159028153,
+      "volumeRatio": 2.63,
+      "marketCapKrw": 332963902058096,
+      "marketCapUsd": 218978844257
+    }
+  ]
+}

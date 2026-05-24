@@ -29,12 +29,15 @@ Render에서는 `render.yaml`의 `startCommand`와 `/api/health` 헬스체크를
 - `scripts/backtest_signals.mjs`: 신호등 체계 과거 데이터 백테스트
 - `scripts/screen_mfi_volume.mjs`: 월간 거래량 급증 + MFI 조건 스크리닝
 - `scripts/screen_us_mfi_volume.mjs`: 미국 상장 보통주/ADR 대상 월간 거래량 급증 + MFI 조건 스크리닝
+- `scripts/screen_us_monthly_breakout.mjs`: 미국 상장 보통주/ADR 대상 월간 상승 후보 스크리닝
 
 KOSPI, S&P 500, NASDAQ, SOX 반도체지수, USD/KRW, WTI 유가, 미국 10년물 금리는 Yahoo Finance chart endpoint를 사용합니다. 하이일드 스프레드와 NFCI는 FRED CSV를 사용합니다. DDR5 16Gb 4800/5600 Spot Price는 TrendForce 공개 DRAM spot price 표를 사용합니다. Server DDR5 Contract Price는 TrendForce Server DIMM Contract Price 공개 요약을 사용하며, 숫자 가격은 멤버십 영역이라 공개값이 있을 때만 표시됩니다. DXI Index는 DRAMeXchange 공개 Market Activity의 업데이트 시각을 사용하며, 숫자 지수와 히스토리는 로그인 영역이라 공개값이 있을 때만 표시됩니다. 공포·탐욕 지수는 GitHub CSV 미러, VIX는 Cboe 일별 CSV를 사용합니다. 모두 실시간이 아닌 무료 지연 데이터입니다.
 
 월간 거래량/MFI 스크리너는 KRX 상장법인 목록과 Naver Finance 일별 OHLCV/시가총액 데이터를 사용합니다. 기본 비교 기준은 대상월 직전 5개월 월간 거래량 평균이고, 기본 시가총액 조건은 `1조원 이상`입니다. 네 번째 인자로 `KOSPI` 또는 `KOSPI,KOSDAQ`처럼 시장 필터를 줄 수 있고, 다섯 번째 인자에 `true`를 주면 대상월 말 종가가 직전월 말 종가보다 오른 종목만 남깁니다. 여섯 번째 인자로 최소 시가총액 원화 금액을 바꿀 수 있습니다.
 
 미국 월간 거래량/MFI 스크리너는 Nasdaq Trader 상장 목록과 Nasdaq 일별 OHLCV/시가총액 데이터를 사용합니다. ETF, 유닛, 워런트, 우선주, 펀드, SPAC/인수목적회사, 테스트 종목은 제외하고 보통주/ADR 중심으로 계산합니다. 기본 시가총액 조건은 `1조원 이상`이며, USD/KRW 환율로 달러 기준 최소 시총을 환산합니다.
+
+미국 월간 상승 후보 스크리너는 샌디스크처럼 한 달 안에 거래량과 상대강도가 동시에 터지는 종목을 찾기 위한 로직입니다. 대상월 종가가 직전 5개월 종가 고점을 돌파하고, 대상월 거래량이 직전 5개월 평균의 1.8배 이상이며, 전월 말 대비 수익률이 15% 이상이고, QQQ 대비 초과수익률이 8% 이상이며, 14일 MFI가 70 이상인 종목을 점수화합니다. 결과에는 다음 1/3/6개월 수익률도 저장하지만, 이는 과거 검증용이며 스크리닝 조건에는 쓰지 않습니다. 특정 종목만 확인하려면 `SCREEN_SYMBOLS=SNDK node scripts/screen_us_monthly_breakout.mjs 2025-09`처럼 실행합니다.
 
 ## 신호등 로직
 

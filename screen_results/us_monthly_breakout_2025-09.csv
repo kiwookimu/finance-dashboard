@@ -1,0 +1,2 @@
+symbol,rawSymbol,name,exchange,signal,setupScore,lastDate,lastClose,monthlyReturn,benchmarkReturn,relativeReturn,firstToLastReturn,volumeRatio,mfi,breakout,aboveTrailing3Average,next1mReturn,next3mReturn,next6mReturn,marketCapUsd,marketCapKrw
+SNDK,SNDK,Sandisk Corporation - Common Stock When-Issued,NASDAQ,강한 월간 상승 후보,100,2025-09-30,112.2,113.84,5.25,108.58,119.7,2.63,81.32,true,true,77.66,111.57,466.26,218978844257,332963902058096
