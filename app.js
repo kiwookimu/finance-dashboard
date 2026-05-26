@@ -13,6 +13,8 @@ const PORTFOLIO_HOLDINGS = [
   { amount: 5006750, benchmark: "nasdaq", code: "0183J0", id: "tigerUsSpaceTech", name: "TIGER 미국우주테크", tags: ["space", "us"] },
   { amount: 5012995, benchmark: "nasdaq", code: "0173Y0", id: "kodexAiOpticalNetwork", name: "KODEX 미국AI광통신네트워크", tags: ["aiPower", "network", "us"] },
   { amount: 5035970, benchmark: "nasdaq", code: "0023A0", id: "solUsQuantumTop10", name: "SOL 미국양자컴퓨팅TOP10", tags: ["quantum", "us"] },
+  { amount: 0, benchmark: "nasdaq", code: "491010", id: "tigerGlobalAiPowerInfra", name: "TIGER 글로벌AI전력인프라액티브", tags: ["aiPower", "global"] },
+  { amount: 0, benchmark: "kospi", code: "367760", id: "riseNetworkInfra", name: "RISE 네트워크인프라", tags: ["network", "korea"] },
 ];
 const PORTFOLIO_TOTAL = PORTFOLIO_HOLDINGS.reduce(
   (sum, holding) => sum + holding.amount,
@@ -33,8 +35,346 @@ const DEFAULT_PORTFOLIO_EXPOSURE_CONFIG = {
   strongTrim: 1,
   weakRed: 0.05,
 };
+const RECOMMENDATION_CONFIGS = {
+  domestic: {
+    conditionSelector: "#recommendationCondition",
+    endpoint: "/api/stock-recommendations",
+    listSelector: "#recommendationList",
+    loadingText: "월간 후보 계산 중",
+    refreshText: "최신 후보 갱신 중",
+    statusSelector: "#recommendationStatus",
+  },
+  us: {
+    conditionSelector: "#usRecommendationCondition",
+    endpoint: "/api/us-stock-recommendations",
+    listSelector: "#usRecommendationList",
+    loadingText: "미국 후보 계산 중",
+    refreshText: "미국 후보 갱신 중",
+    statusSelector: "#usRecommendationStatus",
+  },
+};
+const recommendationStates = {
+  domestic: {
+    loaded: false,
+    loading: false,
+  },
+  us: {
+    loaded: false,
+    loading: false,
+  },
+};
 
+initializeDashboardTabs();
+initializeRecommendationActions();
 loadIndicators();
+
+function initializeDashboardTabs() {
+  const tabs = [...document.querySelectorAll(".dashboard-tab")];
+  const panels = [...document.querySelectorAll(".tab-panel")];
+  if (!tabs.length || !panels.length) return;
+
+  const activateTab = (selectedTab, shouldFocus = false) => {
+    const panelId = selectedTab.getAttribute("aria-controls");
+    for (const tab of tabs) {
+      const isSelected = tab === selectedTab;
+      tab.classList.toggle("is-active", isSelected);
+      tab.setAttribute("aria-selected", String(isSelected));
+      tab.tabIndex = isSelected ? 0 : -1;
+    }
+    for (const panel of panels) {
+      const isSelected = panel.id === panelId;
+      panel.classList.toggle("is-active", isSelected);
+      panel.hidden = !isSelected;
+    }
+    if (panelId === "recommendationsPanel") loadRecommendations();
+    if (panelId === "usRecommendationsPanel") loadRecommendations({ market: "us" });
+    if (shouldFocus) selectedTab.focus();
+  };
+
+  for (const tab of tabs) {
+    tab.addEventListener("click", () => activateTab(tab));
+    tab.addEventListener("keydown", (event) => {
+      const currentIndex = tabs.indexOf(tab);
+      let nextIndex = currentIndex;
+      if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % tabs.length;
+      else if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+      else if (event.key === "Home") nextIndex = 0;
+      else if (event.key === "End") nextIndex = tabs.length - 1;
+      else return;
+      event.preventDefault();
+      activateTab(tabs[nextIndex], true);
+    });
+  }
+
+  activateTab(tabs.find((tab) => tab.classList.contains("is-active")) || tabs[0]);
+}
+
+function initializeRecommendationActions() {
+  const refreshButton = document.querySelector("#recommendationRefresh");
+  refreshButton?.addEventListener("click", () => loadRecommendations({ force: true }));
+  const usRefreshButton = document.querySelector("#usRecommendationRefresh");
+  usRefreshButton?.addEventListener("click", () =>
+    loadRecommendations({ force: true, market: "us" }),
+  );
+}
+
+async function loadRecommendations({ force = false, market = "domestic" } = {}) {
+  const config = RECOMMENDATION_CONFIGS[market] || RECOMMENDATION_CONFIGS.domestic;
+  const state = recommendationStates[market] || recommendationStates.domestic;
+  if (state.loading) return;
+  if (state.loaded && !force) return;
+
+  state.loading = true;
+  renderRecommendationLoading(config, state, force);
+  try {
+    const response = await fetch(
+      `${config.endpoint}${force ? "?refresh=1" : ""}`,
+      { cache: "no-store" },
+    );
+    if (!response.ok) throw new Error("Stock recommendation request failed");
+    renderRecommendations(await response.json(), config);
+    state.loaded = true;
+  } catch (error) {
+    console.warn("Stock recommendations unavailable", error);
+    renderRecommendationError(config);
+  } finally {
+    state.loading = false;
+  }
+}
+
+function renderRecommendationLoading(config, state, force) {
+  setText(
+    config.statusSelector,
+    force ? config.refreshText : config.loadingText,
+  );
+  const list = document.querySelector(config.listSelector);
+  if (list && (!state.loaded || force)) {
+    list.innerHTML = `<p class="recommendation-empty">후보 계산 중</p>`;
+  }
+}
+
+function renderRecommendationError(config) {
+  setText(config.statusSelector, "후보 갱신 실패");
+  const list = document.querySelector(config.listSelector);
+  if (list) {
+    list.innerHTML = `<p class="recommendation-empty">데이터 갱신 실패</p>`;
+  }
+}
+
+function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic) {
+  const rawResults = payload?.results || payload?.topResults || [];
+  const results = rawResults
+    .map((item) => ({
+      item,
+      priorityScore: recommendationPriorityScore(item),
+    }))
+    .sort(
+      (a, b) =>
+        b.priorityScore - a.priorityScore ||
+        Number(b.item.relativeReturn) - Number(a.item.relativeReturn) ||
+        Number(b.item.volumeRatio) - Number(a.item.volumeRatio),
+    )
+    .slice(0, 12);
+  const matchCount = Number(payload?.matchCount ?? rawResults.length);
+  const generatedAtText = formatDateTime(payload?.generatedAt);
+  const statusParts = [
+    payload?.marketMonth,
+    generatedAtText,
+    Number.isFinite(matchCount) ? `${matchCount}개` : "",
+    payload?.refreshed ? "갱신됨" : payload?.saved ? "저장본" : "",
+    payload?.stale ? "이전 결과" : "",
+  ].filter(Boolean);
+  setText(config.statusSelector, statusParts.join(" · ") || "후보 없음");
+  setText(
+    config.conditionSelector,
+    [
+      `시총 ${formatKoreanMarketCap(payload?.condition?.minimumMarketCapKrw)} 이상`,
+      `거래량 ${formatConditionNumber(payload?.condition?.volumeRatio)}`,
+      `MFI ${formatConditionNumber(payload?.condition?.dailyMfi)}`,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  );
+
+  const list = document.querySelector(config.listSelector);
+  if (!list) return;
+
+  if (!results.length) {
+    list.innerHTML = `<p class="recommendation-empty">조건 충족 종목 없음</p>`;
+    return;
+  }
+
+  list.innerHTML = results
+    .map(({ item, priorityScore }, index) => {
+      const ticker = item.code || item.symbol || item.rawSymbol;
+      const setup = buildRecommendationSetup(item);
+      const detail = [
+        item.marketType || item.exchange,
+        ticker,
+        `${formatKoreanMarketCap(item.marketCapKrw)}`,
+      ].filter(Boolean);
+      const reason = [
+        `상대강도 ${formatSignedNumber(Number(item.relativeReturn), 1)}%p`,
+        `거래량 ${formatNumber(Number(item.volumeRatio), 2)}배`,
+        `MFI ${formatNumber(Number(item.mfi), 1)}`,
+      ].join(" · ");
+      return `
+        <article class="recommendation-card">
+          <span class="recommendation-rank">${index + 1}</span>
+          <div class="recommendation-copy">
+            <div class="recommendation-title">
+              <strong>${escapeHtml(item.name)}</strong>
+              <span>${escapeHtml(item.signal || "월간 상승 후보")}</span>
+            </div>
+            <small>${escapeHtml(detail.join(" · "))}</small>
+            <div class="recommendation-metrics" aria-label="${escapeHtml(item.name)} 핵심 지표">
+              <span><b>${formatSignedNumber(Number(item.monthlyReturn), 1)}%</b><em>월간</em></span>
+              <span><b>${formatNumber(Number(item.volumeRatio), 2)}x</b><em>거래량</em></span>
+            </div>
+            <p>${escapeHtml(reason)}</p>
+          </div>
+          <span class="recommendation-score">우선 ${priorityScore}점</span>
+          <div class="recommendation-insight">
+            <span>${escapeHtml(setup.label)}</span>
+            <p>${escapeHtml(setup.summary)}</p>
+            <div class="recommendation-tags">
+              ${setup.tags.map((tag) => `<b>${escapeHtml(tag)}</b>`).join("")}
+            </div>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function recommendationPriorityScore(item) {
+  const volumeRatio = Number(item.volumeRatio);
+  const mfi = Number(item.mfi);
+  const relativeReturn = Number(item.relativeReturn);
+  const monthlyReturn = Number(item.monthlyReturn);
+  const marketCapKrw = Number(item.marketCapKrw);
+  let score = 0;
+
+  if (Number.isFinite(volumeRatio)) {
+    score += 8 + scaleBetween(Math.log(volumeRatio), Math.log(1.8), Math.log(8), 16);
+  }
+  if (Number.isFinite(mfi)) {
+    score += 6 + scaleBetween(mfi, 70, 90, 12);
+  }
+  if (Number.isFinite(relativeReturn)) {
+    score += 6 + scaleBetween(relativeReturn, 8, 60, 16);
+  }
+  if (Number.isFinite(monthlyReturn)) {
+    score += 4 + scaleBetween(monthlyReturn, 15, 90, 12);
+  }
+  if (Number.isFinite(marketCapKrw) && marketCapKrw > 0) {
+    if (marketCapKrw < 3_000_000_000_000) score += 12;
+    else if (marketCapKrw < 10_000_000_000_000) score += 9;
+    else if (marketCapKrw < 30_000_000_000_000) score += 6;
+    else score += 3;
+  }
+  if (item.breakout) score += 8;
+  if (item.aboveTrailing3Average) score += 5;
+
+  if (mfi > 94) score -= scaleBetween(mfi, 94, 100, 4);
+  if (monthlyReturn > 100) score -= scaleBetween(monthlyReturn, 100, 150, 4);
+  if (volumeRatio > 15) score -= scaleBetween(volumeRatio, 15, 30, 2);
+  return clamp(Math.round(score), 0, 99);
+}
+
+function scaleBetween(value, min, max, points) {
+  if (!Number.isFinite(value) || max <= min) return 0;
+  return clamp((value - min) / (max - min), 0, 1) * points;
+}
+
+function buildRecommendationSetup(item) {
+  const volumeRatio = Number(item.volumeRatio);
+  const mfi = Number(item.mfi);
+  const relativeReturn = Number(item.relativeReturn);
+  const monthlyReturn = Number(item.monthlyReturn);
+  const marketCapKrw = Number(item.marketCapKrw);
+  const tags = [
+    recommendationVolumeTag(volumeRatio),
+    recommendationMfiTag(mfi),
+    recommendationRelativeTag(relativeReturn),
+    recommendationMonthlyTag(monthlyReturn),
+    recommendationMarketCapTag(marketCapKrw),
+    item.breakout ? "5개월 고점 돌파" : "",
+  ]
+    .filter(Boolean)
+    .slice(0, 5);
+
+  return {
+    label: `${formatIsoDate(item.lastDate || "") || "추천 시점"} 기준`,
+    summary: recommendationSetupSummary({
+      mfi,
+      monthlyReturn,
+      relativeReturn,
+      volumeRatio,
+    }),
+    tags,
+  };
+}
+
+function recommendationSetupSummary({
+  mfi,
+  monthlyReturn,
+  relativeReturn,
+  volumeRatio,
+}) {
+  if (volumeRatio >= 8) {
+    return `거래량이 직전 5개월 평균의 ${formatNumber(volumeRatio, 2)}배로 먼저 폭발했고, 상대강도도 ${formatSignedNumber(relativeReturn, 1)}%p라 수급 쏠림이 강했어.`;
+  }
+  if (mfi >= 90) {
+    return `MFI가 ${formatNumber(mfi, 1)}로 90을 넘어 추천 시점부터 자금 유입 강도가 가장 두드러졌어.`;
+  }
+  if (relativeReturn >= 50) {
+    return `월간 상승률 ${formatSignedNumber(monthlyReturn, 1)}%, 상대강도 ${formatSignedNumber(relativeReturn, 1)}%p로 시장 대비 탄력이 매우 컸어.`;
+  }
+  if (volumeRatio >= 3) {
+    return `거래량이 평균의 ${formatNumber(volumeRatio, 2)}배까지 늘어 가격 돌파가 거래량으로 확인됐어.`;
+  }
+  return `월간 돌파, 거래량, MFI, 상대강도가 모두 기준을 넘은 추천 시점 신호야.`;
+}
+
+function recommendationVolumeTag(value) {
+  if (!Number.isFinite(value)) return "";
+  if (value >= 8) return "거래량 폭발형";
+  if (value >= 3) return "거래량 급증";
+  if (value >= 1.8) return "거래량 통과";
+  return "";
+}
+
+function recommendationMfiTag(value) {
+  if (!Number.isFinite(value)) return "";
+  if (value >= 90) return "MFI 90+";
+  if (value >= 80) return "MFI 강세";
+  if (value >= 70) return "MFI 통과";
+  return "";
+}
+
+function recommendationRelativeTag(value) {
+  if (!Number.isFinite(value)) return "";
+  if (value >= 50) return "상대강도 최상위";
+  if (value >= 30) return "시장 대비 강세";
+  if (value >= 8) return "상대강도 통과";
+  return "";
+}
+
+function recommendationMonthlyTag(value) {
+  if (!Number.isFinite(value)) return "";
+  if (value >= 70) return "월간 초강세";
+  if (value >= 40) return "월간 강세";
+  if (value >= 15) return "월간 돌파";
+  return "";
+}
+
+function recommendationMarketCapTag(value) {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  if (value < 3_000_000_000_000) return "중소형 탄력";
+  if (value >= 30_000_000_000_000) return "대형주";
+  return "중형주";
+}
 
 async function loadIndicators() {
   try {
@@ -58,6 +398,15 @@ async function loadIndicators() {
     renderMarketIndicator("sp500", market.quotes.sp500);
     renderMarketIndicator("nasdaq", market.quotes.nasdaq);
     renderMarketIndicator("sox", market.quotes.sox);
+    renderMarketIndicator("nikkei", market.quotes.nikkei);
+    renderMarketIndicator("nasdaqBreadth", market.quotes.nasdaqBreadth);
+    renderMarketIndicator("sp500Breadth", market.quotes.sp500Breadth);
+    renderMarketIndicator("semiBreadth", market.quotes.semiBreadth);
+    renderMarketIndicator("semiLeadership", market.quotes.semiLeadership);
+    renderMarketIndicator(
+      "portfolioHighProximity",
+      buildPortfolioHighProximityQuote(portfolioMetrics),
+    );
     renderMarketIndicator("ddr5Spot", market.quotes.ddr5Spot);
     renderMarketIndicator("serverDdr5Contract", market.quotes.serverDdr5Contract);
     renderMarketIndicator("dxi", market.quotes.dxi);
@@ -68,6 +417,7 @@ async function loadIndicators() {
     renderMarketIndicator("nfci", market.quotes.nfci);
     renderFearGreed(sentiment.fearGreed);
     renderVix(sentiment.vix);
+    renderMarketIndicator("vixTerm", buildVixTermQuote(market.quotes.vix3m, sentiment.vix));
     renderTradingSignal(market.quotes, sentiment);
     renderPortfolioSignal(market.quotes, sentiment, portfolioMetrics);
     renderTimestamp(market.quotes);
@@ -78,13 +428,13 @@ async function loadIndicators() {
   } catch (error) {
     console.warn("Indicator data unavailable", error);
     renderSignalState({
-      action: "횡보",
+      action: "중립",
       className: "signal-hold",
       score: 0,
       summary: "데이터 갱신 실패",
     });
     renderPortfolioState({
-      action: "횡보",
+      action: "중립",
       checks: [],
       className: "portfolio-hold",
       score: 0,
@@ -99,17 +449,65 @@ function renderTradingSignal(quotes, sentiment) {
   renderSignalState(signal);
 }
 
-function renderSignalState({ action, className, confidence, score, summary }) {
+function renderSignalState({
+  action,
+  className,
+  confidence,
+  downProbability,
+  eventSignal,
+  regime,
+  score,
+  summary,
+  upProbability,
+}) {
   const panel = document.querySelector("#marketSignal");
   if (!panel) return;
 
   panel.classList.remove("signal-buy", "signal-hold", "signal-sell");
   panel.classList.add(className);
-  panel.setAttribute("aria-label", `시장 신호: ${action}`);
-  setText("#signalAction", action);
+  panel.setAttribute("aria-label", `시장 추세: ${action}`);
+  const scoreText = Number.isFinite(Number(score)) ? `${formatSignedScore(score)}점` : "";
+  setText("#signalAction", scoreText ? `${action}(${scoreText})` : action);
+  renderMarketScoreRange(score);
+  const probabilityText = signalProbabilityText(action, upProbability, downProbability);
+  const convictionText = signalConvictionText({
+    action,
+    downProbability,
+    regime,
+    upProbability,
+  });
+  const regimeText = signalRegimeLabel(regime);
   setText(
     "#signalSummary",
-    `${formatSignedScore(score)}점 · ${confidence || signalConfidence(className, score)} · ${summary}`,
+    [
+      eventSignal,
+      visibleSignalConfidence(confidence || signalConfidence(className, score)),
+      probabilityText,
+      convictionText,
+      regimeText,
+      summary,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  );
+}
+
+function renderMarketScoreRange(score) {
+  const range = document.querySelector("#marketScoreRange");
+  if (!range) return;
+  const value = Number(score);
+  if (!Number.isFinite(value)) {
+    range.hidden = true;
+    return;
+  }
+
+  const boundedScore = clamp(value, -100, 100);
+  const position = ((boundedScore + 100) / 200) * 100;
+  range.hidden = false;
+  range.style.setProperty("--score-position", `${position}%`);
+  range.setAttribute(
+    "aria-label",
+    `시장 추세 점수 구간: 하락 -100점부터 -45점, 중립 -44점부터 +49점, 상승 +50점부터 +100점. 현재 ${formatSignedScore(value)}점`,
   );
 }
 
@@ -132,9 +530,13 @@ function renderPortfolioState({
   checks,
   className,
   confidence,
+  downProbability,
+  eventSignal,
   holdingSignals,
+  regime,
   score,
   summary,
+  upProbability,
 }) {
   const panel = document.querySelector("#portfolioSignal");
   if (!panel) return;
@@ -147,9 +549,27 @@ function renderPortfolioState({
   const allocationText = Number.isFinite(allocation)
     ? `권장비중 ${formatPercent(allocation * 100)}`
     : "권장비중 산정중";
+  const probabilityText = signalProbabilityText(action, upProbability, downProbability);
+  const convictionText = signalConvictionText({
+    action,
+    downProbability,
+    regime,
+    upProbability,
+  });
+  const regimeText = signalRegimeLabel(regime);
   setText(
     "#portfolioSummary",
-    `${allocationText} · ${confidence || signalConfidence(className, score)} · ${summary}`,
+    [
+      allocationText,
+      eventSignal,
+      visibleSignalConfidence(confidence || signalConfidence(className, score)),
+      probabilityText,
+      convictionText,
+      regimeText,
+      summary,
+    ]
+      .filter(Boolean)
+      .join(" · "),
   );
 
   const checksElement = document.querySelector("#portfolioChecks");
@@ -167,14 +587,26 @@ function renderHoldingSignals(signals) {
   const element = document.querySelector("#holdingSignals");
   if (!element) return;
 
-  if (!signals.length) {
+  const sortedSignals = [...signals].sort(
+    (a, b) => Number(b.score) - Number(a.score),
+  );
+
+  if (!sortedSignals.length) {
     element.innerHTML = `<p class="holding-empty">종목 데이터 수집 중</p>`;
     return;
   }
 
-  element.innerHTML = signals
-    .map(
-      (signal) => `
+  element.innerHTML = sortedSignals
+    .map((signal) => {
+      const detail = [
+        `${formatSignedScore(signal.score)}점`,
+        visibleSignalConfidence(signal.confidence),
+        signal.summary,
+      ]
+        .filter(Boolean)
+        .map(escapeHtml)
+        .join(" · ");
+      return `
         <article class="holding-signal ${signal.className}">
           <span class="holding-lamps" aria-hidden="true">
             <i class="holding-green"></i>
@@ -183,13 +615,106 @@ function renderHoldingSignals(signals) {
           </span>
           <div class="holding-copy">
             <strong>${escapeHtml(signal.name)}</strong>
-            <small>${formatSignedScore(signal.score)}점 · ${escapeHtml(signal.confidence)} · ${escapeHtml(signal.summary)}</small>
+            <small>${detail}</small>
           </div>
           <span class="holding-action">${escapeHtml(signal.action)}</span>
         </article>
-      `,
-    )
+      `;
+    })
     .join("");
+}
+
+function buildPortfolioHighProximityQuote(portfolioMetrics) {
+  const holdings = portfolioMetrics?.holdings || [];
+  const totalAmount = Number(portfolioMetrics?.totalAmount) || PORTFOLIO_TOTAL;
+  const series = buildWeightedHighProximitySeries(holdings, totalAmount);
+  const latest = series.at(-1);
+  const previous = series.at(-2);
+
+  if (!latest) return null;
+
+  const change = previous ? latest.value - previous.value : 0;
+  return {
+    change,
+    changePercent: change,
+    changeText: `1일 ${formatSignedNumber(change, 1)}p`,
+    changeUnit: "p",
+    decimals: 1,
+    history: series.slice(-28),
+    id: "portfolioHighProximity",
+    label: "보유 ETF 52주 고점 근접도",
+    marketTime: `${latest.date}T00:00:00+09:00`,
+    price: latest.value,
+    valueSuffix: "%",
+  };
+}
+
+function buildWeightedHighProximitySeries(holdings, totalAmount) {
+  const dates = [
+    ...new Set(
+      holdings.flatMap((holding) =>
+        (holding.analysisHistory || []).slice(-28).map((point) => point.date),
+      ),
+    ),
+  ].sort();
+
+  return dates
+    .map((date) => {
+      let weighted = 0;
+      let weight = 0;
+      for (const holding of holdings) {
+        const rows = (holding.analysisHistory || []).filter((point) => point.date <= date);
+        if (rows.length < 50) continue;
+        const latest = Number(rows.at(-1)?.value);
+        const high = Math.max(...rows.slice(-252).map((point) => Number(point.value)));
+        const holdingWeight = totalAmount ? Number(holding.amount) / totalAmount : 0;
+        if (
+          !Number.isFinite(latest) ||
+          !Number.isFinite(high) ||
+          high <= 0 ||
+          !Number.isFinite(holdingWeight)
+        ) {
+          continue;
+        }
+        weighted += (latest / high) * 100 * holdingWeight;
+        weight += holdingWeight;
+      }
+      return weight ? { date, value: weighted / weight } : null;
+    })
+    .filter(Boolean);
+}
+
+function buildVixTermQuote(vix3mQuote, vixData) {
+  const vix3mSeries = vix3mQuote?.history || [];
+  const vixByDate = new Map(
+    (vixData?.series || []).map((point) => [point.date, Number(point.value)]),
+  );
+  const history = vix3mSeries
+    .map((point) => {
+      const vix = vixByDate.get(point.date);
+      const vix3m = Number(point.value);
+      if (!Number.isFinite(vix) || !Number.isFinite(vix3m)) return null;
+      return { date: point.date, value: vix3m - vix };
+    })
+    .filter(Boolean);
+  const latest = history.at(-1);
+  const previous = history.at(-2);
+  if (!latest) return null;
+
+  const change = previous ? latest.value - previous.value : 0;
+  return {
+    change,
+    changePercent: change,
+    changeText: `${vixTermTone(latest.value)} · ${formatSignedNumber(change, 2)}p`,
+    changeUnit: "p",
+    decimals: 2,
+    history,
+    id: "vixTerm",
+    label: "VIX 기간구조",
+    marketTime: vix3mQuote?.marketTime || `${latest.date}T00:00:00Z`,
+    price: latest.value,
+    valueSuffix: "p",
+  };
 }
 
 function evaluateTradingSignal(quotes, sentiment) {
@@ -210,37 +735,64 @@ function evaluateTradingSignal(quotes, sentiment) {
     scoreRiskAsset(quotes.kospi),
   ].filter(Number.isFinite);
   const broadScore = average(broadScores);
+  const marketBreadthScore = scoreMarketBreadth(quotes);
+  const vixTermScore = scoreVixTermStructure(quotes.vix3m, sentiment.vix);
+  const rateScore = scoreYield(quotes.us10y);
+  const regimeScore = scoreMarketRegime(quotes);
+  const crisisMode = detectPortfolioCrisisMode(quotes, sentiment);
+  const geopoliticalReliefScore = scoreGeopoliticalRelief(quotes, sentiment);
+  const shortTermEventScore = scoreShortTermEventImpulse(quotes, sentiment);
   add("주가지수", broadScore, 2.1);
   add("반도체", scoreRiskAsset(quotes.sox), 1.3);
+  add("지정학 완화", geopoliticalReliefScore, 0.65);
+  add("시장 폭", marketBreadthScore, 1.15);
+  add("VIX 구조", vixTermScore, 0.8);
   add("DDR5", scoreMemoryPrice(quotes.ddr5Spot), 0.45);
   add("서버 DRAM", scoreServerContract(quotes.serverDdr5Contract), 0.25);
   add("공포·탐욕", scoreFearGreed(sentiment.fearGreed), 1.15);
   add("VIX", scoreVix(sentiment.vix), 1.45);
-  add("미국 10년물", scoreYield(quotes.us10y), 0.85);
+  add("미국 10년물", rateScore, 0.85);
   add("달러/원", scoreUsdKrw(quotes.usdKrw), 0.65);
   add("WTI", scoreWti(quotes.wti), 0.45);
-  add("시장 레짐", scoreMarketRegime(quotes), 1.25);
+  add("시장 레짐", regimeScore, 1.25);
   const recoveryScore = scoreRecoveryPulse(quotes, sentiment);
   add("반등 확인", recoveryScore, 0.75);
 
   const totalWeight = components.reduce((sum, item) => sum + item.weight, 0);
   const weightedScore = components.reduce((sum, item) => sum + item.weighted, 0);
-  const score = totalWeight ? Math.round((weightedScore / totalWeight) * 100) : 0;
+  let score = totalWeight ? Math.round((weightedScore / totalWeight) * 100) : 0;
+  score = clamp(Math.round(score + shortTermEventScoreAdjustment(shortTermEventScore)), -100, 100);
   const vixLevel = Number(sentiment.vix?.close);
   const hasRecovery = Number.isFinite(recoveryScore) && recoveryScore >= 0.35;
   const recoveryForAction = Number.isFinite(recoveryScore) ? recoveryScore : -1;
+  const slowMarketDownRisk =
+    score <= -45 && recoveryForAction >= -0.6 && recoveryForAction <= -0.35;
+  const probability = evaluateSignalProbability({
+    broadScore,
+    crisisMode,
+    marketBreadthScore,
+    geopoliticalReliefScore,
+    rateScore,
+    recoveryScore,
+    regimeScore,
+    score,
+    shortTermEventScore,
+    vixLevel,
+    vixTermScore,
+  });
 
-  let action = "횡보";
+  let action = "중립";
   let className = "signal-hold";
-  if (
-    (vixLevel >= 35 && recoveryForAction < -0.5) ||
-    score <= -55 ||
-    (score <= -32 && recoveryForAction < -0.45) ||
-    (score <= -22 && recoveryForAction < -0.65)
-  ) {
+  if (slowMarketDownRisk) {
     action = "하락";
     className = "signal-sell";
-  } else if (score >= 25 && broadScore > 0 && vixLevel < 28 && (hasRecovery || vixLevel < 25)) {
+  } else if (
+    score >= Math.max(50, probability.buyScoreThreshold) &&
+    probability.upProbability >= probability.buyProbabilityThreshold &&
+    broadScore > 0 &&
+    (!Number.isFinite(vixLevel) || vixLevel < 28) &&
+    (hasRecovery || !Number.isFinite(vixLevel) || vixLevel < 25)
+  ) {
     action = "상승";
     className = "signal-buy";
   }
@@ -249,8 +801,12 @@ function evaluateTradingSignal(quotes, sentiment) {
     action,
     className,
     confidence: signalConfidence(className, score),
+    downProbability: probability.downProbability,
+    eventSignal: shortTermEventLabel(shortTermEventScore),
+    regime: probability.regime,
     score,
     summary: summarizeSignal(components, className),
+    upProbability: probability.upProbability,
   };
 }
 
@@ -280,23 +836,32 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   const regimeScore = scoreMarketRegime(quotes);
   const recoveryScore = scoreRecoveryPulse(quotes, sentiment, portfolioMetrics);
   const semiconductorCycleScore = scoreSemiconductorCycle(quotes);
+  const marketBreadthScore = scoreMarketBreadth(quotes);
+  const vixTermScore = scoreVixTermStructure(quotes.vix3m, sentiment.vix);
+  const highProximityScore = scorePortfolioHighProximity(portfolioMetrics);
   const variancePremiumScore = scoreVarianceRiskPremium(quotes, sentiment);
   const crisisMode = detectPortfolioCrisisMode(quotes, sentiment);
+  const geopoliticalReliefScore = scoreGeopoliticalRelief(quotes, sentiment);
+  const shortTermEventScore = scoreShortTermEventImpulse(quotes, sentiment);
 
   add("SOX", semiScore, 2.4);
   add("NASDAQ", nasdaqScore, 1.25);
   add("KOSPI", kospiScore, 0.75);
+  add("지정학 완화", geopoliticalReliefScore, 0.5);
   add("상대강도", relativeScore, 1.35);
   add("장기 상대강도", multiRelativeScore, 1.1);
   add("50/200일선", movingAverageScore, 1.15);
   add("외국인·기관", investorFlowScore, 0.9);
   add("시장 레짐", regimeScore, 1.35);
   add("반도체 사이클", semiconductorCycleScore, 1.25);
+  add("시장 폭", marketBreadthScore, 1.05);
+  add("52주 고점", highProximityScore, 0.85);
   add("DDR5", scoreMemoryPrice(quotes.ddr5Spot), 0.95);
   add("서버 DRAM", scoreServerContract(quotes.serverDdr5Contract), 0.35);
   add("미국 10년물", rateScore, 1.2);
   add("달러/원", usdKrwScore, 0.85);
   add("VIX", vixScore, 1.05);
+  add("VIX 구조", vixTermScore, 0.75);
   add("변동성 프리미엄", variancePremiumScore, 0.85);
   add("공포·탐욕", scoreFearGreed(sentiment.fearGreed), 0.65);
   add("WTI", scoreWti(quotes.wti), 0.2);
@@ -305,6 +870,7 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   const totalWeight = components.reduce((sum, item) => sum + item.weight, 0);
   const weightedScore = components.reduce((sum, item) => sum + item.weighted, 0);
   let score = totalWeight ? Math.round((weightedScore / totalWeight) * 100) : 0;
+  score += Math.round(shortTermEventScoreAdjustment(shortTermEventScore) * 0.65);
 
   const vixLevel = Number(sentiment.vix?.close);
   const concentration = portfolioRiskThemeWeight();
@@ -322,20 +888,35 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   if (semiconductorCycleScore > 0.45 && scoreMemoryPrice(quotes.ddr5Spot) > 0) score += 4;
   if (crisisMode.tailRisk) score -= crisisMode.severity === "severe" ? 18 : 12;
   score = clamp(Math.round(score), -100, 100);
+  const slowPortfolioDownRisk =
+    score <= -10 && recoveryForAction >= -0.1 && recoveryForAction < 0.2;
+  const probability = evaluateSignalProbability({
+    broadScore: nasdaqScore,
+    concentration,
+    crisisMode,
+    highProximityScore,
+    geopoliticalReliefScore,
+    marketBreadthScore,
+    rateScore,
+    recoveryScore,
+    regimeScore,
+    score,
+    semiconductorCycleScore,
+    semiScore,
+    shortTermEventScore,
+    variancePremiumScore,
+    vixLevel,
+    vixTermScore,
+  });
 
-  let action = "횡보";
+  let action = "중립";
   let className = "portfolio-hold";
-  if (
-    (crisisMode.tailRisk && recoveryForAction < 0.35) ||
-    (vixLevel >= 35 && recoveryForAction < -0.5) ||
-    score <= -60 ||
-    (score <= -35 && recoveryForAction < -0.5) ||
-    (score <= -24 && recoveryForAction < -0.65)
-  ) {
+  if (slowPortfolioDownRisk) {
     action = "하락";
     className = "portfolio-trim";
   } else if (
-    score >= 30 &&
+    score >= Math.max(40, probability.buyScoreThreshold) &&
+    probability.upProbability >= probability.buyProbabilityThreshold &&
     semiScore > 0 &&
     semiconductorCycleScore > -0.2 &&
     regimeScore > -0.25 &&
@@ -353,7 +934,16 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
 
   return {
     action,
-    allocation: targetPortfolioExposure(score, action, confidence, crisisMode),
+    allocation: targetPortfolioExposure(
+      score,
+      action,
+      confidence,
+      crisisMode,
+      DEFAULT_PORTFOLIO_EXPOSURE_CONFIG,
+      probability.upProbability,
+      probability.downProbability,
+      probability.regime,
+    ),
     checks: buildPortfolioChecks({
       crisisMode,
       semiconductorCycleScore,
@@ -366,21 +956,251 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
       regimeScore,
       relativeScore,
       variancePremiumScore,
+      highProximityScore,
+      marketBreadthScore,
       semiScore,
+      vixTermScore,
       vixScore,
     }),
     className,
     confidence,
     crisisMode,
+    downProbability: probability.downProbability,
+    eventSignal: shortTermEventLabel(shortTermEventScore),
     holdingSignals: evaluateHoldingSignals(
       portfolioMetrics?.holdings || [],
       quotes,
       sentiment,
       crisisMode,
     ),
+    regime: probability.regime,
     score,
     summary: summarizePortfolioSignal(components, className, concentration, crisisMode),
+    upProbability: probability.upProbability,
   };
+}
+
+function evaluateSignalProbability({
+  broadScore,
+  concentration = 0,
+  crisisMode,
+  geopoliticalReliefScore,
+  highProximityScore,
+  marketBreadthScore,
+  rateScore,
+  recoveryScore,
+  regimeScore,
+  score,
+  semiconductorCycleScore,
+  semiScore,
+  shortTermEventScore,
+  variancePremiumScore,
+  vixLevel,
+  vixTermScore,
+}) {
+  const cleanScore = Number(score);
+  const breadth = cleanSignalScore(marketBreadthScore);
+  const vixTerm = cleanSignalScore(vixTermScore);
+  const rate = cleanSignalScore(rateScore);
+  const recovery = cleanSignalScore(recoveryScore);
+  const regimeScoreValue = cleanSignalScore(regimeScore);
+  const variancePremium = cleanSignalScore(variancePremiumScore);
+  const geopoliticalRelief = cleanSignalScore(geopoliticalReliefScore);
+  const shortTermEvent = cleanSignalScore(shortTermEventScore);
+  const semiCycle = cleanSignalScore(semiconductorCycleScore);
+  const highProximity = cleanSignalScore(highProximityScore);
+  const broad = cleanSignalScore(broadScore);
+  const semi = cleanSignalScore(semiScore);
+  const regime = classifySignalRegime({
+    concentration,
+    crisisMode,
+    marketBreadthScore: breadth,
+    rateScore: rate,
+    vixLevel,
+    vixTermScore: vixTerm,
+  });
+
+  const crisisPenalty =
+    (crisisMode?.active ? 0.45 : 0) + (crisisMode?.tailRisk ? 0.55 : 0);
+  const vixPenalty = Number.isFinite(vixLevel) && vixLevel >= 28 ? 0.28 : 0;
+  const upLogit =
+    -0.1 +
+    cleanScore / 36 +
+    positivePart(broad) * 0.35 +
+    breadth * 0.7 +
+    vixTerm * 0.45 +
+    regimeScoreValue * 0.3 +
+    recovery * 0.35 +
+    geopoliticalRelief * 0.35 +
+    shortTermEvent * 0.3 +
+    semiCycle * 0.4 +
+    highProximity * 0.22 +
+    positivePart(semi) * 0.25 -
+    negativePart(rate) * 0.35 -
+    negativePart(variancePremium) * 0.35 -
+    crisisPenalty -
+    vixPenalty;
+  const downLogit =
+    -0.85 -
+    cleanScore / 36 +
+    negativePart(broad) * 0.35 +
+    negativePart(breadth) * 0.8 +
+    negativePart(vixTerm) * 0.65 +
+    negativePart(rate) * 0.25 +
+    negativePart(variancePremium) * 0.35 +
+    negativePart(recovery) * 0.35 +
+    negativePart(geopoliticalRelief) * 0.25 +
+    negativePart(shortTermEvent) * 0.25 +
+    (crisisMode?.active ? 0.45 : 0) +
+    (crisisMode?.tailRisk ? 0.65 : 0) +
+    (Number.isFinite(vixLevel) && vixLevel >= 32 ? 0.35 : 0);
+
+  const thresholds = probabilityThresholdsForRegime(regime);
+  return {
+    ...thresholds,
+    downProbability: Math.round(clamp(calibratedSignalProbability(downLogit), 1, 99)),
+    regime,
+    upProbability: Math.round(clamp(calibratedSignalProbability(upLogit), 1, 99)),
+  };
+}
+
+function classifySignalRegime({
+  concentration,
+  crisisMode,
+  marketBreadthScore,
+  rateScore,
+  vixLevel,
+  vixTermScore,
+}) {
+  if (
+    crisisMode?.tailRisk ||
+    (Number.isFinite(vixLevel) && vixLevel >= 32) ||
+    vixTermScore <= -0.45 ||
+    ((Number.isFinite(vixLevel) && vixLevel >= 28) && marketBreadthScore < 0)
+  ) {
+    return "stress";
+  }
+  if (rateScore <= -0.35 && concentration >= 70) return "ratePressure";
+  if (
+    marketBreadthScore >= 0.25 &&
+    vixTermScore >= 0.2 &&
+    (!Number.isFinite(vixLevel) || vixLevel < 25)
+  ) {
+    return "trend";
+  }
+  return "balanced";
+}
+
+function probabilityThresholdsForRegime(regime) {
+  if (regime === "trend") {
+    return {
+      buyProbabilityThreshold: 62,
+      buyScoreThreshold: 38,
+      sellProbabilityThreshold: 66,
+    };
+  }
+  if (regime === "ratePressure") {
+    return {
+      buyProbabilityThreshold: 70,
+      buyScoreThreshold: 48,
+      sellProbabilityThreshold: 60,
+    };
+  }
+  if (regime === "stress") {
+    return {
+      buyProbabilityThreshold: 74,
+      buyScoreThreshold: 58,
+      sellProbabilityThreshold: 58,
+    };
+  }
+  return {
+    buyProbabilityThreshold: 66,
+    buyScoreThreshold: 42,
+    sellProbabilityThreshold: 62,
+  };
+}
+
+function signalProbabilityText(action, upProbability, downProbability) {
+  const up = Number(upProbability);
+  const down = Number(downProbability);
+  if (!Number.isFinite(up) && !Number.isFinite(down)) return "";
+  const showDown = action === "하락" || (action === "중립" && down > up);
+  const value = showDown ? down : up;
+  if (!Number.isFinite(value)) return "";
+  return `${showDown ? "하락확률" : "상승확률"} ${Math.round(value)}%`;
+}
+
+function signalConvictionText({ action, upProbability, downProbability, regime }) {
+  const up = Number(upProbability);
+  const down = Number(downProbability);
+  if (action === "상승") {
+    if (up >= 75) return "고확신 상승";
+    if (up >= 68) return "상승 확인";
+    return "약한 상승";
+  }
+  if (action === "하락") {
+    if (down >= 65) return "고확신 하락";
+    return "약한 하락";
+  }
+  if (Number.isFinite(up) && up >= 75 && regime === "ratePressure") {
+    return "금리 확인 대기";
+  }
+  if (Number.isFinite(up) && up >= 70) return "상승 우위";
+  if (Number.isFinite(down) && down >= 62) return "방어 대기";
+  return "";
+}
+
+function signalRegimeLabel(regime) {
+  return (
+    {
+      balanced: "균형장",
+      ratePressure: "금리부담",
+      stress: "스트레스장",
+      trend: "추세장",
+    }[regime] || ""
+  );
+}
+
+function shortTermEventLabel(score) {
+  const value = Number(score);
+  if (!Number.isFinite(value)) return "";
+  if (value >= 0.75) return "단기 급등 신호";
+  if (value >= 0.4) return "단기 상승 강화";
+  if (value <= -0.55) return "단기 위험 확대";
+  return "";
+}
+
+function shortTermEventScoreAdjustment(score) {
+  const value = Number(score);
+  if (!Number.isFinite(value)) return 0;
+  if (value >= 0.75) return value * 12;
+  if (value >= 0.4) return value * 10;
+  if (value <= -0.55) return value * 10;
+  return 0;
+}
+
+function visibleSignalConfidence(confidence) {
+  return confidence === "녹색 대기" ? "" : confidence || "";
+}
+
+function cleanSignalScore(value) {
+  return Number.isFinite(value) ? clamp(value, -1, 1) : 0;
+}
+
+function positivePart(value) {
+  return Math.max(0, cleanSignalScore(value));
+}
+
+function negativePart(value) {
+  return Math.max(0, -cleanSignalScore(value));
+}
+
+function logisticProbability(logit) {
+  return 1 / (1 + Math.exp(-logit));
+}
+
+function calibratedSignalProbability(logit) {
+  return 50 + (logisticProbability(logit) - 0.5) * 60;
 }
 
 function evaluateHoldingSignals(holdings, quotes, sentiment, crisisMode) {
@@ -438,7 +1258,7 @@ function evaluateHoldingSignal(holding, quotes, sentiment, crisisMode) {
   }
   score = clamp(score, -100, 100);
 
-  let action = "횡보";
+  let action = "중립";
   let className = "holding-hold";
   if (
     crisisMode?.tailRisk ||
@@ -536,7 +1356,9 @@ function summarizeHoldingSignal(components, className) {
 
 function buildPortfolioChecks({
   crisisMode,
+  highProximityScore,
   investorFlowScore,
+  marketBreadthScore,
   multiRelativeScore,
   movingAverageScore,
   nasdaqScore,
@@ -547,6 +1369,7 @@ function buildPortfolioChecks({
   semiconductorCycleScore,
   semiScore,
   variancePremiumScore,
+  vixTermScore,
   vixScore,
 }) {
   return [
@@ -556,11 +1379,14 @@ function buildPortfolioChecks({
     portfolioCheck("50/200일선", movingAverageScore, "추세 확인"),
     portfolioCheck("외국인·기관", investorFlowScore, "수급 확인"),
     portfolioCheck("시장레짐", regimeScore, "신용·금융상황"),
+    portfolioCheck("시장폭", marketBreadthScore, "동일가중 상대"),
     portfolioCheck("반도체", semiconductorCycleScore, "사이클 확인"),
+    portfolioCheck("52주고점", highProximityScore, "고점 근접도"),
     portfolioCheck("반등확인", recoveryScore, "재진입 확인"),
     portfolioCheck("SOX", semiScore, "반도체 ETF 핵심"),
     portfolioCheck("NASDAQ", nasdaqScore, "AI 성장주"),
     portfolioCheck("VRP", variancePremiumScore, "변동성 프리미엄"),
+    portfolioCheck("VIX구조", vixTermScore, "기간구조"),
     portfolioCheck("금리", rateScore, "채권혼합·성장주"),
     portfolioCheck("VIX", vixScore, "변동성"),
   ];
@@ -832,6 +1658,8 @@ function scoreSemiconductorCycle(quotes) {
   add(scoreRiskAsset(quotes?.sox), 1.15);
   add(scoreMultiPeriodMomentum(quotes?.sox), 1.1);
   add(scoreRelativeMomentum(quotes?.sox, quotes?.nasdaq), 0.9);
+  add(scoreRelativeBreadth(quotes?.semiLeadership), 0.75);
+  add(scoreSemiconductorBreadth(quotes?.semiBreadth), 0.75);
   add(scoreMemoryPrice(quotes?.ddr5Spot), 0.75);
   add(scoreServerContract(quotes?.serverDdr5Contract), 0.35);
   add(scoreRiskAsset(quotes?.dxi), 0.35);
@@ -840,6 +1668,69 @@ function scoreSemiconductorCycle(quotes) {
   return totalWeight
     ? components.reduce((sum, item) => sum + item.score * item.weight, 0) / totalWeight
     : NaN;
+}
+
+function scoreMarketBreadth(quotes) {
+  return average([
+    scoreRelativeBreadth(quotes?.nasdaqBreadth),
+    scoreRelativeBreadth(quotes?.sp500Breadth),
+    scoreRelativeBreadth(quotes?.semiLeadership),
+    scoreSemiconductorBreadth(quotes?.semiBreadth),
+  ]);
+}
+
+function scoreRelativeBreadth(quote) {
+  const relativeTrend = Number(quote?.price);
+  if (!Number.isFinite(relativeTrend)) return NaN;
+  if (relativeTrend >= 2.5) return 0.75;
+  if (relativeTrend >= 0.75) return 0.4;
+  if (relativeTrend > -0.75) return 0.05;
+  if (relativeTrend > -2.5) return -0.4;
+  return -0.75;
+}
+
+function scoreSemiconductorBreadth(quote) {
+  const value = Number(quote?.price);
+  const change = Number(quote?.change);
+  if (!Number.isFinite(value)) return NaN;
+  let score = 0;
+  if (value >= 75) score = 0.75;
+  else if (value >= 55) score = 0.35;
+  else if (value >= 40) score = 0.05;
+  else if (value >= 25) score = -0.35;
+  else score = -0.75;
+  if (change >= 14) score += 0.15;
+  if (change <= -14) score -= 0.15;
+  return clamp(score, -1, 1);
+}
+
+function scoreVixTermStructure(vix3mQuote, vixData) {
+  const vix3m = Number(vix3mQuote?.price);
+  const vix = Number(vixData?.close);
+  if (!Number.isFinite(vix3m) || !Number.isFinite(vix)) return NaN;
+  const spread = vix3m - vix;
+  let score = 0;
+  if (spread >= 4) score = 0.7;
+  else if (spread >= 1.5) score = 0.35;
+  else if (spread >= 0) score = 0.05;
+  else if (spread >= -2) score = -0.4;
+  else score = -0.8;
+  const trend = pointChange(buildVixTermQuote(vix3mQuote, vixData)?.history);
+  if (trend >= 1) score += 0.1;
+  if (trend <= -1) score -= 0.1;
+  return clamp(score, -1, 1);
+}
+
+function scorePortfolioHighProximity(portfolioMetrics) {
+  return weightedPortfolioScore(portfolioMetrics, (holding) => {
+    const proximity = Number(holding.highProximity);
+    if (!Number.isFinite(proximity)) return NaN;
+    if (proximity >= 97) return 0.85;
+    if (proximity >= 92) return 0.55;
+    if (proximity >= 85) return 0.15;
+    if (proximity >= 75) return -0.35;
+    return -0.75;
+  });
 }
 
 function scoreMemoryPrice(quote) {
@@ -938,6 +1829,101 @@ function scoreMarketRegime(quotes) {
   ]);
 }
 
+function scoreShortTermEventImpulse(quotes, sentiment) {
+  const signals = [];
+  const add = (value, weight) => {
+    if (!Number.isFinite(value)) return;
+    signals.push({ value, weight });
+  };
+
+  const nasdaqFutureChange = Number(quotes?.nasdaqFutures?.changePercent);
+  if (nasdaqFutureChange >= 1.5) add(1, 1.35);
+  else if (nasdaqFutureChange >= 0.8) add(0.7, 1.35);
+  else if (nasdaqFutureChange >= 0.35) add(0.35, 1.35);
+  else if (nasdaqFutureChange <= -1) add(-0.7, 1.35);
+
+  const spFutureChange = Number(quotes?.sp500Futures?.changePercent);
+  if (spFutureChange >= 1.2) add(0.85, 1);
+  else if (spFutureChange >= 0.6) add(0.55, 1);
+  else if (spFutureChange >= 0.25) add(0.25, 1);
+  else if (spFutureChange <= -0.8) add(-0.55, 1);
+
+  const nikkeiChange = Number(quotes?.nikkei?.changePercent);
+  if (nikkeiChange >= 2) add(0.85, 1);
+  else if (nikkeiChange >= 1.2) add(0.55, 1);
+  else if (nikkeiChange <= -1) add(-0.45, 1);
+
+  const oilChange = Number(quotes?.wti?.changePercent);
+  if (oilChange <= -3) add(0.75, 0.8);
+  else if (oilChange <= -1.2) add(0.35, 0.8);
+  else if (oilChange >= 2) add(-0.45, 0.8);
+
+  const vixChange = Number(sentiment?.vix?.change);
+  const vixLevel = Number(sentiment?.vix?.close);
+  if (Number.isFinite(vixChange) && Number.isFinite(vixLevel)) {
+    if (vixChange <= -2 || (vixChange <= 0 && vixLevel < 22)) add(0.35, 0.55);
+    else if (vixChange >= 2 || vixLevel >= 28) add(-0.45, 0.55);
+  }
+
+  const usdKrwChange = Number(quotes?.usdKrw?.changePercent);
+  if (usdKrwChange <= -0.3) add(0.25, 0.45);
+  else if (usdKrwChange >= 0.6) add(-0.3, 0.45);
+
+  const totalWeight = signals.reduce((sum, signal) => sum + signal.weight, 0);
+  if (!totalWeight) return NaN;
+  const score =
+    signals.reduce((sum, signal) => sum + signal.value * signal.weight, 0) /
+    totalWeight;
+  return Math.abs(score) >= 0.2 ? clamp(score, -1, 1) : NaN;
+}
+
+function scoreGeopoliticalRelief(quotes, sentiment) {
+  const signals = [];
+  const add = (value, weight) => {
+    if (!Number.isFinite(value)) return;
+    signals.push({ value, weight });
+  };
+
+  const nikkeiChange = Number(quotes?.nikkei?.changePercent);
+  if (nikkeiChange >= 1.5) add(1, 1.15);
+  else if (nikkeiChange >= 0.7) add(0.45, 1.15);
+  else if (nikkeiChange <= -1) add(-0.45, 1.15);
+
+  const oilChange = Number(quotes?.wti?.changePercent);
+  const oilTrend = trendPercent(quotes?.wti?.history);
+  if (oilChange <= -2) add(0.9, 1);
+  else if (oilChange <= -0.7 || oilTrend <= -4) add(0.45, 1);
+  else if (oilChange >= 2 || oilTrend >= 5) add(-0.55, 1);
+
+  const vixChange = Number(sentiment?.vix?.change);
+  const vixLevel = Number(sentiment?.vix?.close);
+  if (Number.isFinite(vixChange) && Number.isFinite(vixLevel)) {
+    if (vixChange <= -1 || (vixChange <= 0 && vixLevel < 22)) add(0.6, 0.85);
+    else if (vixChange >= 2) add(-0.6, 0.85);
+  }
+
+  const usdKrwChange = Number(quotes?.usdKrw?.changePercent);
+  if (usdKrwChange <= -0.25) add(0.45, 0.75);
+  else if (usdKrwChange <= 0.3) add(0.2, 0.75);
+  else if (usdKrwChange >= 0.7) add(-0.55, 0.75);
+
+  const semiRisk = average([
+    Number(quotes?.sox?.changePercent),
+    Number(quotes?.semiLeadership?.changePercent),
+    Number(quotes?.nasdaq?.changePercent),
+  ]);
+  if (semiRisk >= 1) add(0.75, 0.8);
+  else if (semiRisk >= 0.35) add(0.35, 0.8);
+  else if (semiRisk <= -1) add(-0.45, 0.8);
+
+  const totalWeight = signals.reduce((sum, signal) => sum + signal.weight, 0);
+  if (!totalWeight) return NaN;
+  const score =
+    signals.reduce((sum, signal) => sum + signal.value * signal.weight, 0) /
+    totalWeight;
+  return Math.abs(score) >= 0.18 ? clamp(score, -1, 1) : NaN;
+}
+
 function scoreRecoveryPulse(quotes, sentiment, portfolioMetrics = null) {
   const components = [];
   const add = (score, weight) => {
@@ -947,6 +1933,8 @@ function scoreRecoveryPulse(quotes, sentiment, portfolioMetrics = null) {
 
   add(scoreVixRelief(sentiment?.vix), 1.2);
   add(scoreCapitulationRelief(quotes, sentiment), 0.75);
+  add(scoreGeopoliticalRelief(quotes, sentiment), 0.65);
+  add(scoreShortTermEventImpulse(quotes, sentiment), 0.45);
   add(scoreRiskAsset(quotes?.sox), 1.1);
   add(scoreRiskAsset(quotes?.nasdaq), 0.95);
   add(scoreRiskAsset(quotes?.sp500), 0.55);
@@ -1329,6 +2317,9 @@ function targetPortfolioExposure(
   confidence = "",
   crisisMode = null,
   config = DEFAULT_PORTFOLIO_EXPOSURE_CONFIG,
+  upProbability = NaN,
+  downProbability = NaN,
+  regime = "",
 ) {
   const cleanScore = Number(score);
   if (!Number.isFinite(cleanScore)) return NaN;
@@ -1348,7 +2339,37 @@ function targetPortfolioExposure(
     }
     return Math.min(exposure, crisisCap);
   }
-  return exposure;
+  return applyProbabilityExposureCap(
+    exposure,
+    action,
+    upProbability,
+    downProbability,
+    regime,
+  );
+}
+
+function applyProbabilityExposureCap(
+  exposure,
+  action,
+  upProbability,
+  downProbability,
+  regime,
+) {
+  let adjusted = exposure;
+  const up = Number(upProbability);
+  const down = Number(downProbability);
+  if (action === "상승" && Number.isFinite(up) && up < 70) {
+    adjusted = Math.min(adjusted, 0.95);
+  }
+  if (action === "중립") {
+    if (regime === "ratePressure") adjusted = Math.min(adjusted, 0.9);
+    if (Number.isFinite(up) && up < 60) adjusted = Math.min(adjusted, 0.85);
+    if (Number.isFinite(down) && down >= 65) adjusted = Math.min(adjusted, 0.75);
+  }
+  if (action === "하락" && Number.isFinite(down) && down >= 65) {
+    adjusted = Math.min(adjusted, 0.5);
+  }
+  return adjusted;
 }
 
 function detectPortfolioCrisisMode(quotes, sentiment) {
@@ -1436,6 +2457,12 @@ function getVixTone(value) {
   return "낮은 변동성";
 }
 
+function vixTermTone(spread) {
+  if (spread < 0) return "백워데이션";
+  if (spread < 1.5) return "평탄";
+  return "콘탱고";
+}
+
 function formatIsoDate(isoDate) {
   const [year, month, day] = isoDate.split("-");
   if (!year || !month || !day) return isoDate;
@@ -1452,7 +2479,20 @@ function formatTime(isoDate) {
   }).format(date);
 }
 
+function formatDateTime(isoDate) {
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("ko-KR", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "2-digit",
+    timeZone: "Asia/Seoul",
+  }).format(date);
+}
+
 function formatNumber(value, decimals) {
+  if (!Number.isFinite(Number(value))) return "-";
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: decimals,
     minimumFractionDigits: decimals,
@@ -1467,6 +2507,31 @@ function formatPercent(value) {
 function formatSignedScore(value) {
   const rounded = Math.round(Number(value) || 0);
   return `${rounded > 0 ? "+" : ""}${rounded}`;
+}
+
+function formatSignedNumber(value, decimals = 1) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `${number >= 0 ? "+" : ""}${number.toFixed(decimals)}`;
+}
+
+function formatKoreanMarketCap(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return "-";
+  const trillion = number / 1_000_000_000_000;
+  if (trillion >= 1) {
+    const decimals = trillion >= 10 ? 1 : 2;
+    return `${trillion.toFixed(decimals)}조`;
+  }
+  return `${Math.round(number / 100_000_000).toLocaleString("ko-KR")}억`;
+}
+
+function formatConditionNumber(value) {
+  const text = String(value || "");
+  const number = text.match(/>=\s*([\d.]+)/)?.[1];
+  if (!number) return "";
+  if (text.includes("x")) return `${number}배 이상`;
+  return `${number} 이상`;
 }
 
 function roundFinite(value, decimals) {

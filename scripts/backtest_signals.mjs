@@ -11,8 +11,15 @@ const ENTRY_MODE = normalizeEntryMode(
 const BACKTEST_TRIALS = Number(process.env.BACKTEST_TRIALS || process.argv[8] || 12);
 const TREND_POINTS = 28;
 const ANALYSIS_POINTS = 260;
-const FORWARD_HORIZONS = [...new Set([5, HORIZON_DAYS, 60])].sort((a, b) => a - b);
+const FORWARD_HORIZONS = normalizeForwardHorizons(
+  process.env.BACKTEST_FORWARD_HORIZONS,
+  [5, HORIZON_DAYS, 60],
+);
 const ENTRY_MODES = ["close", "nextOpen", "nextClose"];
+const PREDICTION_HORIZONS = [
+  { days: 1, field: "nextDayReturn", flatThreshold: 0.75, label: "nextDay" },
+  { days: 5, field: "forwardReturn5d", flatThreshold: 2.5, label: "nextWeek" },
+];
 const MIN_TUNING_TRAIN_ROWS = 500;
 const MIN_TUNING_OBJECTIVE_EDGE = 6;
 const DEFAULT_PORTFOLIO_EXPOSURE_CONFIG = {
@@ -30,10 +37,27 @@ const MARKET_SOURCES = [
   { id: "sp500", symbol: "^GSPC" },
   { id: "nasdaq", symbol: "^IXIC" },
   { id: "sox", symbol: "^SOX" },
+  { id: "nikkei", symbol: "^N225" },
+  { id: "nasdaqFutures", symbol: "NQ=F" },
+  { id: "sp500Futures", symbol: "ES=F" },
+  { id: "qqq", symbol: "QQQ" },
+  { id: "qqqe", symbol: "QQQE" },
+  { id: "spy", symbol: "SPY" },
+  { id: "rsp", symbol: "RSP" },
+  { id: "smh", symbol: "SMH" },
+  { id: "vix3m", symbol: "^VIX3M" },
+  { id: "nvda", symbol: "NVDA" },
+  { id: "avgo", symbol: "AVGO" },
+  { id: "amd", symbol: "AMD" },
+  { id: "mu", symbol: "MU" },
+  { id: "tsm", symbol: "TSM" },
+  { id: "asml", symbol: "ASML" },
+  { id: "qcom", symbol: "QCOM" },
   { id: "usdKrw", symbol: "KRW=X" },
   { id: "wti", symbol: "CL=F" },
   { id: "us10y", symbol: "^TNX" },
 ];
+const SEMI_LEADER_IDS = ["nvda", "avgo", "amd", "mu", "tsm", "asml", "qcom"];
 const FRED_SOURCES = [
   { id: "hySpread", seriesId: "BAMLH0A0HYM2" },
   { id: "nfci", seriesId: "NFCI" },
@@ -117,7 +141,10 @@ const payload = {
 };
 
 const coverageLabel = `cov${Math.round(MIN_COVERAGE * 100)}`;
-const outStem = `screen_results/backtest_signals_${START_DATE}_${END_DATE}_${coverageLabel}`;
+const horizonLabel = process.env.BACKTEST_FORWARD_HORIZONS
+  ? `_h${FORWARD_HORIZONS.join("-")}`
+  : "";
+const outStem = `screen_results/backtest_signals_${START_DATE}_${END_DATE}_${coverageLabel}${horizonLabel}`;
 await writeFile(`${outStem}.json`, `${JSON.stringify(payload, null, 2)}\n`);
 await writeFile(`${outStem}.csv`, toCsv(rows));
 
@@ -309,9 +336,12 @@ function runBacktest({
       ),
       marketAction: marketSignal.action,
       marketConfidence: marketSignal.confidence,
+      marketDownProbability: marketSignal.downProbability,
       marketExposure: actionExposureForMarket(marketSignal.action),
+      marketRegime: marketSignal.regime,
       marketRecoveryScore: marketSignal.recoveryScore,
       marketScore: marketSignal.score,
+      marketUpProbability: marketSignal.upProbability,
       closeToCloseReturn: round(entryModeReturns.close.return, 4),
       nextCloseReturn: round(entryModeReturns.nextClose.return, 4),
       nextDayReturn: round(strategyDay.return, 4),
@@ -324,6 +354,7 @@ function runBacktest({
       portfolioCrisisScore: portfolioSignal.crisisMode.score,
       portfolioCrisisShock: portfolioSignal.crisisMode.shock ? 1 : 0,
       portfolioCrisisTailRisk: portfolioSignal.crisisMode.tailRisk ? 1 : 0,
+      portfolioDownProbability: portfolioSignal.downProbability,
       portfolioCoverage: round(
         Math.min(
           strategyDay.coverage,
@@ -337,10 +368,16 @@ function runBacktest({
         portfolioSignal.action,
         portfolioSignal.confidence,
         portfolioSignal.crisisMode,
+        DEFAULT_PORTFOLIO_EXPOSURE_CONFIG,
+        portfolioSignal.upProbability,
+        portfolioSignal.downProbability,
+        portfolioSignal.regime,
       ),
       portfolioFixedExposure: actionExposureForPortfolio(portfolioSignal.action),
+      portfolioRegime: portfolioSignal.regime,
       portfolioRecoveryScore: portfolioSignal.recoveryScore,
       portfolioScore: portfolioSignal.score,
+      portfolioUpProbability: portfolioSignal.upProbability,
       strategyReturn: round(strategyDay.return, 4),
     });
   }
@@ -351,11 +388,27 @@ function runBacktest({
 function buildQuotesAsOf(date, marketHistories, fredHistories) {
   const quote = (id, histories = marketHistories) =>
     buildQuoteFromHistory(historyAsOf(histories[id] || [], date));
+  const qqq = quote("qqq");
+  const qqqe = quote("qqqe");
+  const spy = quote("spy");
+  const rsp = quote("rsp");
+  const smh = quote("smh");
+  const semiLeaderHistories = Object.fromEntries(
+    SEMI_LEADER_IDS.map((id) => [id, historyAsOf(marketHistories[id] || [], date)]),
+  );
   return {
     kospi: quote("kospi"),
     sp500: quote("sp500"),
     nasdaq: quote("nasdaq"),
     sox: quote("sox"),
+    nikkei: quote("nikkei"),
+    nasdaqFutures: quote("nasdaqFutures"),
+    sp500Futures: quote("sp500Futures"),
+    nasdaqBreadth: buildRelativeStrengthQuoteFromQuotes(qqqe, qqq),
+    sp500Breadth: buildRelativeStrengthQuoteFromQuotes(rsp, spy),
+    semiBreadth: buildMovingAverageBreadthQuoteFromHistories(semiLeaderHistories, 50),
+    semiLeadership: buildRelativeStrengthQuoteFromQuotes(smh, qqq),
+    vix3m: quote("vix3m"),
     usdKrw: quote("usdKrw"),
     wti: quote("wti"),
     us10y: quote("us10y"),
@@ -378,6 +431,89 @@ function buildQuoteFromHistory(rows) {
     analysisHistory: rows.slice(-ANALYSIS_POINTS),
     price: latest.value,
   };
+}
+
+function buildRelativeStrengthQuoteFromQuotes(numerator, denominator) {
+  const ratioSeries = buildRatioSeries(
+    numerator?.analysisHistory || [],
+    denominator?.analysisHistory || [],
+  );
+  const history = ratioSeries.slice(-TREND_POINTS);
+  const trend = trendPercent(history);
+  const latest = history.at(-1);
+  const previous = history.at(-2);
+  if (!latest || !Number.isFinite(trend)) return null;
+  return {
+    analysisHistory: ratioSeries.slice(-ANALYSIS_POINTS),
+    change: previous ? latest.value - previous.value : 0,
+    changePercent: Number(numerator?.changePercent) - Number(denominator?.changePercent),
+    history,
+    price: trend,
+  };
+}
+
+function buildMovingAverageBreadthQuoteFromHistories(historiesById, period) {
+  const series = buildMovingAverageBreadthSeries(historiesById, period);
+  const history = series.slice(-TREND_POINTS);
+  const latest = history.at(-1);
+  const previous = history.at(-2);
+  if (!latest) return null;
+  return {
+    analysisHistory: series.slice(-ANALYSIS_POINTS),
+    change: previous ? latest.value - previous.value : 0,
+    changePercent: previous ? latest.value - previous.value : 0,
+    history,
+    price: latest.value,
+  };
+}
+
+function buildRatioSeries(numeratorRows, denominatorRows) {
+  const denominatorByDate = new Map(
+    denominatorRows.map((row) => [row.date, Number(row.value)]),
+  );
+  return numeratorRows
+    .map((row) => {
+      const numeratorValue = Number(row.value);
+      const denominatorValue = denominatorByDate.get(row.date);
+      if (
+        !Number.isFinite(numeratorValue) ||
+        !Number.isFinite(denominatorValue) ||
+        denominatorValue <= 0
+      ) {
+        return null;
+      }
+      return {
+        date: row.date,
+        value: (numeratorValue / denominatorValue) * 100,
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildMovingAverageBreadthSeries(historiesById, period) {
+  const breadthByDate = new Map();
+  for (const rows of Object.values(historiesById)) {
+    for (let index = period - 1; index < rows.length; index += 1) {
+      const date = rows[index].date;
+      const price = Number(rows[index].value);
+      const ma = average(
+        rows.slice(index - period + 1, index + 1).map((row) => Number(row.value)),
+      );
+      if (!date || !Number.isFinite(price) || !Number.isFinite(ma)) continue;
+      const item = breadthByDate.get(date) || { above: 0, total: 0 };
+      item.total += 1;
+      if (price > ma) item.above += 1;
+      breadthByDate.set(date, item);
+    }
+  }
+
+  return [...breadthByDate.entries()]
+    .map(([date, item]) => ({
+      date,
+      value: item.total ? (item.above / item.total) * 100 : NaN,
+    }))
+    .filter((row) => Number.isFinite(row.value))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function buildSentimentAsOf(date, sentiment) {
@@ -414,9 +550,15 @@ function buildPortfolioMetricsAsOf(date, portfolioHistories) {
       const rows = historyAsOf(holding.history, date);
       const closes = rows.map((row) => row.value);
       const latest = rows.at(-1);
+      const high52 = Math.max(...closes.slice(-252).filter(Number.isFinite));
       return {
         ...holding,
         latestClose: latest?.value ?? null,
+        high52: Number.isFinite(high52) ? high52 : null,
+        highProximity:
+          latest && Number.isFinite(high52) && high52 > 0
+            ? (latest.value / high52) * 100
+            : null,
         analysisHistory: rows.slice(-ANALYSIS_POINTS).map((row) => ({
           date: row.date,
           value: row.value,
@@ -469,37 +611,67 @@ function evaluateTradingSignal(quotes, sentiment) {
     scoreRiskAsset(quotes.kospi),
   ].filter(Number.isFinite);
   const broadScore = average(broadScores);
+  const marketBreadthScore = scoreMarketBreadth(quotes);
+  const vixTermScore = scoreVixTermStructure(quotes.vix3m, sentiment.vix);
+  const rateScore = scoreYield(quotes.us10y);
+  const regimeScore = scoreMarketRegime(quotes);
+  const crisisMode = detectPortfolioCrisisMode(quotes, sentiment);
+  const geopoliticalReliefScore = scoreGeopoliticalRelief(quotes, sentiment);
+  const shortTermEventScore = scoreShortTermEventImpulse(quotes, sentiment);
   add(broadScore, 2.1);
   add(scoreRiskAsset(quotes.sox), 1.3);
+  add(geopoliticalReliefScore, 0.65);
+  add(marketBreadthScore, 1.15);
+  add(vixTermScore, 0.8);
   add(scoreFearGreed(sentiment.fearGreed), 1.15);
   add(scoreVix(sentiment.vix), 1.45);
-  add(scoreYield(quotes.us10y), 0.85);
+  add(rateScore, 0.85);
   add(scoreUsdKrw(quotes.usdKrw), 0.65);
   add(scoreWti(quotes.wti), 0.45);
-  add(scoreMarketRegime(quotes), 1.25);
+  add(regimeScore, 1.25);
   const recoveryScore = scoreRecoveryPulse(quotes, sentiment);
   add(recoveryScore, 0.75);
 
-  const score = weightedScore(components);
+  let score = weightedScore(components);
+  score = clamp(Math.round(score + shortTermEventScoreAdjustment(shortTermEventScore)), -100, 100);
   const vixLevel = Number(sentiment.vix?.close);
   const hasRecovery = Number.isFinite(recoveryScore) && recoveryScore >= 0.35;
   const recoveryForAction = Number.isFinite(recoveryScore) ? recoveryScore : -1;
-  let action = "횡보";
-  if (
-    (vixLevel >= 35 && recoveryForAction < -0.5) ||
-    score <= -55 ||
-    (score <= -32 && recoveryForAction < -0.45) ||
-    (score <= -22 && recoveryForAction < -0.65)
-  ) {
+  const slowMarketDownRisk =
+    score <= -45 && recoveryForAction >= -0.6 && recoveryForAction <= -0.35;
+  const probability = evaluateSignalProbability({
+    broadScore,
+    crisisMode,
+    geopoliticalReliefScore,
+    marketBreadthScore,
+    rateScore,
+    recoveryScore,
+    regimeScore,
+    score,
+    shortTermEventScore,
+    vixLevel,
+    vixTermScore,
+  });
+  let action = "중립";
+  if (slowMarketDownRisk) {
     action = "하락";
-  } else if (score >= 25 && broadScore > 0 && vixLevel < 28 && (hasRecovery || vixLevel < 25)) {
+  } else if (
+    score >= Math.max(50, probability.buyScoreThreshold) &&
+    probability.upProbability >= probability.buyProbabilityThreshold &&
+    broadScore > 0 &&
+    (!Number.isFinite(vixLevel) || vixLevel < 28) &&
+    (hasRecovery || !Number.isFinite(vixLevel) || vixLevel < 25)
+  ) {
     action = "상승";
   }
   return {
     action,
     confidence: signalConfidence(action, score),
+    downProbability: probability.downProbability,
+    regime: probability.regime,
     recoveryScore: round(recoveryScore, 4),
     score,
+    upProbability: probability.upProbability,
   };
 }
 
@@ -519,26 +691,36 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   const regimeScore = scoreMarketRegime(quotes);
   const recoveryScore = scoreRecoveryPulse(quotes, sentiment, portfolioMetrics);
   const semiconductorCycleScore = scoreSemiconductorCycle(quotes);
+  const marketBreadthScore = scoreMarketBreadth(quotes);
+  const vixTermScore = scoreVixTermStructure(quotes.vix3m, sentiment.vix);
+  const highProximityScore = scorePortfolioHighProximity(portfolioMetrics);
   const variancePremiumScore = scoreVarianceRiskPremium(quotes, sentiment);
   const crisisMode = detectPortfolioCrisisMode(quotes, sentiment);
+  const geopoliticalReliefScore = scoreGeopoliticalRelief(quotes, sentiment);
+  const shortTermEventScore = scoreShortTermEventImpulse(quotes, sentiment);
 
   add(semiScore, 2.4);
   add(nasdaqScore, 1.25);
   add(scoreRiskAsset(quotes.kospi), 0.75);
+  add(geopoliticalReliefScore, 0.5);
   add(relativeScore, 1.35);
   add(multiRelativeScore, 1.1);
   add(movingAverageScore, 1.15);
   add(regimeScore, 1.35);
   add(semiconductorCycleScore, 1.25);
+  add(marketBreadthScore, 1.05);
+  add(highProximityScore, 0.85);
   add(rateScore, 1.2);
   add(scoreUsdKrw(quotes.usdKrw), 0.85);
   add(scoreVix(sentiment.vix), 1.05);
+  add(vixTermScore, 0.75);
   add(variancePremiumScore, 0.85);
   add(scoreFearGreed(sentiment.fearGreed), 0.65);
   add(scoreWti(quotes.wti), 0.2);
   add(recoveryScore, 0.8);
 
   let score = weightedScore(components);
+  score += Math.round(shortTermEventScoreAdjustment(shortTermEventScore) * 0.65);
   const vixLevel = Number(sentiment.vix?.close);
   const hasRecovery = Number.isFinite(recoveryScore) && recoveryScore >= 0.35;
   const recoveryForPenalty = Number.isFinite(recoveryScore) ? recoveryScore : -1;
@@ -551,18 +733,33 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   if (variancePremiumScore < -0.55 && recoveryForPenalty < 0.25) score -= 4;
   if (crisisMode.tailRisk) score -= crisisMode.severity === "severe" ? 18 : 12;
   score = clamp(Math.round(score), -100, 100);
+  const slowPortfolioDownRisk =
+    score <= -10 && recoveryForAction >= -0.1 && recoveryForAction < 0.2;
+  const probability = evaluateSignalProbability({
+    broadScore: nasdaqScore,
+    concentration: portfolioRiskThemeWeight(),
+    crisisMode,
+    geopoliticalReliefScore,
+    highProximityScore,
+    marketBreadthScore,
+    rateScore,
+    recoveryScore,
+    regimeScore,
+    score,
+    semiconductorCycleScore,
+    semiScore,
+    shortTermEventScore,
+    variancePremiumScore,
+    vixLevel,
+    vixTermScore,
+  });
 
-  let action = "횡보";
-  if (
-    (crisisMode.tailRisk && recoveryForAction < 0.35) ||
-    (vixLevel >= 35 && recoveryForAction < -0.5) ||
-    score <= -60 ||
-    (score <= -35 && recoveryForAction < -0.5) ||
-    (score <= -24 && recoveryForAction < -0.65)
-  ) {
+  let action = "중립";
+  if (slowPortfolioDownRisk) {
     action = "하락";
   } else if (
-    score >= 30 &&
+    score >= Math.max(40, probability.buyScoreThreshold) &&
+    probability.upProbability >= probability.buyProbabilityThreshold &&
     semiScore > 0 &&
     semiconductorCycleScore > -0.2 &&
     regimeScore > -0.25 &&
@@ -578,9 +775,191 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
     action,
     confidence: signalConfidence(action, score),
     crisisMode,
+    downProbability: probability.downProbability,
+    regime: probability.regime,
     recoveryScore: round(recoveryScore, 4),
     score,
+    upProbability: probability.upProbability,
   };
+}
+
+function evaluateSignalProbability({
+  broadScore,
+  concentration = 0,
+  crisisMode,
+  geopoliticalReliefScore,
+  highProximityScore,
+  marketBreadthScore,
+  rateScore,
+  recoveryScore,
+  regimeScore,
+  score,
+  semiconductorCycleScore,
+  semiScore,
+  shortTermEventScore,
+  variancePremiumScore,
+  vixLevel,
+  vixTermScore,
+}) {
+  const cleanScore = Number(score);
+  const breadth = cleanSignalScore(marketBreadthScore);
+  const vixTerm = cleanSignalScore(vixTermScore);
+  const rate = cleanSignalScore(rateScore);
+  const recovery = cleanSignalScore(recoveryScore);
+  const regimeScoreValue = cleanSignalScore(regimeScore);
+  const variancePremium = cleanSignalScore(variancePremiumScore);
+  const geopoliticalRelief = cleanSignalScore(geopoliticalReliefScore);
+  const shortTermEvent = cleanSignalScore(shortTermEventScore);
+  const semiCycle = cleanSignalScore(semiconductorCycleScore);
+  const highProximity = cleanSignalScore(highProximityScore);
+  const broad = cleanSignalScore(broadScore);
+  const semi = cleanSignalScore(semiScore);
+  const regime = classifySignalRegime({
+    concentration,
+    crisisMode,
+    marketBreadthScore: breadth,
+    rateScore: rate,
+    vixLevel,
+    vixTermScore: vixTerm,
+  });
+  const crisisPenalty =
+    (crisisMode?.active ? 0.45 : 0) + (crisisMode?.tailRisk ? 0.55 : 0);
+  const vixPenalty = Number.isFinite(vixLevel) && vixLevel >= 28 ? 0.28 : 0;
+  const upLogit =
+    -0.1 +
+    cleanScore / 36 +
+    positivePart(broad) * 0.35 +
+    breadth * 0.7 +
+    vixTerm * 0.45 +
+    regimeScoreValue * 0.3 +
+    recovery * 0.35 +
+    geopoliticalRelief * 0.35 +
+    shortTermEvent * 0.3 +
+    semiCycle * 0.4 +
+    highProximity * 0.22 +
+    positivePart(semi) * 0.25 -
+    negativePart(rate) * 0.35 -
+    negativePart(variancePremium) * 0.35 -
+    crisisPenalty -
+    vixPenalty;
+  const downLogit =
+    -0.85 -
+    cleanScore / 36 +
+    negativePart(broad) * 0.35 +
+    negativePart(breadth) * 0.8 +
+    negativePart(vixTerm) * 0.65 +
+    negativePart(rate) * 0.25 +
+    negativePart(variancePremium) * 0.35 +
+    negativePart(recovery) * 0.35 +
+    negativePart(geopoliticalRelief) * 0.25 +
+    negativePart(shortTermEvent) * 0.25 +
+    (crisisMode?.active ? 0.45 : 0) +
+    (crisisMode?.tailRisk ? 0.65 : 0) +
+    (Number.isFinite(vixLevel) && vixLevel >= 32 ? 0.35 : 0);
+
+  const thresholds = probabilityThresholdsForRegime(regime);
+  return {
+    ...thresholds,
+    downProbability: round(clamp(calibratedSignalProbability(downLogit), 1, 99), 0),
+    regime,
+    upProbability: round(clamp(calibratedSignalProbability(upLogit), 1, 99), 0),
+  };
+}
+
+function classifySignalRegime({
+  concentration,
+  crisisMode,
+  marketBreadthScore,
+  rateScore,
+  vixLevel,
+  vixTermScore,
+}) {
+  if (
+    crisisMode?.tailRisk ||
+    (Number.isFinite(vixLevel) && vixLevel >= 32) ||
+    vixTermScore <= -0.45 ||
+    ((Number.isFinite(vixLevel) && vixLevel >= 28) && marketBreadthScore < 0)
+  ) {
+    return "stress";
+  }
+  if (rateScore <= -0.35 && concentration >= 70) return "ratePressure";
+  if (
+    marketBreadthScore >= 0.25 &&
+    vixTermScore >= 0.2 &&
+    (!Number.isFinite(vixLevel) || vixLevel < 25)
+  ) {
+    return "trend";
+  }
+  return "balanced";
+}
+
+function probabilityThresholdsForRegime(regime) {
+  if (regime === "trend") {
+    return {
+      buyProbabilityThreshold: 62,
+      buyScoreThreshold: 38,
+      sellProbabilityThreshold: 66,
+    };
+  }
+  if (regime === "ratePressure") {
+    return {
+      buyProbabilityThreshold: 70,
+      buyScoreThreshold: 48,
+      sellProbabilityThreshold: 60,
+    };
+  }
+  if (regime === "stress") {
+    return {
+      buyProbabilityThreshold: 74,
+      buyScoreThreshold: 58,
+      sellProbabilityThreshold: 58,
+    };
+  }
+  return {
+    buyProbabilityThreshold: 66,
+    buyScoreThreshold: 42,
+    sellProbabilityThreshold: 62,
+  };
+}
+
+function cleanSignalScore(value) {
+  return Number.isFinite(value) ? clamp(value, -1, 1) : 0;
+}
+
+function shortTermEventScoreAdjustment(score) {
+  const value = Number(score);
+  if (!Number.isFinite(value)) return 0;
+  if (value >= 0.75) return value * 12;
+  if (value >= 0.4) return value * 10;
+  if (value <= -0.55) return value * 10;
+  return 0;
+}
+
+function positivePart(value) {
+  return Math.max(0, cleanSignalScore(value));
+}
+
+function negativePart(value) {
+  return Math.max(0, -cleanSignalScore(value));
+}
+
+function logisticProbability(logit) {
+  return 1 / (1 + Math.exp(-logit));
+}
+
+function calibratedSignalProbability(logit) {
+  return 50 + (logisticProbability(logit) - 0.5) * 60;
+}
+
+function portfolioRiskThemeWeight() {
+  return portfolioAnyTagWeight(["semi", "aiPower", "nasdaq", "cyber", "network", "space", "quantum"]);
+}
+
+function portfolioAnyTagWeight(tags) {
+  const taggedAmount = PORTFOLIO_HOLDINGS
+    .filter((holding) => tags.some((tag) => holding.tags.includes(tag)))
+    .reduce((sum, holding) => sum + holding.amount, 0);
+  return PORTFOLIO_TOTAL ? (taggedAmount / PORTFOLIO_TOTAL) * 100 : 0;
 }
 
 function summarizeBacktest(rows) {
@@ -597,6 +976,7 @@ function summarizeBacktest(rows) {
     marketSignal: {
       actionBuckets: bucketStats(rows, "marketAction"),
       curve: summarizeCurve(dailyReturns, marketExposure, TRANSACTION_COST_BPS),
+      predictionStats: signalPredictionStats(rows, "marketAction", "market"),
     },
     observations: rows.length,
     averagePortfolioCoverage: round(
@@ -611,11 +991,162 @@ function summarizeBacktest(rows) {
         portfolioFixedExposure,
         TRANSACTION_COST_BPS,
       ),
+      predictionStats: signalPredictionStats(rows, "portfolioAction", "portfolio"),
     },
     transactionCostBps: TRANSACTION_COST_BPS,
     yearly: summarizeByYear(rows),
     walkForward: summarizeWalkForward(rows),
   };
+}
+
+function signalPredictionStats(rows, actionKey, probabilityPrefix) {
+  return Object.fromEntries(
+    PREDICTION_HORIZONS.map((horizon) => {
+      const horizonRows = rows.filter((row) => Number.isFinite(row[horizon.field]));
+      const actualLabels = horizonRows.map((row) =>
+        actualMoveLabel(row[horizon.field], horizon.flatThreshold),
+      );
+      const hitRows = horizonRows.filter(
+        (row, index) => row[actionKey] === actualLabels[index],
+      );
+      const actionableRows = horizonRows.filter((row) => row[actionKey] !== "중립");
+      const actionableHitRows = actionableRows.filter((row) =>
+        directionalHit(row[actionKey], row[horizon.field], horizon.flatThreshold),
+      );
+      const byAction = Object.fromEntries(
+        [...groupRows(horizonRows, (row) => row[actionKey]).entries()].map(
+          ([action, groupRowsForAction]) => {
+            const values = groupRowsForAction.map((row) => row[horizon.field]);
+            const actualCounts = summarizeActualMoveCounts(
+              values,
+              horizon.flatThreshold,
+            );
+            const hitCount = groupRowsForAction.filter(
+              (row) =>
+                row[actionKey] ===
+                actualMoveLabel(row[horizon.field], horizon.flatThreshold),
+            ).length;
+            return [
+              action,
+              {
+                actualDownRate: rate(actualCounts["하락"], values.length),
+                actualNeutralRate: rate(actualCounts["중립"], values.length),
+                actualUpRate: rate(actualCounts["상승"], values.length),
+                avgReturn: round(average(values), 2),
+                count: groupRowsForAction.length,
+                hitRate: rate(hitCount, values.length),
+                medianReturn: round(median(values), 2),
+                negativeRate: rate(values.filter((value) => value < 0).length, values.length),
+                positiveRate: rate(values.filter((value) => value > 0).length, values.length),
+              },
+            ];
+          },
+        ),
+      );
+      const probabilityTable = probabilityPrefix
+        ? probabilityThresholdStats(horizonRows, probabilityPrefix, horizon)
+        : [];
+      return [
+        horizon.label,
+        {
+          accuracy: rate(hitRows.length, horizonRows.length),
+          actionableCoverage: rate(actionableRows.length, horizonRows.length),
+          actionableHitRate: rate(actionableHitRows.length, actionableRows.length),
+          actualMoveThreshold: horizon.flatThreshold,
+          byAction,
+          byProbabilityThreshold: probabilityTable,
+          byRegime: probabilityPrefix
+            ? regimePredictionStats(horizonRows, probabilityPrefix, horizon)
+            : {},
+          days: horizon.days,
+          observations: horizonRows.length,
+        },
+      ];
+    }),
+  );
+}
+
+function actualMoveLabel(returnValue, flatThreshold) {
+  if (returnValue >= flatThreshold) return "상승";
+  if (returnValue <= -flatThreshold) return "하락";
+  return "중립";
+}
+
+function directionalHit(action, returnValue, flatThreshold) {
+  if (action === "상승") return returnValue > 0;
+  if (action === "하락") return returnValue < 0;
+  return Math.abs(returnValue) < flatThreshold;
+}
+
+function probabilityThresholdStats(rows, prefix, horizon) {
+  const thresholds = [55, 60, 65, 70, 75];
+  return thresholds.map((threshold) => {
+    const signals = rows
+      .map((row) => probabilitySignalForThreshold(row, prefix, threshold))
+      .filter(Boolean);
+    const hitRows = signals.filter((signal) =>
+      directionalHit(signal.action, signal.row[horizon.field], horizon.flatThreshold),
+    );
+    const upSignals = signals.filter((signal) => signal.action === "상승");
+    const downSignals = signals.filter((signal) => signal.action === "하락");
+    return {
+      threshold,
+      count: signals.length,
+      coverage: rate(signals.length, rows.length),
+      hitRate: rate(hitRows.length, signals.length),
+      upCount: upSignals.length,
+      upHitRate: rate(
+        upSignals.filter((signal) => signal.row[horizon.field] > 0).length,
+        upSignals.length,
+      ),
+      downCount: downSignals.length,
+      downHitRate: rate(
+        downSignals.filter((signal) => signal.row[horizon.field] < 0).length,
+        downSignals.length,
+      ),
+    };
+  });
+}
+
+function probabilitySignalForThreshold(row, prefix, threshold) {
+  const up = Number(row[`${prefix}UpProbability`]);
+  const down = Number(row[`${prefix}DownProbability`]);
+  if (Number.isFinite(up) && up >= threshold && (!Number.isFinite(down) || up >= down)) {
+    return { action: "상승", probability: up, row };
+  }
+  if (Number.isFinite(down) && down >= threshold && (!Number.isFinite(up) || down > up)) {
+    return { action: "하락", probability: down, row };
+  }
+  return null;
+}
+
+function regimePredictionStats(rows, prefix, horizon) {
+  return Object.fromEntries(
+    [...groupRows(rows, (row) => row[`${prefix}Regime`] || "unknown").entries()].map(
+      ([regime, groupRowsForRegime]) => {
+        const values = groupRowsForRegime.map((row) => row[horizon.field]);
+        return [
+          regime,
+          {
+            avgReturn: round(average(values), 2),
+            count: groupRowsForRegime.length,
+            negativeRate: rate(values.filter((value) => value < 0).length, values.length),
+            positiveRate: rate(values.filter((value) => value > 0).length, values.length),
+          },
+        ];
+      },
+    ),
+  );
+}
+
+function summarizeActualMoveCounts(values, flatThreshold) {
+  return values.reduce(
+    (counts, value) => {
+      counts[actualMoveLabel(value, flatThreshold)] += 1;
+      return counts;
+    },
+    { 상승: 0, 중립: 0, 하락: 0 },
+  );
 }
 
 function bucketStats(rows, key) {
@@ -912,6 +1443,9 @@ function exposureForConfig(row, config) {
     row.portfolioConfidence,
     crisisModeFromRow(row),
     config,
+    row.portfolioUpProbability,
+    row.portfolioDownProbability,
+    row.portfolioRegime,
   );
 }
 
@@ -1194,6 +1728,9 @@ function targetPortfolioExposure(
   confidence = "",
   crisisMode = null,
   config = DEFAULT_PORTFOLIO_EXPOSURE_CONFIG,
+  upProbability = NaN,
+  downProbability = NaN,
+  regime = "",
 ) {
   const cleanScore = Number(score);
   if (!Number.isFinite(cleanScore)) return actionExposureForPortfolio(action);
@@ -1213,7 +1750,37 @@ function targetPortfolioExposure(
     }
     return Math.min(exposure, crisisCap);
   }
-  return exposure;
+  return applyProbabilityExposureCap(
+    exposure,
+    action,
+    upProbability,
+    downProbability,
+    regime,
+  );
+}
+
+function applyProbabilityExposureCap(
+  exposure,
+  action,
+  upProbability,
+  downProbability,
+  regime,
+) {
+  let adjusted = exposure;
+  const up = Number(upProbability);
+  const down = Number(downProbability);
+  if (action === "상승" && Number.isFinite(up) && up < 70) {
+    adjusted = Math.min(adjusted, 0.95);
+  }
+  if (action === "중립") {
+    if (regime === "ratePressure") adjusted = Math.min(adjusted, 0.9);
+    if (Number.isFinite(up) && up < 60) adjusted = Math.min(adjusted, 0.85);
+    if (Number.isFinite(down) && down >= 65) adjusted = Math.min(adjusted, 0.75);
+  }
+  if (action === "하락" && Number.isFinite(down) && down >= 65) {
+    adjusted = Math.min(adjusted, 0.5);
+  }
+  return adjusted;
 }
 
 function detectPortfolioCrisisMode(quotes, sentiment) {
@@ -1358,11 +1925,61 @@ function scoreSemiconductorCycle(quotes) {
   add(scoreRiskAsset(quotes?.sox), 1.15);
   add(scoreMultiPeriodMomentum(quotes?.sox), 1.1);
   add(scoreRelativeMomentum(quotes?.sox, quotes?.nasdaq), 0.9);
+  add(scoreRelativeBreadth(quotes?.semiLeadership), 0.75);
+  add(scoreSemiconductorBreadth(quotes?.semiBreadth), 0.75);
 
   const totalWeight = components.reduce((sum, item) => sum + item.weight, 0);
   return totalWeight
     ? components.reduce((sum, item) => sum + item.score * item.weight, 0) / totalWeight
     : NaN;
+}
+
+function scoreMarketBreadth(quotes) {
+  return average([
+    scoreRelativeBreadth(quotes?.nasdaqBreadth),
+    scoreRelativeBreadth(quotes?.sp500Breadth),
+    scoreRelativeBreadth(quotes?.semiLeadership),
+    scoreSemiconductorBreadth(quotes?.semiBreadth),
+  ]);
+}
+
+function scoreRelativeBreadth(quote) {
+  const relativeTrend = Number(quote?.price);
+  if (!Number.isFinite(relativeTrend)) return NaN;
+  if (relativeTrend >= 2.5) return 0.75;
+  if (relativeTrend >= 0.75) return 0.4;
+  if (relativeTrend > -0.75) return 0.05;
+  if (relativeTrend > -2.5) return -0.4;
+  return -0.75;
+}
+
+function scoreSemiconductorBreadth(quote) {
+  const value = Number(quote?.price);
+  const change = Number(quote?.change);
+  if (!Number.isFinite(value)) return NaN;
+  let score = 0;
+  if (value >= 75) score = 0.75;
+  else if (value >= 55) score = 0.35;
+  else if (value >= 40) score = 0.05;
+  else if (value >= 25) score = -0.35;
+  else score = -0.75;
+  if (change >= 14) score += 0.15;
+  if (change <= -14) score -= 0.15;
+  return clamp(score, -1, 1);
+}
+
+function scoreVixTermStructure(vix3mQuote, vixData) {
+  const vix3m = Number(vix3mQuote?.price);
+  const vix = Number(vixData?.close);
+  if (!Number.isFinite(vix3m) || !Number.isFinite(vix)) return NaN;
+  const spread = vix3m - vix;
+  let score = 0;
+  if (spread >= 4) score = 0.7;
+  else if (spread >= 1.5) score = 0.35;
+  else if (spread >= 0) score = 0.05;
+  else if (spread >= -2) score = -0.4;
+  else score = -0.8;
+  return clamp(score, -1, 1);
 }
 
 function scoreFearGreed(data) {
@@ -1444,6 +2061,101 @@ function scoreMarketRegime(quotes) {
   return average([scoreHySpread(quotes?.hySpread), scoreNfci(quotes?.nfci)]);
 }
 
+function scoreShortTermEventImpulse(quotes, sentiment) {
+  const signals = [];
+  const add = (value, weight) => {
+    if (!Number.isFinite(value)) return;
+    signals.push({ value, weight });
+  };
+
+  const nasdaqFutureChange = Number(quotes?.nasdaqFutures?.changePercent);
+  if (nasdaqFutureChange >= 1.5) add(1, 1.35);
+  else if (nasdaqFutureChange >= 0.8) add(0.7, 1.35);
+  else if (nasdaqFutureChange >= 0.35) add(0.35, 1.35);
+  else if (nasdaqFutureChange <= -1) add(-0.7, 1.35);
+
+  const spFutureChange = Number(quotes?.sp500Futures?.changePercent);
+  if (spFutureChange >= 1.2) add(0.85, 1);
+  else if (spFutureChange >= 0.6) add(0.55, 1);
+  else if (spFutureChange >= 0.25) add(0.25, 1);
+  else if (spFutureChange <= -0.8) add(-0.55, 1);
+
+  const nikkeiChange = Number(quotes?.nikkei?.changePercent);
+  if (nikkeiChange >= 2) add(0.85, 1);
+  else if (nikkeiChange >= 1.2) add(0.55, 1);
+  else if (nikkeiChange <= -1) add(-0.45, 1);
+
+  const oilChange = Number(quotes?.wti?.changePercent);
+  if (oilChange <= -3) add(0.75, 0.8);
+  else if (oilChange <= -1.2) add(0.35, 0.8);
+  else if (oilChange >= 2) add(-0.45, 0.8);
+
+  const vixChange = Number(sentiment?.vix?.change);
+  const vixLevel = Number(sentiment?.vix?.close);
+  if (Number.isFinite(vixChange) && Number.isFinite(vixLevel)) {
+    if (vixChange <= -2 || (vixChange <= 0 && vixLevel < 22)) add(0.35, 0.55);
+    else if (vixChange >= 2 || vixLevel >= 28) add(-0.45, 0.55);
+  }
+
+  const usdKrwChange = Number(quotes?.usdKrw?.changePercent);
+  if (usdKrwChange <= -0.3) add(0.25, 0.45);
+  else if (usdKrwChange >= 0.6) add(-0.3, 0.45);
+
+  const totalWeight = signals.reduce((sum, signal) => sum + signal.weight, 0);
+  if (!totalWeight) return NaN;
+  const score =
+    signals.reduce((sum, signal) => sum + signal.value * signal.weight, 0) /
+    totalWeight;
+  return Math.abs(score) >= 0.2 ? clamp(score, -1, 1) : NaN;
+}
+
+function scoreGeopoliticalRelief(quotes, sentiment) {
+  const signals = [];
+  const add = (value, weight) => {
+    if (!Number.isFinite(value)) return;
+    signals.push({ value, weight });
+  };
+
+  const nikkeiChange = Number(quotes?.nikkei?.changePercent);
+  if (nikkeiChange >= 1.5) add(1, 1.15);
+  else if (nikkeiChange >= 0.7) add(0.45, 1.15);
+  else if (nikkeiChange <= -1) add(-0.45, 1.15);
+
+  const oilChange = Number(quotes?.wti?.changePercent);
+  const oilTrend = trendPercent(quotes?.wti?.history);
+  if (oilChange <= -2) add(0.9, 1);
+  else if (oilChange <= -0.7 || oilTrend <= -4) add(0.45, 1);
+  else if (oilChange >= 2 || oilTrend >= 5) add(-0.55, 1);
+
+  const vixChange = Number(sentiment?.vix?.change);
+  const vixLevel = Number(sentiment?.vix?.close);
+  if (Number.isFinite(vixChange) && Number.isFinite(vixLevel)) {
+    if (vixChange <= -1 || (vixChange <= 0 && vixLevel < 22)) add(0.6, 0.85);
+    else if (vixChange >= 2) add(-0.6, 0.85);
+  }
+
+  const usdKrwChange = Number(quotes?.usdKrw?.changePercent);
+  if (usdKrwChange <= -0.25) add(0.45, 0.75);
+  else if (usdKrwChange <= 0.3) add(0.2, 0.75);
+  else if (usdKrwChange >= 0.7) add(-0.55, 0.75);
+
+  const semiRisk = average([
+    Number(quotes?.sox?.changePercent),
+    Number(quotes?.semiLeadership?.changePercent),
+    Number(quotes?.nasdaq?.changePercent),
+  ]);
+  if (semiRisk >= 1) add(0.75, 0.8);
+  else if (semiRisk >= 0.35) add(0.35, 0.8);
+  else if (semiRisk <= -1) add(-0.45, 0.8);
+
+  const totalWeight = signals.reduce((sum, signal) => sum + signal.weight, 0);
+  if (!totalWeight) return NaN;
+  const score =
+    signals.reduce((sum, signal) => sum + signal.value * signal.weight, 0) /
+    totalWeight;
+  return Math.abs(score) >= 0.18 ? clamp(score, -1, 1) : NaN;
+}
+
 function scoreRecoveryPulse(quotes, sentiment, portfolioMetrics = null) {
   const components = [];
   const add = (score, weight) => {
@@ -1453,6 +2165,8 @@ function scoreRecoveryPulse(quotes, sentiment, portfolioMetrics = null) {
 
   add(scoreVixRelief(sentiment?.vix), 1.2);
   add(scoreCapitulationRelief(quotes, sentiment), 0.75);
+  add(scoreGeopoliticalRelief(quotes, sentiment), 0.65);
+  add(scoreShortTermEventImpulse(quotes, sentiment), 0.45);
   add(scoreRiskAsset(quotes?.sox), 1.1);
   add(scoreRiskAsset(quotes?.nasdaq), 0.95);
   add(scoreRiskAsset(quotes?.sp500), 0.55);
@@ -1589,6 +2303,18 @@ function scorePortfolioMovingAverage(portfolioMetrics) {
       return -0.35;
     }
     return price > ma50 ? 0.35 : -0.35;
+  });
+}
+
+function scorePortfolioHighProximity(portfolioMetrics) {
+  return weightedPortfolioScore(portfolioMetrics, (holding) => {
+    const proximity = Number(holding.highProximity);
+    if (!Number.isFinite(proximity)) return NaN;
+    if (proximity >= 97) return 0.85;
+    if (proximity >= 92) return 0.55;
+    if (proximity >= 85) return 0.15;
+    if (proximity >= 75) return -0.35;
+    return -0.75;
   });
 }
 
@@ -1800,6 +2526,14 @@ function normalizeEntryMode(value) {
   return "nextOpen";
 }
 
+function normalizeForwardHorizons(value, fallback) {
+  const raw = String(value || "")
+    .split(",")
+    .map((item) => Number.parseInt(item.trim(), 10))
+    .filter((item) => Number.isFinite(item) && item > 0);
+  return [...new Set(raw.length ? raw : fallback)].sort((a, b) => a - b);
+}
+
 function shiftDate(date, days) {
   const value = new Date(`${date}T00:00:00Z`);
   value.setUTCDate(value.getUTCDate() + days);
@@ -1812,6 +2546,10 @@ function round(value, decimals) {
   return Math.round(value * scale) / scale;
 }
 
+function rate(count, total) {
+  return total ? round((count / total) * 100, 1) : null;
+}
+
 async function writeFile(filePath, contents) {
   const { writeFile: writeFileNode } = await import("node:fs/promises");
   await writeFileNode(filePath, contents);
@@ -1822,6 +2560,9 @@ function toCsv(rows) {
     "date",
     "portfolioAction",
     "portfolioConfidence",
+    "portfolioUpProbability",
+    "portfolioDownProbability",
+    "portfolioRegime",
     "portfolioExposure",
     "portfolioFixedExposure",
     "portfolioScore",
@@ -1833,6 +2574,9 @@ function toCsv(rows) {
     "portfolioRecoveryScore",
     "marketAction",
     "marketConfidence",
+    "marketUpProbability",
+    "marketDownProbability",
+    "marketRegime",
     "marketExposure",
     "marketScore",
     "marketRecoveryScore",
@@ -1879,6 +2623,14 @@ function printSummary(summary, outStem) {
   console.log("walk-forward aggregate:", summary.walkForward.validationAggregate);
   console.log("walk-forward tuned aggregate:", summary.walkForward.tunedValidationAggregate);
   console.log("walk-forward tuned config counts:", summary.walkForward.tunedConfigCounts);
+  console.log(
+    "portfolio next-week probability table:",
+    summary.portfolioSignal.predictionStats.nextWeek?.byProbabilityThreshold,
+  );
+  console.log(
+    "market next-week probability table:",
+    summary.marketSignal.predictionStats.nextWeek?.byProbabilityThreshold,
+  );
   console.log("portfolio buckets:", summary.portfolioSignal.actionBuckets);
   console.log("market buckets:", summary.marketSignal.actionBuckets);
   console.log(`saved: ${outStem}.json, ${outStem}.csv`);

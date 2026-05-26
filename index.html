@@ -9,52 +9,185 @@
   <body>
     <main class="app-shell" aria-label="시장 주요 정보">
       <section class="section-block" aria-labelledby="market-title">
-        <div class="section-heading">
-          <h1 id="market-title">시장</h1>
-          <span class="timestamp" id="marketTimestamp">지연</span>
+        <div class="market-sticky">
+          <div class="section-heading">
+            <h1 id="market-title">시장</h1>
+            <span class="timestamp" id="marketTimestamp">지연</span>
+          </div>
+
+          <section class="signal-panel signal-hold" id="marketSignal" aria-label="시장 추세">
+            <div class="signal-header">
+              <div class="signal-copy">
+                <span class="signal-label">시장 추세</span>
+                <strong id="signalAction">판단 중</strong>
+              </div>
+              <div class="signal-lamps" aria-hidden="true">
+                <span class="signal-light signal-green"></span>
+                <span class="signal-light signal-yellow"></span>
+                <span class="signal-light signal-red"></span>
+              </div>
+            </div>
+            <div class="score-range" id="marketScoreRange" aria-label="시장 추세 점수 구간" hidden>
+              <div class="score-track" aria-hidden="true">
+                <span class="score-segment score-segment-down">
+                  <b>하락</b>
+                  <em>-100~-45</em>
+                </span>
+                <span class="score-segment score-segment-neutral">
+                  <b>중립</b>
+                  <em>-44~+49</em>
+                </span>
+                <span class="score-segment score-segment-up">
+                  <b>상승</b>
+                  <em>+50~+100</em>
+                </span>
+                <span class="score-marker"></span>
+              </div>
+            </div>
+            <small class="signal-summary" id="signalSummary">지표 수집 중</small>
+          </section>
         </div>
 
-        <section class="signal-panel signal-hold" id="marketSignal" aria-label="시장 신호">
-          <div class="signal-lamps" aria-hidden="true">
-            <span class="signal-light signal-green"></span>
-            <span class="signal-light signal-yellow"></span>
-            <span class="signal-light signal-red"></span>
-          </div>
-          <div class="signal-copy">
-            <span class="signal-label">시장 신호</span>
-            <strong id="signalAction">판단 중</strong>
-            <small id="signalSummary">지표 수집 중</small>
-          </div>
-        </section>
+        <div class="dashboard-tabs" role="tablist" aria-label="하단 정보">
+          <button
+            class="dashboard-tab is-active"
+            id="marketTab"
+            type="button"
+            role="tab"
+            aria-controls="marketIndicatorsPanel"
+            aria-selected="true"
+          >
+            시장
+          </button>
+          <button
+            class="dashboard-tab"
+            id="holdingsTab"
+            type="button"
+            role="tab"
+            aria-controls="holdingsPanel"
+            aria-selected="false"
+          >
+            보유
+          </button>
+          <button
+            class="dashboard-tab"
+            id="recommendationsTab"
+            type="button"
+            role="tab"
+            aria-controls="recommendationsPanel"
+            aria-selected="false"
+          >
+            국내 추천
+          </button>
+          <button
+            class="dashboard-tab"
+            id="usRecommendationsTab"
+            type="button"
+            role="tab"
+            aria-controls="usRecommendationsPanel"
+            aria-selected="false"
+          >
+            미국 추천
+          </button>
+        </div>
 
-        <section class="portfolio-panel portfolio-hold" id="portfolioSignal" aria-label="보유 포트폴리오 신호">
-          <div class="portfolio-heading">
-            <div>
-              <span class="portfolio-label">내 보유 기준</span>
-              <strong id="portfolioAction">판단 중</strong>
+        <section
+          class="tab-panel"
+          id="holdingsPanel"
+          role="tabpanel"
+          aria-labelledby="holdingsTab"
+          hidden
+        >
+          <section class="portfolio-panel portfolio-hold" id="portfolioSignal" aria-label="보유 포트폴리오 신호">
+            <div class="portfolio-heading">
+              <div>
+                <span class="portfolio-label">내 보유 기준</span>
+                <strong id="portfolioAction">판단 중</strong>
+              </div>
+              <span class="portfolio-score" id="portfolioScore">0점</span>
             </div>
-            <span class="portfolio-score" id="portfolioScore">0점</span>
-          </div>
-          <p class="portfolio-summary" id="portfolioSummary">보유 종목 민감도 계산 중</p>
-          <div class="portfolio-stats" aria-label="보유 포트폴리오 구성">
-            <span>
-              <small>반도체/HBM</small>
-              <strong id="portfolioSemiWeight">-</strong>
-            </span>
-            <span>
-              <small>AI·성장테마</small>
-              <strong id="portfolioAiWeight">-</strong>
-            </span>
-            <span>
-              <small>채권혼합 완충</small>
-              <strong id="portfolioBondMixWeight">-</strong>
-            </span>
-          </div>
-          <div class="portfolio-checks" id="portfolioChecks" aria-label="핵심 점검 항목"></div>
-          <div class="holding-signals" id="holdingSignals" aria-label="보유 종목별 신호"></div>
+            <p class="portfolio-summary" id="portfolioSummary">보유 종목 민감도 계산 중</p>
+            <div class="portfolio-stats" aria-label="보유 포트폴리오 구성">
+              <span>
+                <small>반도체/HBM</small>
+                <strong id="portfolioSemiWeight">-</strong>
+              </span>
+              <span>
+                <small>AI·성장테마</small>
+                <strong id="portfolioAiWeight">-</strong>
+              </span>
+              <span>
+                <small>채권혼합 완충</small>
+                <strong id="portfolioBondMixWeight">-</strong>
+              </span>
+            </div>
+            <div class="portfolio-checks" id="portfolioChecks" aria-label="핵심 점검 항목"></div>
+            <div class="holding-signals" id="holdingSignals" aria-label="보유 종목별 신호"></div>
+          </section>
         </section>
 
-        <div class="indicator-list" aria-label="주요 시장 지표">
+        <section
+          class="tab-panel"
+          id="recommendationsPanel"
+          role="tabpanel"
+          aria-labelledby="recommendationsTab"
+          hidden
+        >
+          <section class="recommendation-panel" aria-label="추천주">
+            <div class="recommendation-heading">
+              <div>
+                <span class="recommendation-label">월간 기준</span>
+                <strong>추천주</strong>
+              </div>
+              <button class="recommendation-refresh" id="recommendationRefresh" type="button">
+                갱신
+              </button>
+            </div>
+            <div class="recommendation-meta">
+              <span id="recommendationStatus">후보 수집 대기</span>
+              <span id="recommendationCondition">시총 1조 이상</span>
+            </div>
+            <div class="recommendation-list" id="recommendationList">
+              <p class="recommendation-empty">후보 수집 대기</p>
+            </div>
+          </section>
+        </section>
+
+        <section
+          class="tab-panel"
+          id="usRecommendationsPanel"
+          role="tabpanel"
+          aria-labelledby="usRecommendationsTab"
+          hidden
+        >
+          <section class="recommendation-panel" aria-label="미국 추천">
+            <div class="recommendation-heading">
+              <div>
+                <span class="recommendation-label">월간 기준</span>
+                <strong>미국 추천</strong>
+              </div>
+              <button class="recommendation-refresh" id="usRecommendationRefresh" type="button">
+                갱신
+              </button>
+            </div>
+            <div class="recommendation-meta">
+              <span id="usRecommendationStatus">후보 수집 대기</span>
+              <span id="usRecommendationCondition">시총 10조 이상</span>
+            </div>
+            <div class="recommendation-list" id="usRecommendationList">
+              <p class="recommendation-empty">후보 수집 대기</p>
+            </div>
+          </section>
+        </section>
+
+        <section
+          class="tab-panel is-active"
+          id="marketIndicatorsPanel"
+          role="tabpanel"
+          aria-labelledby="marketTab"
+        >
+
+          <div class="indicator-list" aria-label="주요 시장 지표">
           <article class="indicator-row" data-indicator="kospi">
             <div class="indicator-copy">
               <span class="indicator-label">KOSPI</span>
@@ -89,6 +222,60 @@
               <small id="soxChange">지연 데이터</small>
             </div>
             <svg class="sparkline" id="soxSparkline" viewBox="0 0 132 52" role="img" aria-label="SOX 반도체지수 최근 28일 추이"></svg>
+          </article>
+
+          <article class="indicator-row" data-indicator="nikkei">
+            <div class="indicator-copy">
+              <span class="indicator-label">Nikkei 225</span>
+              <strong id="nikkeiValue">불러오는 중</strong>
+              <small id="nikkeiChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="nikkeiSparkline" viewBox="0 0 132 52" role="img" aria-label="Nikkei 225 최근 28일 추이"></svg>
+          </article>
+
+          <article class="indicator-row" data-indicator="nasdaqBreadth">
+            <div class="indicator-copy">
+              <span class="indicator-label">NASDAQ 시장 폭</span>
+              <strong id="nasdaqBreadthValue">불러오는 중</strong>
+              <small id="nasdaqBreadthChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="nasdaqBreadthSparkline" viewBox="0 0 132 52" role="img" aria-label="NASDAQ 시장 폭 최근 28일 추이"></svg>
+          </article>
+
+          <article class="indicator-row" data-indicator="sp500Breadth">
+            <div class="indicator-copy">
+              <span class="indicator-label">S&amp;P 500 시장 폭</span>
+              <strong id="sp500BreadthValue">불러오는 중</strong>
+              <small id="sp500BreadthChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="sp500BreadthSparkline" viewBox="0 0 132 52" role="img" aria-label="S&P 500 시장 폭 최근 28일 추이"></svg>
+          </article>
+
+          <article class="indicator-row" data-indicator="semiBreadth">
+            <div class="indicator-copy">
+              <span class="indicator-label">반도체 리더 폭</span>
+              <strong id="semiBreadthValue">불러오는 중</strong>
+              <small id="semiBreadthChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="semiBreadthSparkline" viewBox="0 0 132 52" role="img" aria-label="반도체 리더 폭 최근 28일 추이"></svg>
+          </article>
+
+          <article class="indicator-row" data-indicator="semiLeadership">
+            <div class="indicator-copy">
+              <span class="indicator-label">반도체/QQQ 상대강도</span>
+              <strong id="semiLeadershipValue">불러오는 중</strong>
+              <small id="semiLeadershipChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="semiLeadershipSparkline" viewBox="0 0 132 52" role="img" aria-label="반도체/QQQ 상대강도 최근 28일 추이"></svg>
+          </article>
+
+          <article class="indicator-row" data-indicator="portfolioHighProximity">
+            <div class="indicator-copy">
+              <span class="indicator-label">보유 ETF 52주 고점 근접도</span>
+              <strong id="portfolioHighProximityValue">불러오는 중</strong>
+              <small id="portfolioHighProximityChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="portfolioHighProximitySparkline" viewBox="0 0 132 52" role="img" aria-label="보유 ETF 52주 고점 근접도 최근 28일 추이"></svg>
           </article>
 
           <article class="indicator-row" data-indicator="ddr5Spot">
@@ -180,9 +367,19 @@
             </div>
             <svg class="sparkline" id="vixSparkline" viewBox="0 0 132 52" role="img" aria-label="VIX 지수 최근 28일 추이"></svg>
           </article>
-        </div>
 
-        <p class="data-note" id="marketSource">무료 지연 데이터 기준</p>
+          <article class="indicator-row" data-indicator="vixTerm">
+            <div class="indicator-copy">
+              <span class="indicator-label">VIX 기간구조</span>
+              <strong id="vixTermValue">불러오는 중</strong>
+              <small id="vixTermChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="vixTermSparkline" viewBox="0 0 132 52" role="img" aria-label="VIX 기간구조 최근 28일 추이"></svg>
+          </article>
+          </div>
+
+          <p class="data-note" id="marketSource">무료 지연 데이터 기준</p>
+        </section>
       </section>
     </main>
 

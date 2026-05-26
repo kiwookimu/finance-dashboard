@@ -1,7 +1,9 @@
 const http = require("node:http");
 const https = require("node:https");
 const path = require("node:path");
+const { execFile } = require("node:child_process");
 const { readFile } = require("node:fs/promises");
+const { promisify } = require("node:util");
 
 const PORT = Number(process.env.PORT || 5173);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -9,16 +11,33 @@ const ROOT = __dirname;
 const MARKET_CACHE_MS = 60 * 1000;
 const SENTIMENT_CACHE_MS = 15 * 60 * 1000;
 const PORTFOLIO_CACHE_MS = 5 * 60 * 1000;
+const STOCK_RECOMMENDATION_CACHE_MS = 30 * 60 * 1000;
 const TREND_POINTS = 28;
 const ANALYSIS_POINTS = 260;
+const execFileAsync = promisify(execFile);
 
 const MARKET_SOURCES = [
   { id: "kospi", label: "KOSPI", symbol: "^KS11", decimals: 2 },
   { id: "sp500", label: "S&P 500", symbol: "^GSPC", decimals: 2 },
   { id: "nasdaq", label: "NASDAQ", symbol: "^IXIC", decimals: 2 },
   { id: "sox", label: "SOX", symbol: "^SOX", decimals: 2 },
+  { id: "nikkei", label: "Nikkei 225", symbol: "^N225", decimals: 2 },
+  {
+    id: "nasdaqFutures",
+    label: "NASDAQ 100 선물",
+    symbol: "NQ=F",
+    stooqSymbol: "nq.f",
+    decimals: 2,
+  },
+  {
+    id: "sp500Futures",
+    label: "S&P 500 선물",
+    symbol: "ES=F",
+    stooqSymbol: "es.f",
+    decimals: 2,
+  },
   { id: "usdKrw", label: "USD/KRW", symbol: "KRW=X", decimals: 1 },
-  { id: "wti", label: "WTI", symbol: "CL=F", decimals: 2 },
+  { id: "wti", label: "WTI", symbol: "CL=F", stooqSymbol: "cl.f", decimals: 2 },
   {
     id: "us10y",
     label: "미국 10년물 금리",
@@ -27,6 +46,23 @@ const MARKET_SOURCES = [
     valueSuffix: "%",
     changeUnit: "p",
   },
+];
+const DERIVED_YAHOO_SOURCES = [
+  { id: "qqq", label: "Invesco QQQ", symbol: "QQQ", decimals: 2 },
+  { id: "qqqe", label: "NASDAQ 100 동일가중", symbol: "QQQE", decimals: 2 },
+  { id: "spy", label: "SPDR S&P 500", symbol: "SPY", decimals: 2 },
+  { id: "rsp", label: "S&P 500 동일가중", symbol: "RSP", decimals: 2 },
+  { id: "smh", label: "VanEck Semiconductor ETF", symbol: "SMH", decimals: 2 },
+  { id: "vix3m", label: "VIX 3개월", symbol: "^VIX3M", decimals: 1 },
+];
+const SEMI_LEADER_SOURCES = [
+  { id: "nvda", label: "NVIDIA", symbol: "NVDA", decimals: 2 },
+  { id: "avgo", label: "Broadcom", symbol: "AVGO", decimals: 2 },
+  { id: "amd", label: "AMD", symbol: "AMD", decimals: 2 },
+  { id: "mu", label: "Micron", symbol: "MU", decimals: 2 },
+  { id: "tsm", label: "TSMC", symbol: "TSM", decimals: 2 },
+  { id: "asml", label: "ASML", symbol: "ASML", decimals: 2 },
+  { id: "qcom", label: "Qualcomm", symbol: "QCOM", decimals: 2 },
 ];
 const SENTIMENT_SOURCES = {
   fearGreed:
@@ -69,6 +105,8 @@ const PORTFOLIO_HOLDINGS = [
   { amount: 5006750, benchmark: "nasdaq", code: "0183J0", id: "tigerUsSpaceTech", name: "TIGER 미국우주테크", tags: ["space", "us"] },
   { amount: 5012995, benchmark: "nasdaq", code: "0173Y0", id: "kodexAiOpticalNetwork", name: "KODEX 미국AI광통신네트워크", tags: ["aiPower", "network", "us"] },
   { amount: 5035970, benchmark: "nasdaq", code: "0023A0", id: "solUsQuantumTop10", name: "SOL 미국양자컴퓨팅TOP10", tags: ["quantum", "us"] },
+  { amount: 0, benchmark: "nasdaq", code: "491010", id: "tigerGlobalAiPowerInfra", name: "TIGER 글로벌AI전력인프라액티브", tags: ["aiPower", "global"] },
+  { amount: 0, benchmark: "kospi", code: "367760", id: "riseNetworkInfra", name: "RISE 네트워크인프라", tags: ["network", "korea"] },
 ];
 
 let cachedMarketOverview = null;
@@ -77,6 +115,12 @@ let cachedSentiment = null;
 let cachedSentimentAt = 0;
 let cachedPortfolio = null;
 let cachedPortfolioAt = 0;
+let cachedStockRecommendations = null;
+let cachedStockRecommendationsAt = 0;
+let stockRecommendationRefreshPromise = null;
+let cachedUsStockRecommendations = null;
+let cachedUsStockRecommendationsAt = 0;
+let usStockRecommendationRefreshPromise = null;
 
 const server = http.createServer(async (request, response) => {
   try {
@@ -102,6 +146,26 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    if (url.pathname === "/api/stock-recommendations") {
+      sendJson(
+        response,
+        await getStockRecommendations({
+          forceRefresh: url.searchParams.get("refresh") === "1",
+        }),
+      );
+      return;
+    }
+
+    if (url.pathname === "/api/us-stock-recommendations") {
+      sendJson(
+        response,
+        await getUsStockRecommendations({
+          forceRefresh: url.searchParams.get("refresh") === "1",
+        }),
+      );
+      return;
+    }
+
     await serveStatic(url.pathname, response);
   } catch (error) {
     sendJson(
@@ -123,24 +187,73 @@ async function getMarketOverview() {
     return { ...cachedMarketOverview, cached: true };
   }
 
-  const [quotes, fredQuotes, ddr5Spot, serverDdr5Contract, dxi] = await Promise.all([
+  const [
+    quotes,
+    derivedYahooQuotes,
+    semiLeaderQuotes,
+    fredQuotes,
+    ddr5Spot,
+    serverDdr5Contract,
+    dxi,
+  ] = await Promise.all([
     Promise.all(MARKET_SOURCES.map(fetchYahooQuote)),
+    Promise.all(DERIVED_YAHOO_SOURCES.map(fetchYahooQuote)),
+    Promise.all(SEMI_LEADER_SOURCES.map(fetchYahooQuote)),
     Promise.all(FRED_SOURCES.map(fetchFredQuote)),
     fetchTrendForceDdr5Spot(),
     fetchTrendForceServerDdr5Contract(),
     fetchDramExchangeDxi(),
   ]);
+  const derivedById = Object.fromEntries(
+    derivedYahooQuotes.map((quote) => [quote.id, quote]),
+  );
+  const syntheticQuotes = [
+    buildRelativeStrengthQuote({
+      id: "nasdaqBreadth",
+      label: "NASDAQ 시장 폭",
+      numerator: derivedById.qqqe,
+      denominator: derivedById.qqq,
+      summary: "QQQE/QQQ 28일 상대강도",
+    }),
+    buildRelativeStrengthQuote({
+      id: "sp500Breadth",
+      label: "S&P 500 시장 폭",
+      numerator: derivedById.rsp,
+      denominator: derivedById.spy,
+      summary: "RSP/SPY 28일 상대강도",
+    }),
+    buildRelativeStrengthQuote({
+      id: "semiLeadership",
+      label: "반도체/QQQ 상대강도",
+      numerator: derivedById.smh,
+      denominator: derivedById.qqq,
+      summary: "SMH/QQQ 28일 상대강도",
+    }),
+    buildMovingAverageBreadthQuote({
+      id: "semiBreadth",
+      label: "반도체 리더 폭",
+      period: 50,
+      quotes: semiLeaderQuotes,
+      summary: "주요 반도체 7종목 50일선 상회 비율",
+    }),
+  ];
   cachedMarketOverview = {
     cached: false,
     generatedAt: new Date().toISOString(),
     quotes: Object.fromEntries(
-      [...quotes, ...fredQuotes, ddr5Spot, serverDdr5Contract, dxi].map((quote) => [
-        quote.id,
-        quote,
-      ]),
+      [
+        ...quotes,
+        ...syntheticQuotes,
+        derivedById.vix3m,
+        ...fredQuotes,
+        ddr5Spot,
+        serverDdr5Contract,
+        dxi,
+      ].map((quote) => [quote.id, quote]),
     ),
     sources: {
       quote: "Yahoo Finance chart endpoint",
+      breadth: "Yahoo Finance ETF and semiconductor leader basket",
       trendForce: "TrendForce DRAM spot price table",
       trendForceServerDimm: "TrendForce Server DIMM Contract Price report summary",
       dxi: "DRAMeXchange Market Activity DXI timestamp",
@@ -339,6 +452,231 @@ async function getPortfolioMetrics() {
   return cachedPortfolio;
 }
 
+async function getStockRecommendations({ forceRefresh = false } = {}) {
+  const now = Date.now();
+  if (
+    !forceRefresh &&
+    cachedStockRecommendations &&
+    now - cachedStockRecommendationsAt < STOCK_RECOMMENDATION_CACHE_MS
+  ) {
+    return { ...cachedStockRecommendations, cached: true };
+  }
+
+  const month = currentKoreaMonth();
+  const markets = "KOSPI,KOSDAQ";
+  const resultPath = stockRecommendationResultPath(month, markets);
+
+  if (!forceRefresh) {
+    const filePayload = await readStockRecommendationFile(resultPath).catch(() => null);
+    if (filePayload) {
+      cachedStockRecommendations = normalizeStockRecommendationPayload(filePayload, {
+        cached: false,
+        refreshed: false,
+        saved: true,
+      });
+      cachedStockRecommendationsAt = now;
+      return cachedStockRecommendations;
+    }
+    return emptyStockRecommendationPayload({
+      condition: stockRecommendationCondition(1_000_000_000_000),
+      marketMonth: month,
+      universe: "Saved Korea recommendation screen is not available yet",
+    });
+  }
+
+  if (!stockRecommendationRefreshPromise) {
+    stockRecommendationRefreshPromise = refreshStockRecommendations(month, markets)
+      .catch(async (error) => {
+        const fallback = await readStockRecommendationFile(resultPath).catch(() => null);
+        if (fallback) {
+          return normalizeStockRecommendationPayload(fallback, {
+            cached: false,
+            refreshError: error.message,
+            refreshed: false,
+            stale: true,
+          });
+        }
+        throw error;
+      })
+      .finally(() => {
+        stockRecommendationRefreshPromise = null;
+      });
+  }
+
+  cachedStockRecommendations = await stockRecommendationRefreshPromise;
+  cachedStockRecommendationsAt = Date.now();
+  return cachedStockRecommendations;
+}
+
+async function getUsStockRecommendations({ forceRefresh = false } = {}) {
+  const now = Date.now();
+  if (
+    !forceRefresh &&
+    cachedUsStockRecommendations &&
+    now - cachedUsStockRecommendationsAt < STOCK_RECOMMENDATION_CACHE_MS
+  ) {
+    return { ...cachedUsStockRecommendations, cached: true };
+  }
+
+  const month = currentKoreaMonth();
+  const resultPath = usStockRecommendationResultPath(month);
+
+  if (!forceRefresh) {
+    const filePayload = await readStockRecommendationFile(resultPath).catch(() => null);
+    if (filePayload) {
+      cachedUsStockRecommendations = normalizeStockRecommendationPayload(
+        filePayload,
+        {
+          cached: false,
+          refreshed: false,
+          saved: true,
+        },
+      );
+      cachedUsStockRecommendationsAt = now;
+      return cachedUsStockRecommendations;
+    }
+    return emptyStockRecommendationPayload({
+      condition: stockRecommendationCondition(10_000_000_000_000, {
+        relativeBenchmark: "QQQ",
+      }),
+      marketMonth: month,
+      universe: "Saved U.S. recommendation screen is not available yet",
+    });
+  }
+
+  if (!usStockRecommendationRefreshPromise) {
+    usStockRecommendationRefreshPromise = refreshUsStockRecommendations(month)
+      .catch(async (error) => {
+        const fallback = await readStockRecommendationFile(resultPath).catch(() => null);
+        if (fallback) {
+          return normalizeStockRecommendationPayload(fallback, {
+            cached: false,
+            refreshError: error.message,
+            refreshed: false,
+            stale: true,
+          });
+        }
+        throw error;
+      })
+      .finally(() => {
+        usStockRecommendationRefreshPromise = null;
+      });
+  }
+
+  cachedUsStockRecommendations = await usStockRecommendationRefreshPromise;
+  cachedUsStockRecommendationsAt = Date.now();
+  return cachedUsStockRecommendations;
+}
+
+async function refreshStockRecommendations(month, markets) {
+  const scriptPath = path.join(ROOT, "scripts", "screen_kr_monthly_breakout.mjs");
+  await execFileAsync(
+    process.execPath,
+    [scriptPath, month, "5", "1000000000000", markets],
+    {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        SCREEN_CONCURRENCY: process.env.SCREEN_CONCURRENCY || "8",
+      },
+      maxBuffer: 20 * 1024 * 1024,
+      timeout: 180000,
+    },
+  );
+  return normalizeStockRecommendationPayload(
+    await readStockRecommendationFile(stockRecommendationResultPath(month, markets)),
+    { cached: false, refreshed: true },
+  );
+}
+
+async function refreshUsStockRecommendations(month) {
+  const scriptPath = path.join(ROOT, "scripts", "screen_us_monthly_breakout.mjs");
+  await execFileAsync(
+    process.execPath,
+    [scriptPath, month, "5", "10000000000000"],
+    {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        SCREEN_CONCURRENCY: process.env.SCREEN_CONCURRENCY || "4",
+      },
+      maxBuffer: 20 * 1024 * 1024,
+      timeout: 900000,
+    },
+  );
+  return normalizeStockRecommendationPayload(
+    await readStockRecommendationFile(usStockRecommendationResultPath(month)),
+    { cached: false, refreshed: true },
+  );
+}
+
+async function readStockRecommendationFile(filePath) {
+  return JSON.parse(await readFile(filePath, "utf8"));
+}
+
+function normalizeStockRecommendationPayload(payload, flags = {}) {
+  const results = Array.isArray(payload.results) ? payload.results : [];
+  return {
+    ...payload,
+    ...flags,
+    results,
+    topResults: results.slice(0, 12),
+  };
+}
+
+function emptyStockRecommendationPayload({ condition, marketMonth, universe }) {
+  return normalizeStockRecommendationPayload({
+    generatedAt: "",
+    comparisonMonthCount: 5,
+    condition,
+    marketMonth,
+    matchCount: 0,
+    results: [],
+    saved: false,
+    universe,
+    universeCount: 0,
+  });
+}
+
+function stockRecommendationCondition(
+  minimumMarketCapKrw,
+  { relativeBenchmark = "own market benchmark" } = {},
+) {
+  return {
+    breakout: "target month close exceeds previous comparison-month closing high",
+    dailyMfi: ">= 70",
+    minimumHistoryMonths: 4,
+    minimumMarketCapKrw,
+    monthlyReturn: ">= 15% vs previous month close",
+    relativeReturn: `>= 8% vs ${relativeBenchmark}`,
+    setupScore: ">= 70",
+    volumeRatio: ">= 1.8x vs previous 5-month average",
+  };
+}
+
+function stockRecommendationResultPath(month, markets) {
+  const marketSuffix = markets
+    .split(",")
+    .map((market) => market.trim().toUpperCase())
+    .filter(Boolean)
+    .sort()
+    .join("_")
+    .toLowerCase();
+  return path.join(
+    ROOT,
+    "screen_results",
+    `kr_monthly_breakout_${month}_${marketSuffix}.json`,
+  );
+}
+
+function usStockRecommendationResultPath(month) {
+  return path.join(ROOT, "screen_results", `us_monthly_breakout_${month}.json`);
+}
+
+function currentKoreaMonth() {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 7);
+}
+
 async function fetchYahooQuote(source) {
   const symbol = encodeURIComponent(source.symbol);
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=2y&interval=1d`;
@@ -352,12 +690,32 @@ async function fetchYahooQuote(source) {
 
   const scale = Number.isFinite(source.scale) ? source.scale : 1;
   const fullHistory = buildYahooHistory(result, meta, scale);
-  const history = fullHistory.slice(-TREND_POINTS);
-  const analysisHistory = fullHistory.slice(-ANALYSIS_POINTS);
-  const price = Number.isFinite(meta.regularMarketPrice)
+  let history = fullHistory.slice(-TREND_POINTS);
+  let analysisHistory = fullHistory.slice(-ANALYSIS_POINTS);
+  let price = Number.isFinite(meta.regularMarketPrice)
     ? meta.regularMarketPrice * scale
     : history.at(-1)?.value;
-  const previous = getPreviousClose(result, history);
+  let previous = getPreviousClose(result, history);
+  let marketTime = meta.regularMarketTime
+    ? new Date(meta.regularMarketTime * 1000).toISOString()
+    : history.at(-1)?.date || "";
+
+  if (source.stooqSymbol) {
+    const live = await fetchStooqLiveQuote(source.stooqSymbol).catch(() => null);
+    if (live && Number.isFinite(live.close)) {
+      price = live.close * scale;
+      previous = Number.isFinite(live.open) && live.open > 0 ? live.open * scale : previous;
+      marketTime = live.marketTime || marketTime;
+      if (live.date) {
+        const currentPoint = { date: live.date, value: price };
+        const latest = fullHistory.at(-1);
+        if (latest?.date === live.date) latest.value = price;
+        else fullHistory.push(currentPoint);
+        history = fullHistory.slice(-TREND_POINTS);
+        analysisHistory = fullHistory.slice(-ANALYSIS_POINTS);
+      }
+    }
+  }
 
   if (!Number.isFinite(price)) {
     throw new Error(`Yahoo quote price unavailable: ${source.symbol}`);
@@ -377,14 +735,160 @@ async function fetchYahooQuote(source) {
     history,
     id: source.id,
     label: source.label,
-    marketTime: meta.regularMarketTime
-      ? new Date(meta.regularMarketTime * 1000).toISOString()
-      : history.at(-1)?.date || "",
+    marketTime,
     previous,
     price,
     symbol: source.symbol,
     valueSuffix: source.valueSuffix || "",
   };
+}
+
+async function fetchStooqLiveQuote(symbol) {
+  const url = `https://stooq.com/q/l/?s=${encodeURIComponent(symbol)}&f=sd2t2ohlcv&h&e=csv`;
+  const text = await fetchText(url, "text/csv,text/plain,*/*");
+  const rows = parseCsv(text);
+  const row = rows[0] || {};
+  const close = Number.parseFloat(row.Close);
+  if (!Number.isFinite(close)) return null;
+  const date = row.Date || "";
+  const time = row.Time || "";
+  return {
+    close,
+    date,
+    high: Number.parseFloat(row.High),
+    low: Number.parseFloat(row.Low),
+    marketTime: date && time ? `${date}T${time}Z` : date,
+    open: Number.parseFloat(row.Open),
+    symbol: row.Symbol || symbol,
+  };
+}
+
+function buildRelativeStrengthQuote({
+  denominator,
+  id,
+  label,
+  numerator,
+  summary,
+}) {
+  const ratioSeries = buildRatioSeries(
+    numerator?.analysisHistory,
+    denominator?.analysisHistory,
+  );
+  const history = ratioSeries.slice(-TREND_POINTS);
+  const analysisHistory = ratioSeries.slice(-ANALYSIS_POINTS);
+  const trend = trendPercentFromValueRows(history);
+  const dailySpread =
+    Number(numerator?.changePercent) - Number(denominator?.changePercent);
+
+  if (!Number.isFinite(trend)) {
+    throw new Error(`${label} relative strength unavailable`);
+  }
+
+  return {
+    analysisHistory,
+    change: Number.isFinite(dailySpread) ? dailySpread : 0,
+    changePercent: Number.isFinite(dailySpread) ? dailySpread : 0,
+    changeText: `1일 ${formatSigned(dailySpread, 2)}p`,
+    changeUnit: "p",
+    decimals: 1,
+    history,
+    id,
+    label,
+    marketTime: latestMarketTime([numerator, denominator]),
+    price: trend,
+    summary,
+    symbol: `${numerator?.symbol || ""}/${denominator?.symbol || ""}`,
+    valueSuffix: "p",
+  };
+}
+
+function buildMovingAverageBreadthQuote({ id, label, period, quotes, summary }) {
+  const series = buildMovingAverageBreadthSeries(quotes, period);
+  const history = series.slice(-TREND_POINTS);
+  const analysisHistory = series.slice(-ANALYSIS_POINTS);
+  const latest = history.at(-1);
+  const previous = history.at(-2);
+
+  if (!latest) {
+    throw new Error(`${label} breadth unavailable`);
+  }
+
+  const change = previous ? latest.value - previous.value : 0;
+  return {
+    analysisHistory,
+    change,
+    changePercent: change,
+    changeText: `1일 ${formatSigned(change, 1)}p`,
+    changeUnit: "p",
+    decimals: 1,
+    history,
+    id,
+    label,
+    marketTime: latestMarketTime(quotes),
+    price: latest.value,
+    summary,
+    symbol: `${quotes.length} semi leaders > MA${period}`,
+    valueSuffix: "%",
+  };
+}
+
+function buildRatioSeries(numeratorRows = [], denominatorRows = []) {
+  const denominatorByDate = new Map(
+    denominatorRows.map((row) => [row.date, Number(row.value)]),
+  );
+  return numeratorRows
+    .map((row) => {
+      const numeratorValue = Number(row.value);
+      const denominatorValue = denominatorByDate.get(row.date);
+      if (
+        !Number.isFinite(numeratorValue) ||
+        !Number.isFinite(denominatorValue) ||
+        denominatorValue <= 0
+      ) {
+        return null;
+      }
+      return {
+        date: row.date,
+        value: (numeratorValue / denominatorValue) * 100,
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildMovingAverageBreadthSeries(quotes, period) {
+  const breadthByDate = new Map();
+  for (const quote of quotes) {
+    const rows = quote.analysisHistory || [];
+    for (let index = period - 1; index < rows.length; index += 1) {
+      const date = rows[index].date;
+      const price = Number(rows[index].value);
+      const ma = movingAverage(
+        rows.slice(index - period + 1, index + 1).map((row) => Number(row.value)),
+        period,
+      );
+      if (!date || !Number.isFinite(price) || !Number.isFinite(ma)) continue;
+      const item = breadthByDate.get(date) || { above: 0, total: 0 };
+      item.total += 1;
+      if (price > ma) item.above += 1;
+      breadthByDate.set(date, item);
+    }
+  }
+
+  return [...breadthByDate.entries()]
+    .map(([date, item]) => ({
+      date,
+      value: item.total ? (item.above / item.total) * 100 : NaN,
+    }))
+    .filter((row) => Number.isFinite(row.value))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function latestMarketTime(quotes) {
+  return quotes
+    .map((quote) => quote?.marketTime)
+    .filter(Boolean)
+    .sort()
+    .at(-1) || "";
 }
 
 async function fetchFredQuote(source) {
@@ -535,6 +1039,11 @@ function buildPortfolioHoldingMetrics(rows) {
   const latest = rows.at(-1);
   const ma50 = movingAverage(closes, 50);
   const ma200 = movingAverage(closes, 200);
+  const high52 = Math.max(...closes.slice(-252).filter(Number.isFinite));
+  const highProximity =
+    latest && Number.isFinite(high52) && high52 > 0
+      ? (latest.close / high52) * 100
+      : null;
   return {
     analysisHistory: rows.slice(-ANALYSIS_POINTS).map((row) => ({
       date: row.date,
@@ -544,6 +1053,8 @@ function buildPortfolioHoldingMetrics(rows) {
       date: row.date,
       value: row.close,
     })),
+    high52: Number.isFinite(high52) ? high52 : null,
+    highProximity,
     latestClose: latest?.close ?? null,
     latestDate: latest?.date || "",
     ma50,
@@ -868,6 +1379,15 @@ function movingAverage(values, period) {
   return sum(recent) / period;
 }
 
+function trendPercentFromValueRows(rows) {
+  const first = Number(rows[0]?.value);
+  const last = Number(rows.at(-1)?.value);
+  if (!Number.isFinite(first) || !Number.isFinite(last) || first === 0) {
+    return null;
+  }
+  return ((last - first) / first) * 100;
+}
+
 function trendPercentFromRows(rows) {
   const first = rows[0]?.close;
   const last = rows.at(-1)?.close;
@@ -875,6 +1395,12 @@ function trendPercentFromRows(rows) {
     return null;
   }
   return ((last - first) / first) * 100;
+}
+
+function formatSigned(value, decimals = 2) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `${number >= 0 ? "+" : ""}${number.toFixed(decimals)}`;
 }
 
 function scoreFlowRatio(ratio5, ratio20) {

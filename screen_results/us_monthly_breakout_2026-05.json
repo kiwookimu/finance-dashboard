@@ -1,0 +1,27 @@
+{
+  "generatedAt": "2026-05-26T12:30:42.995Z",
+  "benchmark": "QQQ",
+  "comparisonMonthCount": 5,
+  "condition": {
+    "breakout": "target month close exceeds previous comparison-month closing high",
+    "dailyMfi": ">= 70",
+    "minimumHistoryMonths": 4,
+    "minimumMarketCapKrw": 10000000000000,
+    "minimumMarketCapUsd": 6645666361,
+    "monthlyReturn": ">= 15% vs previous month close",
+    "relativeReturn": ">= 8% vs QQQ",
+    "setupScore": ">= 70",
+    "volumeRatio": ">= 1.8x vs previous 5-month average"
+  },
+  "exchangeRate": {
+    "pair": "USD/KRW",
+    "value": 1504.74
+  },
+  "marketMonth": "2026-05",
+  "note": "Forward returns are included only for historical review and are not used in the screen.",
+  "universe": "Nasdaq Trader listed U.S. common stocks and ADRs; ETFs, units, warrants, rights, preferreds, funds, SPAC/acquisition vehicles, and test issues excluded",
+  "universeCount": 4903,
+  "matchCount": 0,
+  "failureCount": 23,
+  "results": []
+}
