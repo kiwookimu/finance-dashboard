@@ -1,9 +1,8 @@
 const http = require("node:http");
 const https = require("node:https");
 const path = require("node:path");
-const { execFile } = require("node:child_process");
+const { spawn } = require("node:child_process");
 const { readFile } = require("node:fs/promises");
-const { promisify } = require("node:util");
 
 const PORT = Number(process.env.PORT || 5173);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -14,7 +13,8 @@ const PORTFOLIO_CACHE_MS = 5 * 60 * 1000;
 const STOCK_RECOMMENDATION_CACHE_MS = 30 * 60 * 1000;
 const TREND_POINTS = 28;
 const ANALYSIS_POINTS = 260;
-const execFileAsync = promisify(execFile);
+const RECOMMENDATION_SCRIPT_START_PERCENT = 8;
+const RECOMMENDATION_SCRIPT_DONE_PERCENT = 92;
 
 const MARKET_SOURCES = [
   { id: "kospi", label: "KOSPI", symbol: "^KS11", decimals: 2 },
@@ -121,6 +121,10 @@ let stockRecommendationRefreshPromise = null;
 let cachedUsStockRecommendations = null;
 let cachedUsStockRecommendationsAt = 0;
 let usStockRecommendationRefreshPromise = null;
+const recommendationRefreshProgress = {
+  domestic: createRecommendationRefreshProgress("domestic"),
+  us: createRecommendationRefreshProgress("us"),
+};
 
 const server = http.createServer(async (request, response) => {
   try {
@@ -150,6 +154,7 @@ const server = http.createServer(async (request, response) => {
       sendJson(
         response,
         await getStockRecommendations({
+          asyncRefresh: url.searchParams.get("async") === "1",
           forceRefresh: url.searchParams.get("refresh") === "1",
         }),
       );
@@ -160,8 +165,19 @@ const server = http.createServer(async (request, response) => {
       sendJson(
         response,
         await getUsStockRecommendations({
+          asyncRefresh: url.searchParams.get("async") === "1",
           forceRefresh: url.searchParams.get("refresh") === "1",
         }),
+      );
+      return;
+    }
+
+    if (url.pathname === "/api/recommendation-refresh-progress") {
+      sendJson(
+        response,
+        getRecommendationRefreshProgress(
+          url.searchParams.get("market") === "us" ? "us" : "domestic",
+        ),
       );
       return;
     }
@@ -452,7 +468,10 @@ async function getPortfolioMetrics() {
   return cachedPortfolio;
 }
 
-async function getStockRecommendations({ forceRefresh = false } = {}) {
+async function getStockRecommendations({
+  asyncRefresh = false,
+  forceRefresh = false,
+} = {}) {
   const now = Date.now();
   if (
     !forceRefresh &&
@@ -484,23 +503,20 @@ async function getStockRecommendations({ forceRefresh = false } = {}) {
     });
   }
 
-  if (!stockRecommendationRefreshPromise) {
-    stockRecommendationRefreshPromise = refreshStockRecommendations(month, markets)
-      .catch(async (error) => {
-        const fallback = await readStockRecommendationFile(resultPath).catch(() => null);
-        if (fallback) {
-          return normalizeStockRecommendationPayload(fallback, {
-            cached: false,
-            refreshError: error.message,
-            refreshed: false,
-            stale: true,
-          });
-        }
-        throw error;
-      })
-      .finally(() => {
-        stockRecommendationRefreshPromise = null;
-      });
+  const refreshPromise = startStockRecommendationRefresh(month, markets, resultPath);
+
+  if (asyncRefresh) {
+    refreshPromise.catch(() => null);
+    return {
+      ...(await readCurrentStockRecommendationPayload({
+        condition: stockRecommendationCondition(1_000_000_000_000),
+        marketMonth: month,
+        resultPath,
+        universe: "Saved Korea recommendation screen is not available yet",
+      })),
+      refreshStarted: true,
+      refreshing: true,
+    };
   }
 
   cachedStockRecommendations = await stockRecommendationRefreshPromise;
@@ -508,7 +524,10 @@ async function getStockRecommendations({ forceRefresh = false } = {}) {
   return cachedStockRecommendations;
 }
 
-async function getUsStockRecommendations({ forceRefresh = false } = {}) {
+async function getUsStockRecommendations({
+  asyncRefresh = false,
+  forceRefresh = false,
+} = {}) {
   const now = Date.now();
   if (
     !forceRefresh &&
@@ -544,23 +563,22 @@ async function getUsStockRecommendations({ forceRefresh = false } = {}) {
     });
   }
 
-  if (!usStockRecommendationRefreshPromise) {
-    usStockRecommendationRefreshPromise = refreshUsStockRecommendations(month)
-      .catch(async (error) => {
-        const fallback = await readStockRecommendationFile(resultPath).catch(() => null);
-        if (fallback) {
-          return normalizeStockRecommendationPayload(fallback, {
-            cached: false,
-            refreshError: error.message,
-            refreshed: false,
-            stale: true,
-          });
-        }
-        throw error;
-      })
-      .finally(() => {
-        usStockRecommendationRefreshPromise = null;
-      });
+  const refreshPromise = startUsStockRecommendationRefresh(month, resultPath);
+
+  if (asyncRefresh) {
+    refreshPromise.catch(() => null);
+    return {
+      ...(await readCurrentStockRecommendationPayload({
+        condition: stockRecommendationCondition(10_000_000_000_000, {
+          relativeBenchmark: "QQQ",
+        }),
+        marketMonth: month,
+        resultPath,
+        universe: "Saved U.S. recommendation screen is not available yet",
+      })),
+      refreshStarted: true,
+      refreshing: true,
+    };
   }
 
   cachedUsStockRecommendations = await usStockRecommendationRefreshPromise;
@@ -568,21 +586,133 @@ async function getUsStockRecommendations({ forceRefresh = false } = {}) {
   return cachedUsStockRecommendations;
 }
 
+function startStockRecommendationRefresh(month, markets, resultPath) {
+  if (stockRecommendationRefreshPromise) return stockRecommendationRefreshPromise;
+  resetRecommendationRefreshProgress("domestic", {
+    detail: "KOSPI/KOSDAQ 전체 종목을 월간 기준으로 확인합니다.",
+    message: "갱신 작업 준비 중",
+  });
+  stockRecommendationRefreshPromise = refreshStockRecommendations(month, markets)
+    .then((payload) => {
+      cachedStockRecommendations = payload;
+      cachedStockRecommendationsAt = Date.now();
+      updateRecommendationRefreshProgress("domestic", {
+        detail: `${payload.matchCount || 0}개 후보를 저장했습니다.`,
+        message: "갱신 완료",
+        percent: 100,
+        state: "succeeded",
+      });
+      return payload;
+    })
+    .catch(async (error) => {
+      const fallback = await readStockRecommendationFile(resultPath).catch(() => null);
+      updateRecommendationRefreshProgress("domestic", {
+        detail: fallback
+          ? `갱신에 실패해 저장본을 표시합니다. ${error.message}`
+          : error.message,
+        message: fallback ? "갱신 실패 · 저장본 표시" : "갱신 실패",
+        percent: 100,
+        state: "failed",
+      });
+      if (fallback) {
+        cachedStockRecommendations = normalizeStockRecommendationPayload(fallback, {
+          cached: false,
+          refreshError: error.message,
+          refreshed: false,
+          stale: true,
+        });
+        cachedStockRecommendationsAt = Date.now();
+        return cachedStockRecommendations;
+      }
+      throw error;
+    })
+    .finally(() => {
+      stockRecommendationRefreshPromise = null;
+    });
+  return stockRecommendationRefreshPromise;
+}
+
+function startUsStockRecommendationRefresh(month, resultPath) {
+  if (usStockRecommendationRefreshPromise) return usStockRecommendationRefreshPromise;
+  resetRecommendationRefreshProgress("us", {
+    detail: "미국 상장 보통주/ADR 후보를 월간 기준으로 확인합니다.",
+    message: "갱신 작업 준비 중",
+  });
+  usStockRecommendationRefreshPromise = refreshUsStockRecommendations(month)
+    .then((payload) => {
+      cachedUsStockRecommendations = payload;
+      cachedUsStockRecommendationsAt = Date.now();
+      updateRecommendationRefreshProgress("us", {
+        detail: `${payload.matchCount || 0}개 후보를 저장했습니다.`,
+        message: "갱신 완료",
+        percent: 100,
+        state: "succeeded",
+      });
+      return payload;
+    })
+    .catch(async (error) => {
+      const fallback = await readStockRecommendationFile(resultPath).catch(() => null);
+      updateRecommendationRefreshProgress("us", {
+        detail: fallback
+          ? `갱신에 실패해 저장본을 표시합니다. ${error.message}`
+          : error.message,
+        message: fallback ? "갱신 실패 · 저장본 표시" : "갱신 실패",
+        percent: 100,
+        state: "failed",
+      });
+      if (fallback) {
+        cachedUsStockRecommendations = normalizeStockRecommendationPayload(fallback, {
+          cached: false,
+          refreshError: error.message,
+          refreshed: false,
+          stale: true,
+        });
+        cachedUsStockRecommendationsAt = Date.now();
+        return cachedUsStockRecommendations;
+      }
+      throw error;
+    })
+    .finally(() => {
+      usStockRecommendationRefreshPromise = null;
+    });
+  return usStockRecommendationRefreshPromise;
+}
+
+async function readCurrentStockRecommendationPayload({
+  condition,
+  marketMonth,
+  resultPath,
+  universe,
+}) {
+  const filePayload = await readStockRecommendationFile(resultPath).catch(() => null);
+  if (filePayload) {
+    return normalizeStockRecommendationPayload(filePayload, {
+      cached: false,
+      refreshed: false,
+      saved: true,
+    });
+  }
+  return emptyStockRecommendationPayload({
+    condition,
+    marketMonth,
+    universe,
+  });
+}
+
 async function refreshStockRecommendations(month, markets) {
   const scriptPath = path.join(ROOT, "scripts", "screen_kr_monthly_breakout.mjs");
-  await execFileAsync(
-    process.execPath,
-    [scriptPath, month, "5", "1000000000000", markets],
-    {
-      cwd: ROOT,
-      env: {
-        ...process.env,
-        SCREEN_CONCURRENCY: process.env.SCREEN_CONCURRENCY || "8",
-      },
-      maxBuffer: 20 * 1024 * 1024,
-      timeout: 180000,
+  await runRecommendationScript("domestic", [scriptPath, month, "5", "1000000000000", markets], {
+    env: {
+      ...process.env,
+      SCREEN_CONCURRENCY: process.env.SCREEN_CONCURRENCY || "8",
     },
-  );
+    timeout: 180000,
+  });
+  updateRecommendationRefreshProgress("domestic", {
+    detail: "스크리닝 결과 파일을 읽어 화면 데이터로 정리합니다.",
+    message: "결과 저장 중",
+    percent: 96,
+  });
   return normalizeStockRecommendationPayload(
     await readStockRecommendationFile(stockRecommendationResultPath(month, markets)),
     { cached: false, refreshed: true },
@@ -591,23 +721,144 @@ async function refreshStockRecommendations(month, markets) {
 
 async function refreshUsStockRecommendations(month) {
   const scriptPath = path.join(ROOT, "scripts", "screen_us_monthly_breakout.mjs");
-  await execFileAsync(
-    process.execPath,
-    [scriptPath, month, "5", "10000000000000"],
-    {
-      cwd: ROOT,
-      env: {
-        ...process.env,
-        SCREEN_CONCURRENCY: process.env.SCREEN_CONCURRENCY || "4",
-      },
-      maxBuffer: 20 * 1024 * 1024,
-      timeout: 900000,
+  await runRecommendationScript("us", [scriptPath, month, "5", "10000000000000"], {
+    env: {
+      ...process.env,
+      SCREEN_CONCURRENCY: process.env.SCREEN_CONCURRENCY || "4",
     },
-  );
+    timeout: 900000,
+  });
+  updateRecommendationRefreshProgress("us", {
+    detail: "스크리닝 결과 파일을 읽어 화면 데이터로 정리합니다.",
+    message: "결과 저장 중",
+    percent: 96,
+  });
   return normalizeStockRecommendationPayload(
     await readStockRecommendationFile(usStockRecommendationResultPath(month)),
     { cached: false, refreshed: true },
   );
+}
+
+function runRecommendationScript(market, args, { env, timeout }) {
+  return new Promise((resolve, reject) => {
+    updateRecommendationRefreshProgress(market, {
+      detail: "데이터 소스에 접속하고 대상 종목 목록을 가져옵니다.",
+      message: "스크리너 시작 중",
+      percent: RECOMMENDATION_SCRIPT_START_PERCENT,
+      state: "running",
+    });
+
+    const child = spawn(process.execPath, args, {
+      cwd: ROOT,
+      env,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderrText = "";
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+      setTimeout(() => child.kill("SIGKILL"), 3000).unref?.();
+    }, timeout);
+    timer.unref?.();
+
+    child.stderr.on("data", (chunk) => {
+      const text = chunk.toString();
+      stderrText = `${stderrText}${text}`.slice(-12000);
+      updateRecommendationCheckedProgress(market, text);
+    });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("close", (code, signal) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      const reason = timedOut
+        ? `${Math.round(timeout / 1000)}초 안에 갱신이 끝나지 않았습니다.`
+        : `스크리너 종료 코드 ${code ?? signal}`;
+      reject(new Error([reason, stderrText.trim()].filter(Boolean).join(" · ")));
+    });
+  });
+}
+
+function createRecommendationRefreshProgress(market) {
+  return {
+    completed: 0,
+    detail: "갱신 버튼을 누르면 진행률이 표시됩니다.",
+    market,
+    message: "갱신 대기",
+    percent: 0,
+    startedAt: "",
+    state: "idle",
+    total: 0,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function resetRecommendationRefreshProgress(market, { detail, message }) {
+  recommendationRefreshProgress[market] = {
+    ...createRecommendationRefreshProgress(market),
+    detail,
+    message,
+    percent: 3,
+    startedAt: new Date().toISOString(),
+    state: "running",
+  };
+}
+
+function updateRecommendationRefreshProgress(market, patch) {
+  const current =
+    recommendationRefreshProgress[market] || createRecommendationRefreshProgress(market);
+  recommendationRefreshProgress[market] = {
+    ...current,
+    ...patch,
+    market,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function updateRecommendationCheckedProgress(market, text) {
+  const matches = [...text.matchAll(/checked\s+(\d+)\/(\d+)/gi)];
+  const latest = matches.at(-1);
+  if (!latest) return;
+
+  const completed = Number(latest[1]);
+  const total = Number(latest[2]);
+  if (!Number.isFinite(completed) || !Number.isFinite(total) || total <= 0) return;
+
+  const checkedRatio = Math.min(Math.max(completed / total, 0), 1);
+  const percent =
+    RECOMMENDATION_SCRIPT_START_PERCENT +
+    Math.round(
+      checkedRatio *
+        (RECOMMENDATION_SCRIPT_DONE_PERCENT - RECOMMENDATION_SCRIPT_START_PERCENT),
+    );
+  updateRecommendationRefreshProgress(market, {
+    completed,
+    detail: `${completed.toLocaleString("ko-KR")} / ${total.toLocaleString(
+      "ko-KR",
+    )}개 종목 확인`,
+    message: "후보 계산 중",
+    percent: Math.min(percent, RECOMMENDATION_SCRIPT_DONE_PERCENT),
+    state: "running",
+    total,
+  });
+}
+
+function getRecommendationRefreshProgress(market) {
+  const progress =
+    recommendationRefreshProgress[market] || createRecommendationRefreshProgress(market);
+  const elapsedSeconds = progress.startedAt
+    ? Math.max(0, Math.round((Date.now() - new Date(progress.startedAt).getTime()) / 1000))
+    : 0;
+  return {
+    ...progress,
+    elapsedSeconds,
+  };
 }
 
 async function readStockRecommendationFile(filePath) {
@@ -1232,6 +1483,7 @@ async function serveStatic(pathname, response) {
 
   const file = await readFile(filePath);
   response.writeHead(200, {
+    "Cache-Control": "no-store",
     "Content-Type": getContentType(filePath),
   });
   response.end(file);

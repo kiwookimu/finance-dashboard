@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-26T12:30:42.995Z",
+  "generatedAt": "2026-05-26T21:46:35.129Z",
   "benchmark": "QQQ",
   "comparisonMonthCount": 5,
   "condition": {
@@ -7,7 +7,7 @@
     "dailyMfi": ">= 70",
     "minimumHistoryMonths": 4,
     "minimumMarketCapKrw": 10000000000000,
-    "minimumMarketCapUsd": 6645666361,
+    "minimumMarketCapUsd": 6634247311,
     "monthlyReturn": ">= 15% vs previous month close",
     "relativeReturn": ">= 8% vs QQQ",
     "setupScore": ">= 70",
@@ -15,7 +15,7 @@
   },
   "exchangeRate": {
     "pair": "USD/KRW",
-    "value": 1504.74
+    "value": 1507.33
   },
   "marketMonth": "2026-05",
   "note": "Forward returns are included only for historical review and are not used in the screen.",

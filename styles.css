@@ -643,9 +643,76 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.recommendation-progress {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  color: #334139;
+  background: #ffffff;
+  border: 1px solid #dce5e0;
+  border-radius: 8px;
+}
+
+.recommendation-progress[hidden] {
+  display: none;
+}
+
+.recommendation-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.recommendation-progress-percent {
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.recommendation-progress-track {
+  overflow: hidden;
+  height: 8px;
+  background: #eaf0ec;
+  border-radius: 999px;
+}
+
+.recommendation-progress-bar {
+  display: block;
+  width: var(--recommendation-progress, 0%);
+  height: 100%;
+  background: linear-gradient(90deg, #1f9d72, #2db690);
+  border-radius: inherit;
+  transition: width 260ms ease;
+}
+
+.recommendation-progress-detail {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.recommendation-progress[data-state="failed"] .recommendation-progress-percent {
+  color: var(--red);
+}
+
+.recommendation-progress[data-state="failed"] .recommendation-progress-bar {
+  background: var(--red);
+}
+
 .recommendation-list {
   display: grid;
   gap: 8px;
+}
+
+.recommendation-list.is-refreshing {
+  opacity: 0.72;
 }
 
 .recommendation-empty {

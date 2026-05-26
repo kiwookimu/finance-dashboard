@@ -37,18 +37,24 @@ const DEFAULT_PORTFOLIO_EXPOSURE_CONFIG = {
 };
 const RECOMMENDATION_CONFIGS = {
   domestic: {
+    buttonSelector: "#recommendationRefresh",
     conditionSelector: "#recommendationCondition",
     endpoint: "/api/stock-recommendations",
     listSelector: "#recommendationList",
     loadingText: "월간 후보 계산 중",
+    progressEndpoint: "/api/recommendation-refresh-progress?market=domestic",
+    progressSelector: "#recommendationProgress",
     refreshText: "최신 후보 갱신 중",
     statusSelector: "#recommendationStatus",
   },
   us: {
+    buttonSelector: "#usRecommendationRefresh",
     conditionSelector: "#usRecommendationCondition",
     endpoint: "/api/us-stock-recommendations",
     listSelector: "#usRecommendationList",
     loadingText: "미국 후보 계산 중",
+    progressEndpoint: "/api/recommendation-refresh-progress?market=us",
+    progressSelector: "#usRecommendationProgress",
     refreshText: "미국 후보 갱신 중",
     statusSelector: "#usRecommendationStatus",
   },
@@ -122,15 +128,84 @@ async function loadRecommendations({ force = false, market = "domestic" } = {}) 
   const config = RECOMMENDATION_CONFIGS[market] || RECOMMENDATION_CONFIGS.domestic;
   const state = recommendationStates[market] || recommendationStates.domestic;
   if (state.loading) return;
-  if (state.loaded && !force) return;
+  if (force) {
+    await refreshRecommendations(config, state);
+    return;
+  }
+  if (state.loaded && !force) {
+    await resumeRecommendationRefreshIfRunning(config, state);
+    return;
+  }
 
   state.loading = true;
-  renderRecommendationLoading(config, state, force);
+  setRecommendationButtonBusy(config, true);
+  renderRecommendationLoading(config, state, false);
   try {
-    const response = await fetch(
-      `${config.endpoint}${force ? "?refresh=1" : ""}`,
-      { cache: "no-store" },
-    );
+    const response = await fetch(config.endpoint, { cache: "no-store" });
+    if (!response.ok) throw new Error("Stock recommendation request failed");
+    const payload = await response.json();
+    renderRecommendations(payload, config);
+    state.loaded = true;
+    await resumeRecommendationRefreshIfRunning(config, state);
+  } catch (error) {
+    console.warn("Stock recommendations unavailable", error);
+    renderRecommendationError(config);
+  } finally {
+    state.loading = false;
+    setRecommendationButtonBusy(config, false);
+  }
+}
+
+async function resumeRecommendationRefreshIfRunning(config, state) {
+  const progress = await fetchRecommendationProgress(config).catch(() => null);
+  if (progress?.state !== "running") return false;
+
+  state.loading = true;
+  setRecommendationButtonBusy(config, true);
+  renderRecommendationLoading(config, state, true);
+  renderRecommendationProgress(config, progress);
+  try {
+    const finalProgress = await waitForRecommendationRefresh(config);
+    if (finalProgress.state === "failed") {
+      throw new Error(finalProgress.detail || "Stock recommendation refresh failed");
+    }
+    const response = await fetch(config.endpoint, { cache: "no-store" });
+    if (!response.ok) throw new Error("Stock recommendation request failed");
+    renderRecommendations(await response.json(), config);
+    state.loaded = true;
+    return true;
+  } catch (error) {
+    console.warn("Stock recommendations unavailable", error);
+    renderRecommendationError(config);
+    return false;
+  } finally {
+    state.loading = false;
+    setRecommendationButtonBusy(config, false);
+  }
+}
+
+async function refreshRecommendations(config, state) {
+  state.loading = true;
+  setRecommendationButtonBusy(config, true);
+  renderRecommendationLoading(config, state, true);
+  try {
+    const startResponse = await fetch(`${config.endpoint}?refresh=1&async=1`, {
+      cache: "no-store",
+    });
+    if (!startResponse.ok) throw new Error("Stock recommendation refresh failed");
+
+    const finalProgress = await waitForRecommendationRefresh(config);
+    if (finalProgress.state === "failed") {
+      throw new Error(finalProgress.detail || "Stock recommendation refresh failed");
+    }
+
+    renderRecommendationProgress(config, {
+      detail: "새 후보 목록을 화면에 반영합니다.",
+      message: "갱신 완료",
+      percent: 100,
+      state: "succeeded",
+    });
+    const response = await fetch(config.endpoint, { cache: "no-store" });
     if (!response.ok) throw new Error("Stock recommendation request failed");
     renderRecommendations(await response.json(), config);
     state.loaded = true;
@@ -139,6 +214,7 @@ async function loadRecommendations({ force = false, market = "domestic" } = {}) 
     renderRecommendationError(config);
   } finally {
     state.loading = false;
+    setRecommendationButtonBusy(config, false);
   }
 }
 
@@ -148,17 +224,121 @@ function renderRecommendationLoading(config, state, force) {
     force ? config.refreshText : config.loadingText,
   );
   const list = document.querySelector(config.listSelector);
-  if (list && (!state.loaded || force)) {
+  if (force) {
+    renderRecommendationProgress(config, {
+      detail: "스크리너를 실행하고 후보군을 다시 계산합니다.",
+      message: "갱신 요청 중",
+      percent: 3,
+      state: "running",
+    });
+  } else {
+    hideRecommendationProgress(config);
+  }
+  const hasRenderedCards = Boolean(list?.querySelector(".recommendation-card"));
+  if (list && (!state.loaded || force) && !hasRenderedCards) {
     list.innerHTML = `<p class="recommendation-empty">후보 계산 중</p>`;
   }
+  list?.classList.toggle("is-refreshing", Boolean(force && hasRenderedCards));
 }
 
 function renderRecommendationError(config) {
   setText(config.statusSelector, "후보 갱신 실패");
+  setRecommendationRefreshVisibility(config, true);
+  renderRecommendationProgress(config, {
+    detail: "네트워크 또는 데이터 소스 응답 문제로 갱신하지 못했습니다.",
+    message: "갱신 실패",
+    percent: 100,
+    state: "failed",
+  });
   const list = document.querySelector(config.listSelector);
   if (list) {
     list.innerHTML = `<p class="recommendation-empty">데이터 갱신 실패</p>`;
+    list.classList.remove("is-refreshing");
   }
+}
+
+async function waitForRecommendationRefresh(config) {
+  const startedAt = Date.now();
+  let failureCount = 0;
+
+  while (Date.now() - startedAt < 20 * 60 * 1000) {
+    try {
+      const progress = await fetchRecommendationProgress(config);
+      failureCount = 0;
+      renderRecommendationProgress(config, progress);
+      if (["succeeded", "failed"].includes(progress.state)) {
+        return progress;
+      }
+    } catch (error) {
+      failureCount += 1;
+      if (failureCount >= 2) {
+        renderRecommendationProgress(config, {
+          detail: "서버 진행 상태를 읽는 중입니다. 계산 요청은 계속 유지됩니다.",
+          message: "진행 상태 확인 중",
+          percent: 12,
+          state: "running",
+        });
+      }
+    }
+    await delay(1200);
+  }
+
+  throw new Error("Recommendation refresh progress timed out");
+}
+
+async function fetchRecommendationProgress(config) {
+  const response = await fetch(config.progressEndpoint, { cache: "no-store" });
+  if (!response.ok) throw new Error("Progress request failed");
+  return response.json();
+}
+
+function renderRecommendationProgress(config, progress) {
+  const element = document.querySelector(config.progressSelector);
+  if (!element) return;
+
+  const percent = clamp(Math.round(Number(progress?.percent) || 0), 0, 100);
+  const completed = Number(progress?.completed);
+  const total = Number(progress?.total);
+  const checkedText =
+    Number.isFinite(completed) && completed > 0 && Number.isFinite(total) && total > 0
+      ? `${completed.toLocaleString("ko-KR")} / ${total.toLocaleString("ko-KR")}개`
+      : "";
+  const elapsedText = Number(progress?.elapsedSeconds)
+    ? `${Number(progress.elapsedSeconds).toLocaleString("ko-KR")}초 경과`
+    : "";
+  const detailText = progress?.detail || checkedText;
+  const detail = [detailText, elapsedText].filter(Boolean).join(" · ");
+
+  element.hidden = false;
+  element.dataset.state = progress?.state || "running";
+  element.style.setProperty("--recommendation-progress", `${percent}%`);
+  element.querySelector(".recommendation-progress-title").textContent =
+    progress?.message || "후보 계산 중";
+  element.querySelector(".recommendation-progress-percent").textContent = `${percent}%`;
+  element.querySelector(".recommendation-progress-detail").textContent =
+    detail || "진행 상태를 확인하는 중입니다.";
+}
+
+function hideRecommendationProgress(config) {
+  const element = document.querySelector(config.progressSelector);
+  if (!element) return;
+  element.hidden = true;
+  element.dataset.state = "idle";
+  element.style.setProperty("--recommendation-progress", "0%");
+}
+
+function setRecommendationButtonBusy(config, isBusy) {
+  const button = document.querySelector(config.buttonSelector);
+  if (!button) return;
+  button.disabled = isBusy;
+  button.setAttribute("aria-busy", String(isBusy));
+}
+
+function setRecommendationRefreshVisibility(config, isVisible) {
+  const button = document.querySelector(config.buttonSelector);
+  if (!button) return;
+  button.hidden = !isVisible;
+  button.setAttribute("aria-hidden", String(!isVisible));
 }
 
 function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic) {
@@ -185,9 +365,12 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
     payload?.stale ? "이전 결과" : "",
   ].filter(Boolean);
   setText(config.statusSelector, statusParts.join(" · ") || "후보 없음");
+  hideRecommendationProgress(config);
+  setRecommendationRefreshVisibility(config, !hasTodayRecommendationData(payload));
   setText(
     config.conditionSelector,
     [
+      formatMarketFilter(payload?.condition?.marketFilter),
       `시총 ${formatKoreanMarketCap(payload?.condition?.minimumMarketCapKrw)} 이상`,
       `거래량 ${formatConditionNumber(payload?.condition?.volumeRatio)}`,
       `MFI ${formatConditionNumber(payload?.condition?.dailyMfi)}`,
@@ -198,6 +381,7 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
 
   const list = document.querySelector(config.listSelector);
   if (!list) return;
+  list.classList.remove("is-refreshing");
 
   if (!results.length) {
     list.innerHTML = `<p class="recommendation-empty">조건 충족 종목 없음</p>`;
@@ -2491,6 +2675,25 @@ function formatDateTime(isoDate) {
   }).format(date);
 }
 
+function hasTodayRecommendationData(payload) {
+  if (!payload?.generatedAt) return false;
+  const generatedDate = koreaDateKey(payload.generatedAt);
+  return generatedDate && generatedDate === koreaDateKey(new Date());
+}
+
+function koreaDateKey(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+  }).formatToParts(date);
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
+}
+
 function formatNumber(value, decimals) {
   if (!Number.isFinite(Number(value))) return "-";
   return new Intl.NumberFormat("en-US", {
@@ -2534,6 +2737,17 @@ function formatConditionNumber(value) {
   return `${number} 이상`;
 }
 
+function formatMarketFilter(value) {
+  const markets = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(",")
+        .map((market) => market.trim())
+        .filter(Boolean);
+  if (!markets.length) return "";
+  return `시장 ${markets.join("·")}`;
+}
+
 function roundFinite(value, decimals) {
   if (!Number.isFinite(value)) return null;
   const scale = 10 ** decimals;
@@ -2569,4 +2783,8 @@ function setClass(selector, classes, activeClass) {
   if (!element) return;
   element.classList.remove(...classes);
   if (activeClass) element.classList.add(activeClass);
+}
+
+function delay(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }

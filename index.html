@@ -139,13 +139,28 @@
                 <span class="recommendation-label">월간 기준</span>
                 <strong>추천주</strong>
               </div>
-              <button class="recommendation-refresh" id="recommendationRefresh" type="button">
+              <button class="recommendation-refresh" id="recommendationRefresh" type="button" hidden>
                 갱신
               </button>
             </div>
             <div class="recommendation-meta">
               <span id="recommendationStatus">후보 수집 대기</span>
               <span id="recommendationCondition">시총 1조 이상</span>
+            </div>
+            <div
+              class="recommendation-progress"
+              id="recommendationProgress"
+              aria-live="polite"
+              hidden
+            >
+              <div class="recommendation-progress-head">
+                <span class="recommendation-progress-title">후보 계산 중</span>
+                <strong class="recommendation-progress-percent">0%</strong>
+              </div>
+              <div class="recommendation-progress-track" aria-hidden="true">
+                <span class="recommendation-progress-bar"></span>
+              </div>
+              <small class="recommendation-progress-detail">진행 상태를 확인하는 중입니다.</small>
             </div>
             <div class="recommendation-list" id="recommendationList">
               <p class="recommendation-empty">후보 수집 대기</p>
@@ -166,13 +181,28 @@
                 <span class="recommendation-label">월간 기준</span>
                 <strong>미국 추천</strong>
               </div>
-              <button class="recommendation-refresh" id="usRecommendationRefresh" type="button">
+              <button class="recommendation-refresh" id="usRecommendationRefresh" type="button" hidden>
                 갱신
               </button>
             </div>
             <div class="recommendation-meta">
               <span id="usRecommendationStatus">후보 수집 대기</span>
               <span id="usRecommendationCondition">시총 10조 이상</span>
+            </div>
+            <div
+              class="recommendation-progress"
+              id="usRecommendationProgress"
+              aria-live="polite"
+              hidden
+            >
+              <div class="recommendation-progress-head">
+                <span class="recommendation-progress-title">후보 계산 중</span>
+                <strong class="recommendation-progress-percent">0%</strong>
+              </div>
+              <div class="recommendation-progress-track" aria-hidden="true">
+                <span class="recommendation-progress-bar"></span>
+              </div>
+              <small class="recommendation-progress-detail">진행 상태를 확인하는 중입니다.</small>
             </div>
             <div class="recommendation-list" id="usRecommendationList">
               <p class="recommendation-empty">후보 수집 대기</p>
