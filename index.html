@@ -61,16 +61,6 @@
           </button>
           <button
             class="dashboard-tab"
-            id="holdingsTab"
-            type="button"
-            role="tab"
-            aria-controls="holdingsPanel"
-            aria-selected="false"
-          >
-            보유
-          </button>
-          <button
-            class="dashboard-tab"
             id="recommendationsTab"
             type="button"
             role="tab"
@@ -90,41 +80,6 @@
             미국 추천
           </button>
         </div>
-
-        <section
-          class="tab-panel"
-          id="holdingsPanel"
-          role="tabpanel"
-          aria-labelledby="holdingsTab"
-          hidden
-        >
-          <section class="portfolio-panel portfolio-hold" id="portfolioSignal" aria-label="보유 포트폴리오 신호">
-            <div class="portfolio-heading">
-              <div>
-                <span class="portfolio-label">내 보유 기준</span>
-                <strong id="portfolioAction">판단 중</strong>
-              </div>
-              <span class="portfolio-score" id="portfolioScore">0점</span>
-            </div>
-            <p class="portfolio-summary" id="portfolioSummary">보유 종목 민감도 계산 중</p>
-            <div class="portfolio-stats" aria-label="보유 포트폴리오 구성">
-              <span>
-                <small>반도체/HBM</small>
-                <strong id="portfolioSemiWeight">-</strong>
-              </span>
-              <span>
-                <small>AI·성장테마</small>
-                <strong id="portfolioAiWeight">-</strong>
-              </span>
-              <span>
-                <small>채권혼합 완충</small>
-                <strong id="portfolioBondMixWeight">-</strong>
-              </span>
-            </div>
-            <div class="portfolio-checks" id="portfolioChecks" aria-label="핵심 점검 항목"></div>
-            <div class="holding-signals" id="holdingSignals" aria-label="보유 종목별 신호"></div>
-          </section>
-        </section>
 
         <section
           class="tab-panel"
