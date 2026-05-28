@@ -15,6 +15,8 @@ const TREND_POINTS = 28;
 const ANALYSIS_POINTS = 260;
 const RECOMMENDATION_SCRIPT_START_PERCENT = 8;
 const RECOMMENDATION_SCRIPT_DONE_PERCENT = 92;
+const RECOMMENDATION_STOP_LOSS_PERCENT = -8;
+const RECOMMENDATION_MAX_MONTH_HIGH_DRAWDOWN = -20;
 
 const MARKET_SOURCES = [
   { id: "kospi", label: "KOSPI", symbol: "^KS11", decimals: 2 },
@@ -485,11 +487,14 @@ async function getStockRecommendations({
   if (!forceRefresh) {
     const filePayload = await readStockRecommendationFile(resultPath).catch(() => null);
     if (filePayload) {
-      cachedStockRecommendations = normalizeStockRecommendationPayload(filePayload, {
-        cached: false,
-        refreshed: false,
-        saved: true,
-      });
+      cachedStockRecommendations = await normalizeDomesticStockRecommendationPayload(
+        filePayload,
+        {
+          cached: false,
+          refreshed: false,
+          saved: true,
+        },
+      );
       cachedStockRecommendationsAt = now;
       return cachedStockRecommendations;
     }
@@ -612,12 +617,15 @@ function startStockRecommendationRefresh(month, markets, resultPath) {
         state: "failed",
       });
       if (fallback) {
-        cachedStockRecommendations = normalizeStockRecommendationPayload(fallback, {
-          cached: false,
-          refreshError: error.message,
-          refreshed: false,
-          stale: true,
-        });
+        cachedStockRecommendations = await normalizeDomesticStockRecommendationPayload(
+          fallback,
+          {
+            cached: false,
+            refreshError: error.message,
+            refreshed: false,
+            stale: true,
+          },
+        );
         cachedStockRecommendationsAt = Date.now();
         return cachedStockRecommendations;
       }
@@ -683,7 +691,11 @@ async function readCurrentStockRecommendationPayload({
 }) {
   const filePayload = await readStockRecommendationFile(resultPath).catch(() => null);
   if (filePayload) {
-    return normalizeStockRecommendationPayload(filePayload, {
+    const normalize =
+      resultPath.includes("kr_monthly_breakout_")
+        ? normalizeDomesticStockRecommendationPayload
+        : async (payload, flags) => normalizeStockRecommendationPayload(payload, flags);
+    return normalize(filePayload, {
       cached: false,
       refreshed: false,
       saved: true,
@@ -710,7 +722,7 @@ async function refreshStockRecommendations(month, markets) {
     message: "결과 저장 중",
     percent: 96,
   });
-  return normalizeStockRecommendationPayload(
+  return normalizeDomesticStockRecommendationPayload(
     await readStockRecommendationFile(stockRecommendationResultPath(month, markets)),
     { cached: false, refreshed: true },
   );
@@ -872,6 +884,94 @@ function normalizeStockRecommendationPayload(payload, flags = {}) {
   };
 }
 
+async function normalizeDomesticStockRecommendationPayload(payload, flags = {}) {
+  const normalized = normalizeStockRecommendationPayload(payload, flags);
+  const enrichedResults = await Promise.all(
+    normalized.results.map((item) => enrichDomesticRecommendationItem(item)),
+  );
+  const invalidatedResults = enrichedResults.filter(
+    (item) => item.recommendationInvalidated,
+  );
+  const activeResults = enrichedResults.filter(
+    (item) => !item.recommendationInvalidated,
+  );
+  return {
+    ...normalized,
+    activeMatchCount: activeResults.length,
+    invalidatedCount: invalidatedResults.length,
+    invalidatedResults,
+    matchCount: activeResults.length,
+    rawMatchCount: Number(normalized.matchCount ?? normalized.results.length),
+    results: activeResults,
+    topResults: activeResults.slice(0, 12),
+  };
+}
+
+async function enrichDomesticRecommendationItem(item) {
+  if (!item?.code) return item;
+  try {
+    const rows = await fetchNaverRecentPriceRows(item.code);
+    const latest = rows.at(-1);
+    if (!latest) return item;
+
+    const lastClose = Number(item.lastClose);
+    const returnFromSignal = percentChange(latest.close, lastClose);
+    const ma10 = movingAverage(rows.map((row) => row.close), 10);
+    const marketMonth = item.marketMonth || String(item.lastDate || "").slice(0, 7);
+    const monthRows = rows.filter((row) => row.date.startsWith(marketMonth));
+    const monthHigh = Math.max(
+      ...monthRows.map((row) => row.high || row.close).filter(Number.isFinite),
+    );
+    const liveMonthHighDrawdown = percentChange(latest.close, monthHigh);
+    const invalidationReasons = [
+      returnFromSignal <= RECOMMENDATION_STOP_LOSS_PERCENT
+        ? `추천가 대비 ${formatSigned(returnFromSignal, 1)}%`
+        : "",
+      Number.isFinite(ma10) && latest.close < ma10
+        ? `10일선 하회(${formatSigned(percentChange(latest.close, ma10), 1)}%)`
+        : "",
+      liveMonthHighDrawdown <= RECOMMENDATION_MAX_MONTH_HIGH_DRAWDOWN
+        ? `월중 고점 대비 ${formatSigned(liveMonthHighDrawdown, 1)}%`
+        : "",
+    ].filter(Boolean);
+
+    return {
+      ...item,
+      liveClose: latest.close,
+      liveDate: latest.date,
+      liveMonthHigh: Number.isFinite(monthHigh) ? monthHigh : null,
+      liveMonthHighDrawdown: roundFinite(liveMonthHighDrawdown, 2),
+      liveReturnFromSignal: roundFinite(returnFromSignal, 2),
+      liveTenDayAverage: roundFinite(ma10, 2),
+      recommendationInvalidated: invalidationReasons.length > 0,
+      recommendationInvalidationReasons: invalidationReasons,
+    };
+  } catch (error) {
+    return {
+      ...item,
+      recommendationInvalidated: false,
+      recommendationStatusError: error.message,
+    };
+  }
+}
+
+async function fetchNaverRecentPriceRows(code) {
+  const url = `https://m.stock.naver.com/api/stock/${encodeURIComponent(code)}/price`;
+  const rows = JSON.parse(await fetchText(url, "application/json,text/plain,*/*"));
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map((row) => ({
+      close: parseKoreanNumber(row.closePrice),
+      date: String(row.localTradedAt || "").slice(0, 10),
+      high: parseKoreanNumber(row.highPrice),
+      low: parseKoreanNumber(row.lowPrice),
+      open: parseKoreanNumber(row.openPrice),
+      volume: Number(row.accumulatedTradingVolume) || 0,
+    }))
+    .filter((row) => row.date && Number.isFinite(row.close) && row.close > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
 function emptyStockRecommendationPayload({ condition, marketMonth, universe }) {
   return normalizeStockRecommendationPayload({
     generatedAt: "",
@@ -893,8 +993,11 @@ function stockRecommendationCondition(
   return {
     breakout: "target month close exceeds previous comparison-month closing high",
     dailyMfi: ">= 70",
+    invalidation:
+      "exclude active picks if latest price is <= -8% from signal, below 10-day average, or <= -20% from target-month high",
     minimumHistoryMonths: 4,
     minimumMarketCapKrw,
+    monthHighDrawdown: `>= ${RECOMMENDATION_MAX_MONTH_HIGH_DRAWDOWN}% from target-month high`,
     monthlyReturn: ">= 15% vs previous month close",
     relativeReturn: `>= 8% vs ${relativeBenchmark}`,
     setupScore: ">= 70",
@@ -1626,6 +1729,25 @@ function movingAverage(values, period) {
   const recent = values.slice(-period).filter(Number.isFinite);
   if (recent.length < period) return null;
   return sum(recent) / period;
+}
+
+function percentChange(current, previous) {
+  const currentValue = Number(current);
+  const previousValue = Number(previous);
+  if (
+    !Number.isFinite(currentValue) ||
+    !Number.isFinite(previousValue) ||
+    previousValue === 0
+  ) {
+    return NaN;
+  }
+  return ((currentValue - previousValue) / previousValue) * 100;
+}
+
+function roundFinite(value, decimals) {
+  if (!Number.isFinite(value)) return null;
+  const scale = 10 ** decimals;
+  return Math.round(value * scale) / scale;
 }
 
 function trendPercentFromValueRows(rows) {

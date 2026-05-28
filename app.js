@@ -339,7 +339,9 @@ function setRecommendationRefreshVisibility(config, isVisible) {
 }
 
 function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic) {
-  const rawResults = payload?.results || payload?.topResults || [];
+  const rawResults = (payload?.results || payload?.topResults || []).filter(
+    (item) => !item.recommendationInvalidated,
+  );
   const results = rawResults
     .map((item) => ({
       item,
@@ -354,10 +356,12 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
     .slice(0, 12);
   const matchCount = Number(payload?.matchCount ?? rawResults.length);
   const generatedAtText = formatDateTime(payload?.generatedAt);
+  const invalidatedCount = Number(payload?.invalidatedCount);
   const statusParts = [
     payload?.marketMonth,
     generatedAtText,
     Number.isFinite(matchCount) ? `${matchCount}개` : "",
+    invalidatedCount > 0 ? `무효화 ${invalidatedCount}개 제외` : "",
     payload?.refreshed ? "갱신됨" : payload?.saved ? "저장본" : "",
     payload?.stale ? "이전 결과" : "",
   ].filter(Boolean);
@@ -371,6 +375,7 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
       `시총 ${formatKoreanMarketCap(payload?.condition?.minimumMarketCapKrw)} 이상`,
       `거래량 ${formatConditionNumber(payload?.condition?.volumeRatio)}`,
       `MFI ${formatConditionNumber(payload?.condition?.dailyMfi)}`,
+      formatDrawdownCondition(payload?.condition?.monthHighDrawdown),
     ]
       .filter(Boolean)
       .join(" · "),
@@ -398,7 +403,12 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
         `상대강도 ${formatSignedNumber(Number(item.relativeReturn), 1)}%p`,
         `거래량 ${formatNumber(Number(item.volumeRatio), 2)}배`,
         `MFI ${formatNumber(Number(item.mfi), 1)}`,
-      ].join(" · ");
+        Number.isFinite(Number(item.monthHighDrawdown))
+          ? `고점낙폭 ${formatSignedNumber(Number(item.monthHighDrawdown), 1)}%`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
       return `
         <article class="recommendation-card">
           <span class="recommendation-rank">${index + 1}</span>
@@ -433,6 +443,7 @@ function recommendationPriorityScore(item) {
   const mfi = Number(item.mfi);
   const relativeReturn = Number(item.relativeReturn);
   const monthlyReturn = Number(item.monthlyReturn);
+  const monthHighDrawdown = Number(item.monthHighDrawdown);
   const marketCapKrw = Number(item.marketCapKrw);
   let score = 0;
 
@@ -460,6 +471,9 @@ function recommendationPriorityScore(item) {
   if (mfi > 94) score -= scaleBetween(mfi, 94, 100, 4);
   if (monthlyReturn > 100) score -= scaleBetween(monthlyReturn, 100, 150, 4);
   if (volumeRatio > 15) score -= scaleBetween(volumeRatio, 15, 30, 2);
+  if (monthHighDrawdown < -10) {
+    score -= scaleBetween(Math.abs(monthHighDrawdown), 10, 20, 10);
+  }
   return clamp(Math.round(score), 0, 99);
 }
 
@@ -473,6 +487,7 @@ function buildRecommendationSetup(item) {
   const mfi = Number(item.mfi);
   const relativeReturn = Number(item.relativeReturn);
   const monthlyReturn = Number(item.monthlyReturn);
+  const monthHighDrawdown = Number(item.monthHighDrawdown);
   const marketCapKrw = Number(item.marketCapKrw);
   const tags = [
     recommendationVolumeTag(volumeRatio),
@@ -480,6 +495,7 @@ function buildRecommendationSetup(item) {
     recommendationRelativeTag(relativeReturn),
     recommendationMonthlyTag(monthlyReturn),
     recommendationMarketCapTag(marketCapKrw),
+    recommendationDrawdownTag(monthHighDrawdown),
     item.breakout ? "5개월 고점 돌파" : "",
   ]
     .filter(Boolean)
@@ -489,6 +505,7 @@ function buildRecommendationSetup(item) {
     label: `${formatIsoDate(item.lastDate || "") || "추천 시점"} 기준`,
     summary: recommendationSetupSummary({
       mfi,
+      monthHighDrawdown,
       monthlyReturn,
       relativeReturn,
       volumeRatio,
@@ -499,10 +516,14 @@ function buildRecommendationSetup(item) {
 
 function recommendationSetupSummary({
   mfi,
+  monthHighDrawdown,
   monthlyReturn,
   relativeReturn,
   volumeRatio,
 }) {
+  if (monthHighDrawdown <= -10) {
+    return `월간 조건은 통과했지만 고점 대비 ${formatSignedNumber(monthHighDrawdown, 1)}% 밀려 있어 추격 매수보다 재돌파 확인이 필요해.`;
+  }
   if (volumeRatio >= 8) {
     return `거래량이 직전 5개월 평균의 ${formatNumber(volumeRatio, 2)}배로 먼저 폭발했고, 상대강도도 ${formatSignedNumber(relativeReturn, 1)}%p라 수급 쏠림이 강했어.`;
   }
@@ -555,6 +576,13 @@ function recommendationMarketCapTag(value) {
   if (value < 3_000_000_000_000) return "중소형 탄력";
   if (value >= 30_000_000_000_000) return "대형주";
   return "중형주";
+}
+
+function recommendationDrawdownTag(value) {
+  if (!Number.isFinite(value)) return "";
+  if (value <= -15) return "고점이탈 주의";
+  if (value <= -10) return "고점낙폭 점검";
+  return "고점 방어";
 }
 
 async function loadIndicators() {
@@ -2732,6 +2760,13 @@ function formatConditionNumber(value) {
   if (!number) return "";
   if (text.includes("x")) return `${number}배 이상`;
   return `${number} 이상`;
+}
+
+function formatDrawdownCondition(value) {
+  const text = String(value || "");
+  const number = text.match(/>=\s*(-?[\d.]+)%/)?.[1];
+  if (!number) return "";
+  return `고점낙폭 ${number}% 이내`;
 }
 
 function formatMarketFilter(value) {

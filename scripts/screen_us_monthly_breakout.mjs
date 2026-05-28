@@ -19,6 +19,7 @@ const MIN_VOLUME_RATIO = Number(process.env.MIN_VOLUME_RATIO || 1.8);
 const MIN_MONTHLY_RETURN = Number(process.env.MIN_MONTHLY_RETURN || 15);
 const MIN_RELATIVE_RETURN = Number(process.env.MIN_RELATIVE_RETURN || 8);
 const MIN_MFI = Number(process.env.MIN_MFI || 70);
+const MAX_MONTH_HIGH_DRAWDOWN = Number(process.env.MAX_MONTH_HIGH_DRAWDOWN || 20);
 const BENCHMARK_SYMBOL = process.env.BENCHMARK_SYMBOL || "QQQ";
 const NASDAQ_LISTED =
   "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt";
@@ -85,6 +86,7 @@ const payload = {
     minimumHistoryMonths: MIN_HISTORY_MONTHS,
     minimumMarketCapKrw: MIN_MARKET_CAP_KRW,
     minimumMarketCapUsd: Math.round(minimumMarketCapUsd),
+    monthHighDrawdown: `>= -${MAX_MONTH_HIGH_DRAWDOWN}% from target-month high`,
     monthlyReturn: `>= ${MIN_MONTHLY_RETURN}% vs previous month close`,
     relativeReturn: `>= ${MIN_RELATIVE_RETURN}% vs ${BENCHMARK_SYMBOL}`,
     setupScore: `>= ${MIN_SETUP_SCORE}`,
@@ -132,6 +134,11 @@ function screenStock(stock, rows, benchmarkMonthlyBars) {
   const previousCloseHigh = Math.max(...previous.map((month) => month.close));
   const targetReturn = percentChange(current.close, previousMonth.close);
   const firstToLastReturn = percentChange(current.close, current.firstClose);
+  const monthHighDrawdown = percentChange(current.close, current.high);
+  const recentWorstDailyReturn = worstRecentDailyReturn(
+    rows.filter((row) => row.date <= current.lastDate),
+    5,
+  );
   const volumeRatio = current.volume / previousAverageVolume;
   const breakout = current.close > previousCloseHigh;
   const benchmarkReturn = benchmarkMonthReturn(benchmarkMonthlyBars, MARKET_MONTH);
@@ -160,6 +167,7 @@ function screenStock(stock, rows, benchmarkMonthlyBars) {
     volumeRatio < MIN_VOLUME_RATIO ||
     targetReturn < MIN_MONTHLY_RETURN ||
     relativeReturn < MIN_RELATIVE_RETURN ||
+    monthHighDrawdown < -MAX_MONTH_HIGH_DRAWDOWN ||
     !breakout ||
     mfi < MIN_MFI
   ) {
@@ -175,6 +183,8 @@ function screenStock(stock, rows, benchmarkMonthlyBars) {
     lastClose: round(current.close, 4),
     lastDate: current.lastDate,
     mfi: round(mfi, 2),
+    monthHigh: round(current.high, 4),
+    monthHighDrawdown: round(monthHighDrawdown, 2),
     monthlyReturn: round(targetReturn, 2),
     name: stock.name,
     next1mReturn: round(forwardReturn(monthMap, MARKET_MONTH, 1), 2),
@@ -184,6 +194,7 @@ function screenStock(stock, rows, benchmarkMonthlyBars) {
     previousCloseHigh: round(previousCloseHigh, 4),
     previousMonthClose: round(previousMonth.close, 4),
     rawSymbol: stock.rawSymbol,
+    recentWorstDailyReturn: round(recentWorstDailyReturn, 2),
     relativeReturn: round(relativeReturn, 2),
     setupScore,
     signal: setupScore >= 85 ? "강한 월간 상승 후보" : "월간 상승 후보",
@@ -250,6 +261,14 @@ function forwardReturn(monthMap, month, monthsForward) {
   const target = monthMap.get(shiftMonth(month, monthsForward));
   if (!current || !target) return NaN;
   return percentChange(target.close, current.close);
+}
+
+function worstRecentDailyReturn(rows, days) {
+  const recent = rows.slice(-(days + 1));
+  if (recent.length < 2) return NaN;
+  return Math.min(
+    ...recent.slice(1).map((row, index) => percentChange(row.close, recent[index].close)),
+  );
 }
 
 async function fetchUsUniverse() {
