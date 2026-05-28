@@ -5,7 +5,7 @@ const COMPARISON_MONTH_COUNT = Number(
 const MIN_MARKET_CAP_KRW = Number(
   process.env.MIN_MARKET_CAP_KRW || process.argv[4] || 1_000_000_000_000,
 );
-const CONCURRENCY = Number(process.env.SCREEN_CONCURRENCY || 4);
+const CONCURRENCY = Number(process.env.SCREEN_CONCURRENCY || 8);
 const LIMIT = Number(process.env.SCREEN_LIMIT || 0);
 const SYMBOL_FILTER = new Set(
   (process.env.SCREEN_SYMBOLS || "")
@@ -21,10 +21,13 @@ const MIN_RELATIVE_RETURN = Number(process.env.MIN_RELATIVE_RETURN || 8);
 const MIN_MFI = Number(process.env.MIN_MFI || 70);
 const MAX_MONTH_HIGH_DRAWDOWN = Number(process.env.MAX_MONTH_HIGH_DRAWDOWN || 20);
 const BENCHMARK_SYMBOL = process.env.BENCHMARK_SYMBOL || "QQQ";
+const MARKET_CAP_PREFILTER = process.env.MARKET_CAP_PREFILTER !== "0";
 const NASDAQ_LISTED =
   "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt";
 const OTHER_LISTED =
   "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt";
+const NASDAQ_SCREENER =
+  "https://api.nasdaq.com/api/screener/stocks?tableonly=true&limit=25&offset=0&download=true";
 const NASDAQ_API_HEADERS = {
   Accept: "application/json, text/plain, */*",
   Origin: "https://www.nasdaq.com",
@@ -40,8 +43,17 @@ const benchmarkRows = await fetchYahooDaily(
   historyEndDate(),
 );
 const benchmarkMonths = monthlyBars(benchmarkRows);
-const allUniverse = await fetchUsUniverse();
-const universe = filteredUniverse(allUniverse).slice(0, LIMIT || undefined);
+const universeInfo = await fetchUsUniverse({ minimumMarketCapUsd });
+const universe = filteredUniverse(universeInfo.universe, universeInfo.allBySymbol).slice(
+  0,
+  LIMIT || undefined,
+);
+console.error(
+  `prefiltered ${universeInfo.universe.length}/${universeInfo.rawCount} by market cap`,
+);
+if (universe.length !== universeInfo.universe.length) {
+  console.error(`universe ${universe.length}/${universeInfo.universe.length} after limit`);
+}
 const results = [];
 const failures = [];
 let completed = 0;
@@ -52,12 +64,17 @@ await runPool(universe, CONCURRENCY, async (stock) => {
     const screening = screenStock(stock, rows, benchmarkMonths);
     if (!screening) return;
 
-    const marketCapUsd = await fetchNasdaqMarketCapUsd(stock);
+    const marketCapUsd = Number.isFinite(stock.marketCapUsd)
+      ? stock.marketCapUsd
+      : await fetchNasdaqMarketCapUsd(stock);
     if (marketCapUsd < minimumMarketCapUsd) return;
     results.push({
       ...screening,
+      country: stock.country,
+      industry: stock.industry,
       marketCapKrw: Math.round(marketCapUsd * usdKrw),
       marketCapUsd: Math.round(marketCapUsd),
+      sector: stock.sector,
     });
   } catch (error) {
     failures.push({ ...stock, error: error.message });
@@ -103,6 +120,12 @@ const payload = {
     SYMBOL_FILTER.size > 0
       ? `Manual symbols: ${[...SYMBOL_FILTER].join(", ")}`
       : "Nasdaq Trader listed U.S. common stocks and ADRs; ETFs, units, warrants, rights, preferreds, funds, SPAC/acquisition vehicles, and test issues excluded",
+  rawUniverseCount: universeInfo.rawCount,
+  prefilter: {
+    marketCapCoverageCount: universeInfo.marketCapCoverageCount,
+    minimumMarketCapUsd: Math.round(minimumMarketCapUsd),
+    usedMarketCapPrefilter: universeInfo.usedMarketCapPrefilter,
+  },
   universeCount: universe.length,
   matchCount: results.length,
   failureCount: failures.length,
@@ -271,11 +294,19 @@ function worstRecentDailyReturn(rows, days) {
   );
 }
 
-async function fetchUsUniverse() {
-  const [nasdaqText, otherText] = await Promise.all([
+async function fetchUsUniverse({ minimumMarketCapUsd = 0 } = {}) {
+  const [nasdaqText, otherText, screenerRows] = await Promise.all([
     fetchText(NASDAQ_LISTED),
     fetchText(OTHER_LISTED),
+    fetchNasdaqScreenerStocks().catch((error) => {
+      console.error(`market-cap prefilter unavailable: ${error.message}`);
+      return [];
+    }),
   ]);
+
+  const screenerBySymbol = new Map(
+    screenerRows.map((row) => [String(row.symbol || "").toUpperCase(), row]),
+  );
 
   const nasdaq = parsePipeTable(nasdaqText)
     .filter((row) => row.Symbol && row.Symbol !== "File Creation Time")
@@ -300,18 +331,44 @@ async function fetchUsUniverse() {
     }));
 
   const seen = new Set();
-  return [...nasdaq, ...other]
+  const all = [...nasdaq, ...other]
     .filter((stock) => {
       if (!stock.symbol || seen.has(stock.symbol)) return false;
       seen.add(stock.symbol);
       return isCommonEquity(stock);
     })
+    .map((stock) => {
+      const screener = screenerBySymbol.get(stock.symbol.toUpperCase());
+      return {
+        ...stock,
+        country: screener?.country || "",
+        industry: screener?.industry || "",
+        marketCapUsd: finiteNumber(screener?.marketCapUsd),
+        sector: screener?.sector || "",
+      };
+    })
     .sort((a, b) => a.symbol.localeCompare(b.symbol));
+
+  const hasMarketCapPrefilter =
+    MARKET_CAP_PREFILTER &&
+    !SYMBOL_FILTER.size &&
+    minimumMarketCapUsd > 0 &&
+    screenerBySymbol.size > 0;
+  const universe = hasMarketCapPrefilter
+    ? all.filter((stock) => stock.marketCapUsd >= minimumMarketCapUsd)
+    : all;
+
+  return {
+    allBySymbol: new Map(all.map((stock) => [stock.symbol.toUpperCase(), stock])),
+    marketCapCoverageCount: all.filter((stock) => Number.isFinite(stock.marketCapUsd)).length,
+    rawCount: all.length,
+    universe,
+    usedMarketCapPrefilter: hasMarketCapPrefilter,
+  };
 }
 
-function filteredUniverse(universe) {
+function filteredUniverse(universe, bySymbol = new Map()) {
   if (!SYMBOL_FILTER.size) return universe;
-  const bySymbol = new Map(universe.map((stock) => [stock.symbol.toUpperCase(), stock]));
   return [...SYMBOL_FILTER].map((symbol) => {
     return (
       bySymbol.get(symbol) || {
@@ -322,6 +379,30 @@ function filteredUniverse(universe) {
       }
     );
   });
+}
+
+async function fetchNasdaqScreenerStocks() {
+  const response = await fetch(NASDAQ_SCREENER, { headers: NASDAQ_API_HEADERS });
+  if (!response.ok) {
+    throw new Error(`Nasdaq screener unavailable: ${response.status}`);
+  }
+
+  const json = await response.json();
+  const rows = json.data?.rows;
+  if (!Array.isArray(rows) || !rows.length) {
+    throw new Error("empty Nasdaq screener data");
+  }
+
+  return rows
+    .map((row) => ({
+      country: row.country || "",
+      industry: row.industry || "",
+      marketCapUsd: parseNasdaqNumber(row.marketCap),
+      name: row.name || "",
+      sector: row.sector || "",
+      symbol: normalizeNasdaqSymbol(row.symbol),
+    }))
+    .filter((row) => row.symbol);
 }
 
 async function fetchNasdaqDaily(stock) {

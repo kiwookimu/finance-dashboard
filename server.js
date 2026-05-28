@@ -733,7 +733,8 @@ async function refreshUsStockRecommendations(month) {
   await runRecommendationScript("us", [scriptPath, month, "5", "10000000000000"], {
     env: {
       ...process.env,
-      SCREEN_CONCURRENCY: process.env.SCREEN_CONCURRENCY || "4",
+      SCREEN_CONCURRENCY:
+        process.env.US_SCREEN_CONCURRENCY || process.env.SCREEN_CONCURRENCY || "8",
     },
     timeout: 900000,
   });
@@ -831,6 +832,27 @@ function updateRecommendationRefreshProgress(market, patch) {
 }
 
 function updateRecommendationCheckedProgress(market, text) {
+  const universeMatches = [
+    ...text.matchAll(/prefiltered\s+(\d+)\/(\d+)\s+by market cap/gi),
+  ];
+  const latestUniverse = universeMatches.at(-1);
+  if (latestUniverse) {
+    const total = Number(latestUniverse[1]);
+    const rawTotal = Number(latestUniverse[2]);
+    if (Number.isFinite(total) && Number.isFinite(rawTotal) && total > 0) {
+      updateRecommendationRefreshProgress(market, {
+        completed: 0,
+        detail: `${rawTotal.toLocaleString("ko-KR")}개 중 시총 조건 통과 ${total.toLocaleString(
+          "ko-KR",
+        )}개로 먼저 줄였습니다.`,
+        message: "대상 종목 압축 완료",
+        percent: RECOMMENDATION_SCRIPT_START_PERCENT,
+        state: "running",
+        total,
+      });
+    }
+  }
+
   const matches = [...text.matchAll(/checked\s+(\d+)\/(\d+)/gi)];
   const latest = matches.at(-1);
   if (!latest) return;
