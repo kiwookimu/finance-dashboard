@@ -766,7 +766,7 @@ function recommendationEntryDecision({
   }
   if (monthlyReturn >= 100) {
     return {
-      action: "추격 매수는 조심해.",
+      action: "과열 상태니 추격 매수는 조심해.",
       label: "주의",
       rank: 2,
       tone: "caution",
