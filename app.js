@@ -777,7 +777,7 @@ function recommendationCheckpointText(item) {
       addCheckpoint(
         previousCloseHigh > current
           ? `${formatRecommendationPrice(previousCloseHigh, item)} 회복`
-          : `${formatRecommendationPrice(previousCloseHigh, item)} 지지 여부`,
+          : `${formatRecommendationPrice(previousCloseHigh, item)} 지지`,
       );
     }
   } else if (item.breakout || (Number.isFinite(monthHighDrawdown) && monthHighDrawdown > -5)) {
@@ -794,7 +794,7 @@ function recommendationCheckpointText(item) {
   }
 
   if (!checkpoints.length) return "";
-  return `체크포인트: ${checkpoints.slice(0, 2).join(" · ")}.`;
+  return `체크포인트는 ${checkpoints.slice(0, 2).join(" · ")} 여부야.`;
 }
 
 function recommendationActionText({
