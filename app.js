@@ -610,8 +610,6 @@ async function loadIndicators() {
     renderMarketIndicator("semiBreadth", market.quotes.semiBreadth);
     renderMarketIndicator("semiLeadership", market.quotes.semiLeadership);
     renderMarketIndicator("ddr5Spot", market.quotes.ddr5Spot);
-    renderMarketIndicator("serverDdr5Contract", market.quotes.serverDdr5Contract);
-    renderMarketIndicator("dxi", market.quotes.dxi);
     renderMarketIndicator("usdKrw", market.quotes.usdKrw);
     renderMarketIndicator("wti", market.quotes.wti);
     renderMarketIndicator("us10y", market.quotes.us10y);
@@ -624,7 +622,7 @@ async function loadIndicators() {
     renderTimestamp(market.quotes);
     setText(
       "#marketSource",
-      `Yahoo Finance · FRED · Naver Finance · TrendForce · DRAMeXchange · 공포·탐욕 ${formatIsoDate(sentiment.fearGreed.date)} · VIX ${formatIsoDate(sentiment.vix.date)} 기준 지연 데이터`,
+      `Yahoo Finance · FRED · Naver Finance · TrendForce · 공포·탐욕 ${formatIsoDate(sentiment.fearGreed.date)} · VIX ${formatIsoDate(sentiment.vix.date)} 기준 지연 데이터`,
     );
     renderPortfolioHighProximityWhenReady(market, sentiment, portfolioPromise);
   } catch (error) {
@@ -986,7 +984,6 @@ function evaluateTradingSignal(quotes, sentiment) {
   add("시장 폭", marketBreadthScore, 1.15);
   add("VIX 구조", vixTermScore, 0.8);
   add("DDR5", scoreMemoryPrice(quotes.ddr5Spot), 0.45);
-  add("서버 DRAM", scoreServerContract(quotes.serverDdr5Contract), 0.25);
   add("공포·탐욕", scoreFearGreed(sentiment.fearGreed), 1.15);
   add("VIX", scoreVix(sentiment.vix), 1.45);
   add("미국 10년물", rateScore, 0.85);
@@ -1095,7 +1092,6 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   add("시장 폭", marketBreadthScore, 1.05);
   add("52주 고점", highProximityScore, 0.85);
   add("DDR5", scoreMemoryPrice(quotes.ddr5Spot), 0.95);
-  add("서버 DRAM", scoreServerContract(quotes.serverDdr5Contract), 0.35);
   add("미국 10년물", rateScore, 1.2);
   add("달러/원", usdKrwScore, 0.85);
   add("VIX", vixScore, 1.05);
@@ -1899,8 +1895,6 @@ function scoreSemiconductorCycle(quotes) {
   add(scoreRelativeBreadth(quotes?.semiLeadership), 0.75);
   add(scoreSemiconductorBreadth(quotes?.semiBreadth), 0.75);
   add(scoreMemoryPrice(quotes?.ddr5Spot), 0.75);
-  add(scoreServerContract(quotes?.serverDdr5Contract), 0.35);
-  add(scoreRiskAsset(quotes?.dxi), 0.35);
 
   const totalWeight = components.reduce((sum, item) => sum + item.weight, 0);
   return totalWeight
@@ -1978,18 +1972,6 @@ function scoreMemoryPrice(quote) {
   if (change > 0) return 0.25;
   if (change <= -1) return -0.45;
   if (change < 0) return -0.25;
-  return 0;
-}
-
-function scoreServerContract(quote) {
-  const text = `${quote?.changeText || ""} ${quote?.summary || ""}`.toLowerCase();
-  if (!text.trim()) return NaN;
-  if (text.includes("상승") || text.includes("bullish") || text.includes("upward")) {
-    return 0.25;
-  }
-  if (text.includes("하락") || text.includes("bearish") || text.includes("downward")) {
-    return -0.25;
-  }
   return 0;
 }
 

@@ -73,8 +73,6 @@ const SENTIMENT_SOURCES = {
 };
 const TREND_FORCE_SOURCES = {
   ddr5Spot: "https://www.trendforce.com/price/dram/dram_spot",
-  serverDdr5Contract: "https://www.trendforce.com/research/download/RP260430SD",
-  dxi: "https://www.dramexchange.com/Market/Market_Activity/1000",
 };
 const FRED_SOURCES = [
   {
@@ -242,8 +240,6 @@ async function fetchMarketOverview() {
     semiLeaderQuotes,
     fredQuotes,
     ddr5Spot,
-    serverDdr5Contract,
-    dxi,
   ] = await Promise.all([
     Promise.all(MARKET_SOURCES.map((source) => optionalMarketQuote(fetchYahooQuote(source), source))),
     Promise.all(
@@ -261,16 +257,6 @@ async function fetchMarketOverview() {
       label: "DDR5 16Gb 4800/5600 Spot",
       symbol: "DDR5 16Gb (2Gx8) 4800/5600",
       valuePrefix: "$",
-    }),
-    optionalMarketQuote(fetchTrendForceServerDdr5Contract(), {
-      id: "serverDdr5Contract",
-      label: "Server DDR5 Contract Price",
-      symbol: "Server DIMM Contract Price",
-    }),
-    optionalMarketQuote(fetchDramExchangeDxi(), {
-      id: "dxi",
-      label: "DXI Index",
-      symbol: "DRAMeXchange Index",
     }),
   ]);
   const derivedById = Object.fromEntries(
@@ -332,16 +318,12 @@ async function fetchMarketOverview() {
         derivedById.vix3m,
         ...fredQuotes,
         ddr5Spot,
-        serverDdr5Contract,
-        dxi,
       ].map((quote) => [quote.id, quote]),
     ),
     sources: {
       quote: "Yahoo Finance chart endpoint",
       breadth: "Yahoo Finance ETF and semiconductor leader basket",
       trendForce: "TrendForce DRAM spot price table",
-      trendForceServerDimm: "TrendForce Server DIMM Contract Price report summary",
-      dxi: "DRAMeXchange Market Activity DXI timestamp",
       fred: "FRED CSV series",
     },
   };
@@ -394,82 +376,6 @@ function withTimeout(promise, timeoutMs, label) {
     timer.unref?.();
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
-
-async function fetchDramExchangeDxi() {
-  const html = await fetchText(TREND_FORCE_SOURCES.dxi, "text/html,*/*");
-  const rawTimestamp =
-    html.match(/id="ctl00_ContentPlaceHolder1_DXI1_idxs_date"[^>]*>([\s\S]*?)<\/span>/i)?.[1] ||
-    "";
-  const marketTimeText = normalizeText(
-    decodeHtmlEntity(rawTimestamp.replace(/<[^>]+>/g, " ")),
-  );
-
-  if (!marketTimeText) {
-    throw new Error("DRAMeXchange DXI timestamp unavailable");
-  }
-
-  return {
-    change: 0,
-    changeClass: "",
-    changePercent: 0,
-    changeText: `${marketTimeText} 기준`,
-    analysisHistory: [],
-    decimals: 0,
-    history: [],
-    id: "dxi",
-    label: "DXI Index",
-    marketTime: parseDramExchangeDxiTime(marketTimeText),
-    price: null,
-    reportUrl: "https://www.dramexchange.com/Market/DXI",
-    sparklineText: "DXI 비공개",
-    symbol: "DRAMeXchange Index",
-    valueText: "로그인 필요",
-  };
-}
-
-async function fetchTrendForceServerDdr5Contract() {
-  const html = await fetchText(TREND_FORCE_SOURCES.serverDdr5Contract, "text/html,*/*");
-  const title = decodeHtmlEntity(
-    html.match(/<h1 class="report-overview-title">([^<]+)<\/h1>/i)?.[1] ||
-      html.match(/<title>([^<]+)<\/title>/i)?.[1] ||
-      "Server DIMM Price",
-  ).replace(/\s+\|\s+TrendForce$/i, "");
-  const lastModified = normalizeText(
-    html.match(/Last Modified<\/p>\s*<p[^>]*>([^<]+)<\/p>/i)?.[1] ||
-      html.match(/"datePublished":\s*"([^"]+)"/i)?.[1] ||
-      "",
-  );
-  const summary = decodeHtmlEntity(
-    html.match(/<meta name="description" content="([^"]+)"/i)?.[1] ||
-      html.match(/<meta property="og:description" content="([^"]+)"/i)?.[1] ||
-      "",
-  );
-  const isPrivate = html.includes('"isAccessibleForFree": "False"');
-
-  if (!summary) {
-    throw new Error("TrendForce server DDR5 contract summary unavailable");
-  }
-
-  return {
-    change: 0,
-    changeClass: "positive",
-    changePercent: 0,
-    changeText: `${extractReportMonth(title)} · 상승 지속`,
-    analysisHistory: [],
-    decimals: 0,
-    history: [],
-    id: "serverDdr5Contract",
-    label: "Server DDR5 Contract Price",
-    marketTime: lastModified ? `${lastModified.slice(0, 10)}T00:00:00+08:00` : "",
-    price: null,
-    reportTitle: title,
-    reportUrl: TREND_FORCE_SOURCES.serverDdr5Contract,
-    sparklineText: isPrivate ? "가격 비공개" : "현재값만 공개",
-    summary,
-    symbol: "Server DIMM Contract Price",
-    valueText: isPrivate ? "멤버십 비공개" : "공개 요약",
-  };
 }
 
 async function fetchTrendForceDdr5Spot() {
@@ -1806,46 +1712,6 @@ function splitCsvLine(line) {
 
   values.push(value);
   return values.map((item) => item.trim());
-}
-
-function extractReportMonth(title) {
-  const match = title.match(/\b([A-Z][a-z]{2}\.?\s+\d{4})\b/);
-  return match ? match[1].replace(".", "") : "월간 리포트";
-}
-
-function parseDramExchangeDxiTime(value) {
-  const now = new Date();
-  const year = now.getUTCFullYear();
-  const match = value.match(/([A-Z][a-z]{2})\.?(\d{1,2}),\s*(\d{1,2}):(\d{2})/);
-  if (!match) return "";
-
-  const month = {
-    Jan: 0,
-    Feb: 1,
-    Mar: 2,
-    Apr: 3,
-    May: 4,
-    Jun: 5,
-    Jul: 6,
-    Aug: 7,
-    Sep: 8,
-    Oct: 9,
-    Nov: 10,
-    Dec: 11,
-  }[match[1]];
-
-  if (!Number.isInteger(month)) return "";
-
-  const date = new Date(
-    Date.UTC(
-      year,
-      month,
-      Number(match[2]),
-      Number(match[3]) - 8,
-      Number(match[4]),
-    ),
-  );
-  return date.toISOString();
 }
 
 function decodeHtmlEntity(value) {
