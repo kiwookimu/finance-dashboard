@@ -2839,9 +2839,13 @@ function formatKoreanMarketCap(value) {
   const trillion = number / 1_000_000_000_000;
   if (trillion >= 1) {
     const decimals = trillion >= 10 ? 1 : 2;
-    return `${trillion.toFixed(decimals)}조`;
+    return `${formatCompactDecimal(trillion, decimals)}조`;
   }
   return `${Math.round(number / 100_000_000).toLocaleString("ko-KR")}억`;
+}
+
+function formatCompactDecimal(value, decimals) {
+  return Number(value).toFixed(decimals).replace(/\.?0+$/, "");
 }
 
 function formatMarketCapCondition(value) {
