@@ -440,11 +440,6 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
       ].filter(Boolean);
       const reason = [
         `상대강도 ${formatSignedNumber(Number(item.relativeReturn), 1)}%p`,
-        `21일 거래량 ${formatNumber(Number(item.volumeRatio), 2)}배`,
-        Number.isFinite(Number(item.recentVolumeRatio))
-          ? `5일 거래량 ${formatNumber(Number(item.recentVolumeRatio), 2)}배`
-          : "",
-        `MFI ${formatNumber(Number(item.mfi), 1)}`,
         Number.isFinite(Number(item.monthHighDrawdown))
           ? `고점낙폭 ${formatSignedNumber(Number(item.monthHighDrawdown), 1)}%`
           : "",
