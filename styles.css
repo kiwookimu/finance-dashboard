@@ -805,11 +805,11 @@ h1 {
 }
 
 .recommendation-quote.is-up {
-  color: #0f9f74;
+  color: #d34840;
 }
 
 .recommendation-quote.is-down {
-  color: #d34840;
+  color: #316caa;
 }
 
 .recommendation-quote.is-flat {
