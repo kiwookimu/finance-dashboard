@@ -2728,23 +2728,25 @@ function formatIsoDate(isoDate) {
 function formatTime(isoDate) {
   const date = new Date(isoDate);
   if (Number.isNaN(date.getTime())) return "지연";
-  return new Intl.DateTimeFormat("ko-KR", {
+  const timeText = new Intl.DateTimeFormat("ko-KR", {
     hour: "2-digit",
     minute: "2-digit",
     timeZone: "Asia/Seoul",
   }).format(date);
+  return `${timeText} KST`;
 }
 
 function formatDateTime(isoDate) {
   const date = new Date(isoDate);
   if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("ko-KR", {
+  const dateTimeText = new Intl.DateTimeFormat("ko-KR", {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
     month: "2-digit",
     timeZone: "Asia/Seoul",
   }).format(date);
+  return `${dateTimeText} KST`;
 }
 
 function hasTodayRecommendationData(payload) {
