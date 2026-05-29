@@ -776,9 +776,19 @@ h1 {
   gap: 4px;
 }
 
+.recommendation-name-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 6px;
+  min-width: 0;
+}
+
 .recommendation-title strong {
   overflow: hidden;
   color: var(--ink);
+  flex: 0 1 auto;
+  min-width: 0;
   font-size: 16px;
   font-weight: 900;
   line-height: 1.2;
@@ -786,7 +796,27 @@ h1 {
   white-space: nowrap;
 }
 
-.recommendation-title span,
+.recommendation-quote {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.recommendation-quote.is-up {
+  color: #0f9f74;
+}
+
+.recommendation-quote.is-down {
+  color: #d34840;
+}
+
+.recommendation-quote.is-flat {
+  color: #69766f;
+}
+
+.recommendation-signal,
 .recommendation-copy small,
 .recommendation-copy p {
   color: var(--muted);

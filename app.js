@@ -445,13 +445,21 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
       const drawdownText = Number.isFinite(Number(item.monthHighDrawdown))
         ? `${formatSignedNumber(Number(item.monthHighDrawdown), 1)}%`
         : "-";
+      const quote = recommendationQuoteInfo(item);
       return `
         <article class="recommendation-card" role="button" tabindex="0" data-recommendation-detail-id="${escapeHtml(detailId)}" aria-label="${escapeHtml(item.name)} 상세 정보 보기">
           <span class="recommendation-rank">${index + 1}</span>
           <div class="recommendation-copy">
             <div class="recommendation-title">
-              <strong>${escapeHtml(item.name)}</strong>
-              <span>${escapeHtml(item.signal || "1개월 상승 후보")}</span>
+              <div class="recommendation-name-line">
+                <strong>${escapeHtml(item.name)}</strong>
+                ${
+                  quote
+                    ? `<span class="recommendation-quote is-${escapeHtml(quote.tone)}">${escapeHtml(quote.text)}</span>`
+                    : ""
+                }
+              </div>
+              <span class="recommendation-signal">${escapeHtml(item.signal || "1개월 상승 후보")}</span>
             </div>
             <small>${escapeHtml(detail.join(" · "))}</small>
             <div class="recommendation-metrics" aria-label="${escapeHtml(item.name)} 핵심 지표">
@@ -588,6 +596,30 @@ function recommendationExternalLabel(item) {
   const symbol = String(item.symbol || item.rawSymbol || "").trim();
   if (symbol) return "야후 파이낸스에서 상세 정보 보기";
   return "외부 상세 페이지 열기";
+}
+
+function recommendationQuoteInfo(item) {
+  const price = Number(item.liveClose ?? item.lastClose);
+  if (!Number.isFinite(price) || price <= 0) return null;
+  const directReturn = Number(item.liveReturnFromSignal);
+  const basePrice = Number(item.lastClose);
+  const returnValue = Number.isFinite(directReturn)
+    ? directReturn
+    : percentChangeValue(price, basePrice);
+  if (!Number.isFinite(returnValue)) return null;
+  return {
+    text: `(${formatRecommendationPrice(price, item)} / ${formatSignedNumber(returnValue, 2)}%)`,
+    tone: returnValue > 0 ? "up" : returnValue < 0 ? "down" : "flat",
+  };
+}
+
+function percentChangeValue(current, previous) {
+  const currentNumber = Number(current);
+  const previousNumber = Number(previous);
+  if (!Number.isFinite(currentNumber) || !Number.isFinite(previousNumber) || previousNumber === 0) {
+    return NaN;
+  }
+  return ((currentNumber - previousNumber) / previousNumber) * 100;
 }
 
 function formatRecommendationPrice(value, item) {
