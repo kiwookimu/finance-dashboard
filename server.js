@@ -17,6 +17,8 @@ const RECOMMENDATION_SCRIPT_START_PERCENT = 8;
 const RECOMMENDATION_SCRIPT_DONE_PERCENT = 92;
 const RECOMMENDATION_STOP_LOSS_PERCENT = -8;
 const RECOMMENDATION_MAX_MONTH_HIGH_DRAWDOWN = -20;
+const DOMESTIC_STOCK_RECOMMENDATION_VERSION = "kr-rolling-21-v1";
+const US_STOCK_RECOMMENDATION_VERSION = "us-rolling-21-v1";
 
 const MARKET_SOURCES = [
   { id: "kospi", label: "KOSPI", symbol: "^KS11", decimals: 2 },
@@ -539,12 +541,18 @@ async function getStockRecommendations({
   if (!forceRefresh) {
     const filePayload = await readStockRecommendationFile(resultPath).catch(() => null);
     if (filePayload) {
+      const logicOutdated = !isDomesticStockRecommendationCurrent(filePayload);
       cachedStockRecommendations = await normalizeDomesticStockRecommendationPayload(
         filePayload,
         {
           cached: false,
+          ...(logicOutdated
+            ? { condition: stockRecommendationCondition(1_000_000_000_000) }
+            : {}),
+          logicOutdated,
           refreshed: false,
           saved: true,
+          stale: logicOutdated,
         },
       );
       cachedStockRecommendationsAt = now;
@@ -597,12 +605,22 @@ async function getUsStockRecommendations({
   if (!forceRefresh) {
     const filePayload = await readStockRecommendationFile(resultPath).catch(() => null);
     if (filePayload) {
+      const logicOutdated = !isUsStockRecommendationCurrent(filePayload);
       cachedUsStockRecommendations = normalizeStockRecommendationPayload(
         filePayload,
         {
           cached: false,
+          ...(logicOutdated
+            ? {
+                condition: stockRecommendationCondition(10_000_000_000_000, {
+                  relativeBenchmark: "QQQ",
+                }),
+              }
+            : {}),
+          logicOutdated,
           refreshed: false,
           saved: true,
+          stale: logicOutdated,
         },
       );
       cachedUsStockRecommendationsAt = now;
@@ -643,7 +661,7 @@ async function getUsStockRecommendations({
 function startStockRecommendationRefresh(month, markets, resultPath) {
   if (stockRecommendationRefreshPromise) return stockRecommendationRefreshPromise;
   resetRecommendationRefreshProgress("domestic", {
-    detail: "KOSPI/KOSDAQ 전체 종목을 월간 기준으로 확인합니다.",
+    detail: "KOSPI/KOSDAQ 전체 종목을 최근 21거래일 기준으로 확인합니다.",
     message: "갱신 작업 준비 중",
   });
   stockRecommendationRefreshPromise = refreshStockRecommendations(month, markets)
@@ -669,10 +687,15 @@ function startStockRecommendationRefresh(month, markets, resultPath) {
         state: "failed",
       });
       if (fallback) {
+        const logicOutdated = !isDomesticStockRecommendationCurrent(fallback);
         cachedStockRecommendations = await normalizeDomesticStockRecommendationPayload(
           fallback,
           {
             cached: false,
+            ...(logicOutdated
+              ? { condition: stockRecommendationCondition(1_000_000_000_000) }
+              : {}),
+            logicOutdated,
             refreshError: error.message,
             refreshed: false,
             stale: true,
@@ -692,7 +715,7 @@ function startStockRecommendationRefresh(month, markets, resultPath) {
 function startUsStockRecommendationRefresh(month, resultPath) {
   if (usStockRecommendationRefreshPromise) return usStockRecommendationRefreshPromise;
   resetRecommendationRefreshProgress("us", {
-    detail: "미국 상장 보통주/ADR 후보를 월간 기준으로 확인합니다.",
+    detail: "미국 상장 보통주/ADR 후보를 최근 21거래일 기준으로 확인합니다.",
     message: "갱신 작업 준비 중",
   });
   usStockRecommendationRefreshPromise = refreshUsStockRecommendations(month)
@@ -718,8 +741,17 @@ function startUsStockRecommendationRefresh(month, resultPath) {
         state: "failed",
       });
       if (fallback) {
+        const logicOutdated = !isUsStockRecommendationCurrent(fallback);
         cachedUsStockRecommendations = normalizeStockRecommendationPayload(fallback, {
           cached: false,
+          ...(logicOutdated
+            ? {
+                condition: stockRecommendationCondition(10_000_000_000_000, {
+                  relativeBenchmark: "QQQ",
+                }),
+              }
+            : {}),
+          logicOutdated,
           refreshError: error.message,
           refreshed: false,
           stale: true,
@@ -743,14 +775,28 @@ async function readCurrentStockRecommendationPayload({
 }) {
   const filePayload = await readStockRecommendationFile(resultPath).catch(() => null);
   if (filePayload) {
-    const normalize =
-      resultPath.includes("kr_monthly_breakout_")
-        ? normalizeDomesticStockRecommendationPayload
-        : async (payload, flags) => normalizeStockRecommendationPayload(payload, flags);
+    const isDomesticResult = resultPath.includes("kr_monthly_breakout_");
+    const isUsResult = resultPath.includes("us_monthly_breakout_");
+    const normalize = isDomesticResult
+      ? normalizeDomesticStockRecommendationPayload
+      : async (payload, flags) => normalizeStockRecommendationPayload(payload, flags);
+    const logicOutdated =
+      (isDomesticResult && !isDomesticStockRecommendationCurrent(filePayload)) ||
+      (isUsResult && !isUsStockRecommendationCurrent(filePayload));
     return normalize(filePayload, {
       cached: false,
+      ...(logicOutdated
+        ? {
+            condition: stockRecommendationCondition(
+              isDomesticResult ? 1_000_000_000_000 : 10_000_000_000_000,
+              isUsResult ? { relativeBenchmark: "QQQ" } : {},
+            ),
+          }
+        : {}),
+      logicOutdated,
       refreshed: false,
       saved: true,
+      stale: logicOutdated,
     });
   }
   return emptyStockRecommendationPayload({
@@ -958,6 +1004,14 @@ function normalizeStockRecommendationPayload(payload, flags = {}) {
   };
 }
 
+function isDomesticStockRecommendationCurrent(payload) {
+  return payload?.screenVersion === DOMESTIC_STOCK_RECOMMENDATION_VERSION;
+}
+
+function isUsStockRecommendationCurrent(payload) {
+  return payload?.screenVersion === US_STOCK_RECOMMENDATION_VERSION;
+}
+
 async function normalizeDomesticStockRecommendationPayload(payload, flags = {}) {
   const normalized = normalizeStockRecommendationPayload(payload, flags);
   const enrichedResults = await Promise.all(
@@ -991,12 +1045,14 @@ async function enrichDomesticRecommendationItem(item) {
     const lastClose = Number(item.lastClose);
     const returnFromSignal = percentChange(latest.close, lastClose);
     const ma10 = movingAverage(rows.map((row) => row.close), 10);
-    const marketMonth = item.marketMonth || String(item.lastDate || "").slice(0, 7);
-    const monthRows = rows.filter((row) => row.date.startsWith(marketMonth));
-    const monthHigh = Math.max(
-      ...monthRows.map((row) => row.high || row.close).filter(Number.isFinite),
+    const referenceStartDate =
+      item.rollingWindowStartDate || item.lastDate || String(item.lastDate || "").slice(0, 7);
+    const referenceRows = rows.filter((row) => row.date >= referenceStartDate);
+    const liveHighReference = Math.max(
+      Number(item.monthHigh),
+      ...referenceRows.map((row) => row.high || row.close).filter(Number.isFinite),
     );
-    const liveMonthHighDrawdown = percentChange(latest.close, monthHigh);
+    const liveMonthHighDrawdown = percentChange(latest.close, liveHighReference);
     const invalidationReasons = [
       returnFromSignal <= RECOMMENDATION_STOP_LOSS_PERCENT
         ? `추천가 대비 ${formatSigned(returnFromSignal, 1)}%`
@@ -1013,7 +1069,7 @@ async function enrichDomesticRecommendationItem(item) {
       ...item,
       liveClose: latest.close,
       liveDate: latest.date,
-      liveMonthHigh: Number.isFinite(monthHigh) ? monthHigh : null,
+      liveMonthHigh: Number.isFinite(liveHighReference) ? liveHighReference : null,
       liveMonthHighDrawdown: roundFinite(liveMonthHighDrawdown, 2),
       liveReturnFromSignal: roundFinite(returnFromSignal, 2),
       liveTenDayAverage: roundFinite(ma10, 2),
@@ -1064,18 +1120,24 @@ function stockRecommendationCondition(
   minimumMarketCapKrw,
   { relativeBenchmark = "own market benchmark" } = {},
 ) {
+  const hasMarketCap =
+    Number.isFinite(Number(minimumMarketCapKrw)) && Number(minimumMarketCapKrw) > 0;
   return {
-    breakout: "target month close exceeds previous comparison-month closing high",
+    breakout: "latest close reaches recent 21-trading-day closing high",
     dailyMfi: ">= 70",
+    earlyWatch:
+      "21-day volume >= 1.2x, 5-day average volume >= 1.8x, MFI >= 85, and 21-day return >= 30% or 21-day high breakout",
     invalidation:
-      "exclude active picks if latest price is <= -8% from signal, below 10-day average, or <= -20% from target-month high",
-    minimumHistoryMonths: 4,
-    minimumMarketCapKrw,
-    monthHighDrawdown: `>= ${RECOMMENDATION_MAX_MONTH_HIGH_DRAWDOWN}% from target-month high`,
-    monthlyReturn: ">= 15% vs previous month close",
+      "exclude active picks if latest price is <= -8% from signal, below 10-day average, or <= -20% from recent 21-trading-day high",
+    minimumHistoryDays: 127,
+    ...(hasMarketCap ? { minimumMarketCapKrw } : {}),
+    monthHighDrawdown: `>= ${RECOMMENDATION_MAX_MONTH_HIGH_DRAWDOWN}% from recent 21-trading-day high`,
+    monthlyReturn: ">= 15% over recent 21 trading days",
+    recentVolumeRatio: ">= 1.8x vs previous 105-trading-day daily average",
     relativeReturn: `>= 8% vs ${relativeBenchmark}`,
     setupScore: ">= 70",
-    volumeRatio: ">= 1.8x vs previous 5-month average",
+    tenDayTrend: "close >= 10-day average for confirmed candidates",
+    volumeRatio: ">= 1.8x vs previous 5 rolling 21-trading-day averages",
   };
 }
 

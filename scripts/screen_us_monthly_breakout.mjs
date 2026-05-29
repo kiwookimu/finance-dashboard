@@ -1,9 +1,10 @@
 const MARKET_MONTH = process.argv[2] || "2025-09";
+const SCREEN_VERSION = "us-rolling-21-v1";
 const COMPARISON_MONTH_COUNT = Number(
   process.env.COMPARE_MONTHS || process.argv[3] || 5,
 );
 const MIN_MARKET_CAP_KRW = Number(
-  process.env.MIN_MARKET_CAP_KRW || process.argv[4] || 1_000_000_000_000,
+  process.env.MIN_MARKET_CAP_KRW || process.argv[4] || 10_000_000_000_000,
 );
 const CONCURRENCY = Number(process.env.SCREEN_CONCURRENCY || 8);
 const LIMIT = Number(process.env.SCREEN_LIMIT || 0);
@@ -13,13 +14,29 @@ const SYMBOL_FILTER = new Set(
     .map((symbol) => symbol.trim().toUpperCase())
     .filter(Boolean),
 );
-const MIN_HISTORY_MONTHS = Number(process.env.MIN_HISTORY_MONTHS || 4);
+const ROLLING_WINDOW_DAYS = Number(process.env.ROLLING_WINDOW_DAYS || 21);
+const RECENT_VOLUME_DAYS = Number(process.env.RECENT_VOLUME_DAYS || 5);
+const MIN_HISTORY_DAYS = Number(
+  process.env.MIN_HISTORY_DAYS ||
+    ROLLING_WINDOW_DAYS * (COMPARISON_MONTH_COUNT + 1) + 1,
+);
 const MIN_SETUP_SCORE = Number(process.env.MIN_SETUP_SCORE || 70);
 const MIN_VOLUME_RATIO = Number(process.env.MIN_VOLUME_RATIO || 1.8);
-const MIN_MONTHLY_RETURN = Number(process.env.MIN_MONTHLY_RETURN || 15);
+const MIN_RECENT_VOLUME_RATIO = Number(process.env.MIN_RECENT_VOLUME_RATIO || 1.8);
+const MIN_WATCH_VOLUME_RATIO = Number(process.env.MIN_WATCH_VOLUME_RATIO || 1.2);
+const MIN_ROLLING_RETURN = Number(
+  process.env.MIN_ROLLING_RETURN || process.env.MIN_MONTHLY_RETURN || 15,
+);
+const MIN_WATCH_RETURN = Number(process.env.MIN_WATCH_RETURN || 30);
 const MIN_RELATIVE_RETURN = Number(process.env.MIN_RELATIVE_RETURN || 8);
 const MIN_MFI = Number(process.env.MIN_MFI || 70);
-const MAX_MONTH_HIGH_DRAWDOWN = Number(process.env.MAX_MONTH_HIGH_DRAWDOWN || 20);
+const MIN_WATCH_MFI = Number(process.env.MIN_WATCH_MFI || 85);
+const MOVING_AVERAGE_DAYS = Number(process.env.MOVING_AVERAGE_DAYS || 10);
+const MAX_ROLLING_HIGH_DRAWDOWN = Number(
+  process.env.MAX_ROLLING_HIGH_DRAWDOWN ||
+    process.env.MAX_MONTH_HIGH_DRAWDOWN ||
+    20,
+);
 const BENCHMARK_SYMBOL = process.env.BENCHMARK_SYMBOL || "QQQ";
 const MARKET_CAP_PREFILTER = process.env.MARKET_CAP_PREFILTER !== "0";
 const NASDAQ_LISTED =
@@ -42,15 +59,16 @@ const benchmarkRows = await fetchYahooDaily(
   historyStartDate(),
   historyEndDate(),
 );
-const benchmarkMonths = monthlyBars(benchmarkRows);
 const universeInfo = await fetchUsUniverse({ minimumMarketCapUsd });
 const universe = filteredUniverse(universeInfo.universe, universeInfo.allBySymbol).slice(
   0,
   LIMIT || undefined,
 );
-console.error(
-  `prefiltered ${universeInfo.universe.length}/${universeInfo.rawCount} by market cap`,
-);
+if (universeInfo.usedMarketCapPrefilter) {
+  console.error(
+    `prefiltered ${universeInfo.universe.length}/${universeInfo.rawCount} by market cap`,
+  );
+}
 if (universe.length !== universeInfo.universe.length) {
   console.error(`universe ${universe.length}/${universeInfo.universe.length} after limit`);
 }
@@ -61,7 +79,7 @@ let completed = 0;
 await runPool(universe, CONCURRENCY, async (stock) => {
   try {
     const rows = await fetchNasdaqDaily(stock);
-    const screening = screenStock(stock, rows, benchmarkMonths);
+    const screening = screenStock(stock, rows, benchmarkRows);
     if (!screening) return;
 
     const marketCapUsd = Number.isFinite(stock.marketCapUsd)
@@ -98,16 +116,23 @@ const payload = {
   benchmark: BENCHMARK_SYMBOL,
   comparisonMonthCount: COMPARISON_MONTH_COUNT,
   condition: {
-    breakout: "target month close exceeds previous comparison-month closing high",
+    breakout: `latest close reaches recent ${ROLLING_WINDOW_DAYS}-trading-day closing high`,
     dailyMfi: `>= ${MIN_MFI}`,
-    minimumHistoryMonths: MIN_HISTORY_MONTHS,
+    earlyWatch:
+      `21-day volume >= ${MIN_WATCH_VOLUME_RATIO}x, ` +
+      `${RECENT_VOLUME_DAYS}-day volume >= ${MIN_RECENT_VOLUME_RATIO}x, ` +
+      `MFI >= ${MIN_WATCH_MFI}, and 21-day return >= ${MIN_WATCH_RETURN}% or 21-day high breakout`,
+    minimumHistoryDays: MIN_HISTORY_DAYS,
     minimumMarketCapKrw: MIN_MARKET_CAP_KRW,
     minimumMarketCapUsd: Math.round(minimumMarketCapUsd),
-    monthHighDrawdown: `>= -${MAX_MONTH_HIGH_DRAWDOWN}% from target-month high`,
-    monthlyReturn: `>= ${MIN_MONTHLY_RETURN}% vs previous month close`,
+    monthHighDrawdown: `>= -${MAX_ROLLING_HIGH_DRAWDOWN}% from recent ${ROLLING_WINDOW_DAYS}-trading-day high`,
+    monthlyReturn: `>= ${MIN_ROLLING_RETURN}% over recent ${ROLLING_WINDOW_DAYS} trading days`,
+    recentVolumeRatio:
+      `>= ${MIN_RECENT_VOLUME_RATIO}x vs previous ${ROLLING_WINDOW_DAYS * COMPARISON_MONTH_COUNT}-trading-day daily average`,
     relativeReturn: `>= ${MIN_RELATIVE_RETURN}% vs ${BENCHMARK_SYMBOL}`,
     setupScore: `>= ${MIN_SETUP_SCORE}`,
-    volumeRatio: `>= ${MIN_VOLUME_RATIO}x vs previous ${COMPARISON_MONTH_COUNT}-month average`,
+    tenDayTrend: `close >= ${MOVING_AVERAGE_DAYS}-day average for confirmed candidates`,
+    volumeRatio: `>= ${MIN_VOLUME_RATIO}x vs previous ${COMPARISON_MONTH_COUNT} rolling ${ROLLING_WINDOW_DAYS}-trading-day averages`,
   },
   exchangeRate: {
     pair: "USD/KRW",
@@ -116,6 +141,7 @@ const payload = {
   marketMonth: MARKET_MONTH,
   note:
     "Forward returns are included only for historical review and are not used in the screen.",
+  screenVersion: SCREEN_VERSION,
   universe:
     SYMBOL_FILTER.size > 0
       ? `Manual symbols: ${[...SYMBOL_FILTER].join(", ")}`
@@ -138,110 +164,150 @@ await writeFile(`${outStem}.csv`, toCsv(results));
 
 console.log(JSON.stringify(payload, null, 2));
 
-function screenStock(stock, rows, benchmarkMonthlyBars) {
-  const months = monthlyBars(rows);
-  const monthMap = new Map(months.map((month) => [month.month, month]));
-  const current = monthMap.get(MARKET_MONTH);
-  if (!current) return null;
+function screenStock(stock, rows, benchmarkRows) {
+  const sortedRows = rows.slice().sort((a, b) => a.date.localeCompare(b.date));
+  const targetIndex = latestIndexInMonth(sortedRows, MARKET_MONTH);
+  if (targetIndex < 0) return null;
+  if (targetIndex + 1 < MIN_HISTORY_DAYS) return null;
 
-  const previousMonthKeys = previousMonths(MARKET_MONTH, COMPARISON_MONTH_COUNT);
-  const previous = previousMonthKeys
-    .map((month) => monthMap.get(month))
-    .filter(Boolean);
-  if (previous.length < MIN_HISTORY_MONTHS) return null;
-
-  const previousAverageVolume = average(previous.map((month) => month.volume));
-  if (!previousAverageVolume) return null;
-
-  const previousMonth = previous.at(-1);
-  const previousCloseHigh = Math.max(...previous.map((month) => month.close));
-  const targetReturn = percentChange(current.close, previousMonth.close);
-  const firstToLastReturn = percentChange(current.close, current.firstClose);
-  const monthHighDrawdown = percentChange(current.close, current.high);
-  const recentWorstDailyReturn = worstRecentDailyReturn(
-    rows.filter((row) => row.date <= current.lastDate),
-    5,
+  const current = sortedRows[targetIndex];
+  const rowsUntilTarget = sortedRows.slice(0, targetIndex + 1);
+  const volumeStats = rollingVolumeStats(
+    sortedRows,
+    targetIndex,
+    ROLLING_WINDOW_DAYS,
+    COMPARISON_MONTH_COUNT,
   );
-  const volumeRatio = current.volume / previousAverageVolume;
-  const breakout = current.close > previousCloseHigh;
-  const benchmarkReturn = benchmarkMonthReturn(benchmarkMonthlyBars, MARKET_MONTH);
+  if (!volumeStats) return null;
+
+  const recentVolumeRatio = recentAverageVolumeRatio(
+    sortedRows,
+    targetIndex,
+    RECENT_VOLUME_DAYS,
+    ROLLING_WINDOW_DAYS * COMPARISON_MONTH_COUNT,
+  );
+  if (!Number.isFinite(recentVolumeRatio)) return null;
+
+  const returnBase = sortedRows[targetIndex - ROLLING_WINDOW_DAYS];
+  if (!returnBase) return null;
+  const targetReturn = percentChange(current.close, returnBase.close);
+  const benchmarkReturn = benchmarkRollingReturn(
+    benchmarkRows,
+    current.date,
+    ROLLING_WINDOW_DAYS,
+  );
   const relativeReturn = Number.isFinite(benchmarkReturn)
     ? targetReturn - benchmarkReturn
     : NaN;
-  const mfi = calculateMfi(
-    rows.filter((row) => row.date <= current.lastDate),
-    14,
+  const recentWindow = sortedRows.slice(
+    targetIndex - ROLLING_WINDOW_DAYS + 1,
+    targetIndex + 1,
   );
-  const trailing3Average = average(
-    [...previous.slice(-2), current].map((month) => month.close),
+  const previousCloseHigh = Math.max(
+    ...sortedRows
+      .slice(targetIndex - ROLLING_WINDOW_DAYS, targetIndex)
+      .map((row) => row.close),
   );
-  const aboveTrailing3Average = current.close > trailing3Average;
-  const setupScore = monthlyBreakoutScore({
-    aboveTrailing3Average,
+  const rollingHigh = Math.max(...recentWindow.map((row) => row.high));
+  const monthHighDrawdown = percentChange(current.close, rollingHigh);
+  const recentWorstDailyReturn = worstRecentDailyReturn(rowsUntilTarget, 5);
+  const breakout = current.close >= previousCloseHigh;
+  const mfi = calculateMfi(rowsUntilTarget, 14);
+  const tenDayAverage = movingAverage(
+    rowsUntilTarget.map((row) => row.close),
+    MOVING_AVERAGE_DAYS,
+  );
+  const aboveTenDayAverage =
+    Number.isFinite(tenDayAverage) && current.close >= tenDayAverage;
+  const observationCandidate =
+    volumeStats.volumeRatio >= MIN_WATCH_VOLUME_RATIO &&
+    recentVolumeRatio >= MIN_RECENT_VOLUME_RATIO &&
+    mfi >= MIN_WATCH_MFI &&
+    (targetReturn >= MIN_WATCH_RETURN || breakout);
+  const confirmedCandidate =
+    volumeStats.volumeRatio >= MIN_VOLUME_RATIO &&
+    targetReturn >= MIN_ROLLING_RETURN &&
+    relativeReturn >= MIN_RELATIVE_RETURN &&
+    monthHighDrawdown >= -MAX_ROLLING_HIGH_DRAWDOWN &&
+    mfi >= MIN_MFI &&
+    aboveTenDayAverage;
+  const setupScore = rollingBreakoutScore({
+    aboveTenDayAverage,
     breakout,
     mfi,
+    recentVolumeRatio,
     relativeReturn,
     targetReturn,
-    volumeRatio,
+    volumeRatio: volumeStats.volumeRatio,
   });
 
   if (
     setupScore < MIN_SETUP_SCORE ||
-    volumeRatio < MIN_VOLUME_RATIO ||
-    targetReturn < MIN_MONTHLY_RETURN ||
-    relativeReturn < MIN_RELATIVE_RETURN ||
-    monthHighDrawdown < -MAX_MONTH_HIGH_DRAWDOWN ||
-    !breakout ||
-    mfi < MIN_MFI
+    (!confirmedCandidate && !observationCandidate)
   ) {
     return null;
   }
 
+  const signal = confirmedCandidate
+    ? setupScore >= 85
+      ? "강한 1개월 상승 후보"
+      : "1개월 상승 후보"
+    : "초기 관찰 후보";
+
   return {
-    aboveTrailing3Average,
+    aboveTenDayAverage,
+    aboveTrailing3Average: aboveTenDayAverage,
     benchmarkReturn: round(benchmarkReturn, 2),
     breakout,
     exchange: stock.exchange,
-    firstToLastReturn: round(firstToLastReturn, 2),
+    firstToLastReturn: round(percentChange(current.close, recentWindow[0]?.close), 2),
     lastClose: round(current.close, 4),
-    lastDate: current.lastDate,
+    lastDate: current.date,
     mfi: round(mfi, 2),
-    monthHigh: round(current.high, 4),
+    monthHigh: round(rollingHigh, 4),
     monthHighDrawdown: round(monthHighDrawdown, 2),
     monthlyReturn: round(targetReturn, 2),
     name: stock.name,
-    next1mReturn: round(forwardReturn(monthMap, MARKET_MONTH, 1), 2),
-    next3mReturn: round(forwardReturn(monthMap, MARKET_MONTH, 3), 2),
-    next6mReturn: round(forwardReturn(monthMap, MARKET_MONTH, 6), 2),
-    previousAverageVolume: Math.round(previousAverageVolume),
+    next1mReturn: round(forwardTradingDayReturn(sortedRows, targetIndex, 21), 2),
+    next3mReturn: round(forwardTradingDayReturn(sortedRows, targetIndex, 63), 2),
+    next6mReturn: round(forwardTradingDayReturn(sortedRows, targetIndex, 126), 2),
+    previousAverageVolume: Math.round(volumeStats.previousAverageVolume),
     previousCloseHigh: round(previousCloseHigh, 4),
-    previousMonthClose: round(previousMonth.close, 4),
+    previousMonthClose: round(returnBase.close, 4),
     rawSymbol: stock.rawSymbol,
+    recentVolumeDays: RECENT_VOLUME_DAYS,
+    recentVolumeRatio: round(recentVolumeRatio, 2),
     recentWorstDailyReturn: round(recentWorstDailyReturn, 2),
+    recommendationStage: confirmedCandidate ? "confirmed" : "watch",
     relativeReturn: round(relativeReturn, 2),
+    rollingReturn: round(targetReturn, 2),
+    rollingWindowDays: ROLLING_WINDOW_DAYS,
+    rollingWindowStartDate: recentWindow[0]?.date || "",
     setupScore,
-    signal: setupScore >= 85 ? "강한 월간 상승 후보" : "월간 상승 후보",
+    signal,
     symbol: stock.symbol,
-    targetMonthVolume: Math.round(current.volume),
-    volumeRatio: round(volumeRatio, 2),
+    targetMonthVolume: Math.round(volumeStats.recentVolume),
+    volumeRatio: round(volumeStats.volumeRatio, 2),
   };
 }
 
-function monthlyBreakoutScore({
-  aboveTrailing3Average,
+function rollingBreakoutScore({
+  aboveTenDayAverage,
   breakout,
   mfi,
+  recentVolumeRatio,
   relativeReturn,
   targetReturn,
   volumeRatio,
 }) {
   let score = 0;
-  score += Math.min(25, (volumeRatio / MIN_VOLUME_RATIO) * 25);
-  score += Math.min(20, (targetReturn / MIN_MONTHLY_RETURN) * 20);
-  score += Math.min(15, (relativeReturn / MIN_RELATIVE_RETURN) * 15);
-  score += breakout ? 20 : 0;
-  score += aboveTrailing3Average ? 10 : 0;
-  score += Math.min(10, (mfi / MIN_MFI) * 10);
+  score += Math.min(22, (volumeRatio / MIN_VOLUME_RATIO) * 22);
+  score += Math.min(16, (recentVolumeRatio / MIN_RECENT_VOLUME_RATIO) * 16);
+  score += Math.min(18, (targetReturn / MIN_ROLLING_RETURN) * 18);
+  score += Math.min(12, (relativeReturn / MIN_RELATIVE_RETURN) * 12);
+  score += breakout ? 12 : 0;
+  score += aboveTenDayAverage ? 8 : 0;
+  score += Math.min(12, (mfi / MIN_MFI) * 12);
   return Math.round(Math.max(0, Math.min(100, score)));
 }
 
@@ -286,6 +352,81 @@ function forwardReturn(monthMap, month, monthsForward) {
   return percentChange(target.close, current.close);
 }
 
+function latestIndexInMonth(rows, month) {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    if (rows[index].date.startsWith(month)) return index;
+  }
+  return -1;
+}
+
+function latestIndexAtOrBefore(rows, date) {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    if (rows[index].date <= date) return index;
+  }
+  return -1;
+}
+
+function rollingVolumeStats(rows, targetIndex, windowDays, comparisonCount) {
+  const recentStart = targetIndex - windowDays + 1;
+  const previousStart = recentStart - windowDays * comparisonCount;
+  if (previousStart < 0) return null;
+
+  const recentRows = rows.slice(recentStart, targetIndex + 1);
+  const previousRows = rows.slice(previousStart, recentStart);
+  if (
+    recentRows.length < windowDays ||
+    previousRows.length < windowDays * comparisonCount
+  ) {
+    return null;
+  }
+
+  const recentVolume = sum(recentRows.map((row) => row.volume));
+  const previousVolumes = Array.from({ length: comparisonCount }, (_, index) => {
+    const start = index * windowDays;
+    const groupRows = previousRows.slice(start, start + windowDays);
+    return sum(groupRows.map((row) => row.volume));
+  });
+  const previousAverageVolume = average(previousVolumes);
+  if (!Number.isFinite(previousAverageVolume) || previousAverageVolume <= 0) {
+    return null;
+  }
+
+  return {
+    previousAverageVolume,
+    recentVolume,
+    volumeRatio: recentVolume / previousAverageVolume,
+  };
+}
+
+function recentAverageVolumeRatio(rows, targetIndex, recentDays, previousDays) {
+  const recentStart = targetIndex - recentDays + 1;
+  const previousStart = recentStart - previousDays;
+  if (previousStart < 0) return NaN;
+
+  const recentRows = rows.slice(recentStart, targetIndex + 1);
+  const previousRows = rows.slice(previousStart, recentStart);
+  if (recentRows.length < recentDays || previousRows.length < previousDays) {
+    return NaN;
+  }
+
+  const recentAverage = average(recentRows.map((row) => row.volume));
+  const previousAverage = average(previousRows.map((row) => row.volume));
+  if (!Number.isFinite(previousAverage) || previousAverage <= 0) return NaN;
+  return recentAverage / previousAverage;
+}
+
+function benchmarkRollingReturn(rows, targetDate, windowDays) {
+  const targetIndex = latestIndexAtOrBefore(rows || [], targetDate);
+  if (targetIndex < windowDays) return NaN;
+  return percentChange(rows[targetIndex].close, rows[targetIndex - windowDays].close);
+}
+
+function forwardTradingDayReturn(rows, targetIndex, daysForward) {
+  const target = rows[targetIndex + daysForward];
+  if (!target) return NaN;
+  return percentChange(target.close, rows[targetIndex].close);
+}
+
 function worstRecentDailyReturn(rows, days) {
   const recent = rows.slice(-(days + 1));
   if (recent.length < 2) return NaN;
@@ -299,7 +440,7 @@ async function fetchUsUniverse({ minimumMarketCapUsd = 0 } = {}) {
     fetchText(NASDAQ_LISTED),
     fetchText(OTHER_LISTED),
     fetchNasdaqScreenerStocks().catch((error) => {
-      console.error(`market-cap prefilter unavailable: ${error.message}`);
+      console.error(`Nasdaq screener metadata unavailable: ${error.message}`);
       return [];
     }),
   ]);
@@ -591,13 +732,24 @@ function toCsv(rows) {
     "lastDate",
     "lastClose",
     "monthlyReturn",
+    "rollingReturn",
     "benchmarkReturn",
     "relativeReturn",
     "firstToLastReturn",
+    "targetMonthVolume",
+    "previousAverageVolume",
+    "recentVolumeRatio",
+    "recentVolumeDays",
+    "previousCloseHigh",
+    "previousMonthClose",
     "volumeRatio",
     "mfi",
     "breakout",
+    "aboveTenDayAverage",
     "aboveTrailing3Average",
+    "recommendationStage",
+    "rollingWindowDays",
+    "rollingWindowStartDate",
     "next1mReturn",
     "next3mReturn",
     "next6mReturn",
@@ -732,6 +884,11 @@ function sum(values) {
 function average(values) {
   const clean = values.filter(Number.isFinite);
   return clean.length ? sum(clean) / clean.length : NaN;
+}
+
+function movingAverage(values, period) {
+  const recent = values.filter(Number.isFinite).slice(-period);
+  return recent.length === period ? average(recent) : NaN;
 }
 
 function round(value, digits = 2) {
