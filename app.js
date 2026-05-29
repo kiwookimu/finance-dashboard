@@ -382,15 +382,15 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
   const generatedAtText = formatDateTime(payload?.generatedAt);
   const invalidatedCount = Number(payload?.invalidatedCount);
   const showInvalidatedCount = !payload?.logicOutdated && invalidatedCount > 0;
+  const showMatchCount =
+    !payload?.logicOutdated && Number.isFinite(matchCount) && matchCount > 0;
   const statusParts = [
     payload?.marketMonth,
     generatedAtText,
-    Number.isFinite(matchCount) ? `${matchCount}개` : "",
+    showMatchCount ? `${matchCount}개` : "",
     showInvalidatedCount ? `무효화 ${invalidatedCount}개 제외` : "",
-    payload?.refreshed ? "갱신됨" : payload?.saved ? "저장본" : "",
-    payload?.logicOutdated ? "갱신 필요" : "",
+    payload?.refreshed ? "갱신됨" : "",
     recommendationCooldownText(payload),
-    payload?.stale ? "이전 결과" : "",
   ].filter(Boolean);
   setText(config.statusSelector, statusParts.join(" · ") || "후보 없음");
   hideRecommendationProgress(config);
@@ -421,7 +421,7 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
 
   if (!results.length) {
     list.innerHTML = `<p class="recommendation-empty">${
-      payload?.logicOutdated ? "새 추천 로직으로 갱신이 필요합니다" : "조건 충족 종목 없음"
+      payload?.logicOutdated ? "새 기준으로 다시 계산해 주세요" : "조건 충족 종목 없음"
     }</p>`;
     return;
   }
