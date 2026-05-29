@@ -759,7 +759,6 @@ async function loadIndicators() {
     renderVix(sentiment.vix);
     renderMarketIndicator("vixTerm", buildVixTermQuote(market.quotes.vix3m, sentiment.vix));
     renderTradingSignal(market.quotes, sentiment);
-    renderTimestamp(market.quotes);
     setText(
       "#marketSource",
       `Yahoo Finance · FRED · TrendForce · 공포·탐욕 ${formatIsoDate(sentiment.fearGreed.date)} · VIX ${formatIsoDate(sentiment.vix.date)} 기준 지연 데이터`,
@@ -1832,16 +1831,6 @@ function renderSparkline(selector, series, fallbackText = "현재값만 공개")
     <path class="line" d="${line}"></path>
     <circle cx="${lastX.toFixed(2)}" cy="${lastY.toFixed(2)}" r="3"></circle>
   `;
-}
-
-function renderTimestamp(quotes) {
-  const latestIso = Object.values(quotes || {})
-    .map((quote) => quote.marketTime)
-    .filter(Boolean)
-    .sort()
-    .at(-1);
-
-  setText("#marketTimestamp", latestIso ? formatTime(latestIso) : "지연");
 }
 
 function scoreRiskAsset(quote) {
