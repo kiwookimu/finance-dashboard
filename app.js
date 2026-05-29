@@ -44,6 +44,19 @@ const RECOMMENDATION_CONFIGS = {
     progressSelector: "#recommendationProgress",
     refreshText: "최신 후보 갱신 중",
     statusSelector: "#recommendationStatus",
+    view: "confirmed",
+  },
+  observation: {
+    buttonSelector: "#observationRecommendationRefresh",
+    conditionSelector: "#observationRecommendationCondition",
+    endpoint: "/api/stock-recommendations",
+    listSelector: "#observationRecommendationList",
+    loadingText: "관찰 후보 계산 중",
+    progressEndpoint: "/api/recommendation-refresh-progress?market=domestic",
+    progressSelector: "#observationRecommendationProgress",
+    refreshText: "관찰 후보 갱신 중",
+    statusSelector: "#observationRecommendationStatus",
+    view: "observation",
   },
   us: {
     buttonSelector: "#usRecommendationRefresh",
@@ -59,6 +72,10 @@ const RECOMMENDATION_CONFIGS = {
 };
 const recommendationStates = {
   domestic: {
+    loaded: false,
+    loading: false,
+  },
+  observation: {
     loaded: false,
     loading: false,
   },
@@ -94,6 +111,9 @@ function initializeDashboardTabs() {
       panel.hidden = !isSelected;
     }
     if (panelId === "recommendationsPanel") loadRecommendations();
+    if (panelId === "observationRecommendationsPanel") {
+      loadRecommendations({ market: "observation" });
+    }
     if (panelId === "usRecommendationsPanel") loadRecommendations({ market: "us" });
     if (shouldFocus) selectedTab.focus();
   };
@@ -119,6 +139,10 @@ function initializeDashboardTabs() {
 function initializeRecommendationActions() {
   const refreshButton = document.querySelector("#recommendationRefresh");
   refreshButton?.addEventListener("click", () => loadRecommendations({ force: true }));
+  const observationRefreshButton = document.querySelector("#observationRecommendationRefresh");
+  observationRefreshButton?.addEventListener("click", () =>
+    loadRecommendations({ force: true, market: "observation" }),
+  );
   const usRefreshButton = document.querySelector("#usRecommendationRefresh");
   usRefreshButton?.addEventListener("click", () =>
     loadRecommendations({ force: true, market: "us" }),
@@ -366,7 +390,9 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
   const rawResults = payload?.logicOutdated
     ? []
     : (payload?.results || payload?.topResults || []).filter(
-        (item) => !item.recommendationInvalidated,
+        (item) =>
+          !item.recommendationInvalidated &&
+          shouldShowRecommendationInView(item, config.view),
       );
   const results = rawResults
     .map((item) => {
@@ -402,15 +428,7 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
   setRecommendationRefreshVisibility(config, canRefreshRecommendations(payload));
   setText(
     config.conditionSelector,
-    [
-      formatMarketFilter(payload?.condition?.marketFilter),
-      formatMarketCapCondition(payload?.condition?.minimumMarketCapKrw),
-      `21일 거래량 ${formatConditionNumber(payload?.condition?.volumeRatio)}`,
-      `MFI ${formatConditionNumber(payload?.condition?.dailyMfi)}`,
-      formatDrawdownCondition(payload?.condition?.monthHighDrawdown),
-    ]
-      .filter(Boolean)
-      .join(" · "),
+    recommendationConditionText(payload, config),
   );
 
   const list = document.querySelector(config.listSelector);
@@ -482,6 +500,37 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
     })
     .join("");
   bindRecommendationDetailCards(list);
+}
+
+function shouldShowRecommendationInView(item, view = "all") {
+  const stage = item?.recommendationStage || "confirmed";
+  if (view === "confirmed") return stage === "confirmed";
+  if (view === "observation") return stage === "watch" || stage === "observe";
+  return true;
+}
+
+function recommendationConditionText(payload, config = RECOMMENDATION_CONFIGS.domestic) {
+  if (config.view === "observation") {
+    return [
+      formatMarketFilter(payload?.condition?.marketFilter),
+      formatMarketCapCondition(payload?.condition?.minimumMarketCapKrw),
+      "상대강도 +30%p 이상",
+      "MFI 70 이상",
+      "고점권·10일선 위",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  return [
+    formatMarketFilter(payload?.condition?.marketFilter),
+    formatMarketCapCondition(payload?.condition?.minimumMarketCapKrw),
+    `21일 거래량 ${formatConditionNumber(payload?.condition?.volumeRatio)}`,
+    `MFI ${formatConditionNumber(payload?.condition?.dailyMfi)}`,
+    formatDrawdownCondition(payload?.condition?.monthHighDrawdown),
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function bindRecommendationDetailCards(list) {
@@ -743,6 +792,7 @@ function buildRecommendationSetup(item, entryDecision = recommendationEntryDecis
     recommendationDrawdownTag(monthHighDrawdown),
     item.breakout ? "1개월 고점 돌파" : "",
     item.recommendationStage === "watch" ? "초기 관찰" : "",
+    item.recommendationStage === "observe" ? "조기 관찰" : "",
   ]
     .filter(Boolean)
     .slice(0, 5);
@@ -781,6 +831,9 @@ function recommendationSetupSummary({
   }
   if (recommendationStage === "watch") {
     return `21일 거래량은 확인 전이지만 최근 5일 거래량이 ${formatNumber(recentVolumeRatio, 2)}배로 먼저 붙어 초기 관찰 후보로 분류됐어. ${action}`;
+  }
+  if (recommendationStage === "observe") {
+    return `거래량 확정 전이지만 1개월 상승률 ${formatSignedNumber(monthlyReturn, 1)}%, 상대강도 ${formatSignedNumber(relativeReturn, 1)}%p로 시장보다 먼저 튀고 있어. ${action}`;
   }
   if (volumeRatio >= 8) {
     return `최근 21일 거래량이 과거 5개 21일 평균의 ${formatNumber(volumeRatio, 2)}배로 폭발했고, 상대강도도 ${formatSignedNumber(relativeReturn, 1)}%p라 수급 쏠림이 강했어. ${action}`;
@@ -871,7 +924,7 @@ function recommendationEntryDecision({
   monthlyReturn,
   recommendationStage,
 }) {
-  if (recommendationStage === "watch") {
+  if (recommendationStage === "watch" || recommendationStage === "observe") {
     return {
       action: "우선 관찰해.",
       label: "관찰",

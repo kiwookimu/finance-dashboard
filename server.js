@@ -18,7 +18,7 @@ const RECOMMENDATION_SCRIPT_START_PERCENT = 8;
 const RECOMMENDATION_SCRIPT_DONE_PERCENT = 92;
 const RECOMMENDATION_STOP_LOSS_PERCENT = -8;
 const RECOMMENDATION_MAX_MONTH_HIGH_DRAWDOWN = -20;
-const DOMESTIC_STOCK_RECOMMENDATION_VERSION = "kr-rolling-21-v2";
+const DOMESTIC_STOCK_RECOMMENDATION_VERSION = "kr-rolling-21-v3";
 const US_STOCK_RECOMMENDATION_VERSION = "us-rolling-21-v2";
 
 const MARKET_SOURCES = [
@@ -1170,6 +1170,8 @@ function stockRecommendationCondition(
     dailyMfi: ">= 80",
     earlyWatch:
       "21-day volume >= 1.2x, 5-day average volume >= 1.8x, MFI >= 85, and 21-day return >= 30% or 21-day high breakout",
+    observation:
+      "21-day return >= 50%, relative return >= 30%p, MFI >= 70, near 21-day high, 21-day volume >= 1.0x, and 5-day volume >= 0.9x",
     invalidation:
       "exclude active picks if latest price is <= -8% from signal, below 10-day average, or <= -20% from recent 21-trading-day high",
     minimumHistoryDays: 127,
