@@ -466,9 +466,6 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
           <div class="recommendation-insight">
             <span>${escapeHtml(setup.label)}</span>
             <p>${escapeHtml(setup.summary)}</p>
-            <div class="recommendation-tags">
-              ${setup.tags.map((tag) => `<b>${escapeHtml(tag)}</b>`).join("")}
-            </div>
           </div>
         </article>
       `;
