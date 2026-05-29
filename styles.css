@@ -774,7 +774,6 @@ h1 {
   display: grid;
   min-width: 0;
   gap: 4px;
-  padding-right: 70px;
 }
 
 .recommendation-title strong {
@@ -840,21 +839,6 @@ h1 {
   font-weight: 800;
   line-height: 1.15;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.recommendation-score {
-  position: absolute;
-  top: 11px;
-  right: 10px;
-  padding: 5px 7px;
-  color: #1f805f;
-  background: rgba(31, 157, 114, 0.09);
-  border: 1px solid rgba(31, 157, 114, 0.24);
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 900;
-  line-height: 1;
   white-space: nowrap;
 }
 
@@ -990,18 +974,6 @@ body.modal-open {
   background: #f8faf9;
   border: 1px solid #e7eee9;
   border-radius: 8px;
-}
-
-.recommendation-detail-summary > span {
-  width: fit-content;
-  padding: 5px 7px;
-  color: #1f805f;
-  background: rgba(31, 157, 114, 0.09);
-  border: 1px solid rgba(31, 157, 114, 0.22);
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 900;
-  line-height: 1;
 }
 
 .recommendation-detail-summary strong {

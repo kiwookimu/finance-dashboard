@@ -369,12 +369,17 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
         (item) => !item.recommendationInvalidated,
       );
   const results = rawResults
-    .map((item) => ({
-      item,
-      priorityScore: recommendationPriorityScore(item),
-    }))
+    .map((item) => {
+      const entryDecision = recommendationEntryDecisionForItem(item);
+      return {
+        item,
+        entryDecision,
+        priorityScore: recommendationPriorityScore(item),
+      };
+    })
     .sort(
       (a, b) =>
+        b.entryDecision.rank - a.entryDecision.rank ||
         b.priorityScore - a.priorityScore ||
         Number(b.item.relativeReturn) - Number(a.item.relativeReturn) ||
         Number(b.item.volumeRatio) - Number(a.item.volumeRatio),
@@ -427,11 +432,11 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
   }
 
   list.innerHTML = results
-    .map(({ item, priorityScore }, index) => {
+    .map(({ item, entryDecision }, index) => {
       const ticker = item.code || item.symbol || item.rawSymbol;
-      const setup = buildRecommendationSetup(item);
+      const setup = buildRecommendationSetup(item, entryDecision);
       const detailId = `${detailPrefix}-${index}`;
-      recommendationDetailById.set(detailId, { item, priorityScore, setup });
+      recommendationDetailById.set(detailId, { item, setup });
       const marketCapText = formatKoreanMarketCap(item.marketCapKrw);
       const detail = [
         item.marketType || item.exchange,
@@ -463,7 +468,6 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
               <span><b>${escapeHtml(marketCapText)}</b><em>시가총액</em></span>
             </div>
           </div>
-          <span class="recommendation-score">우선 ${priorityScore}점</span>
           <div class="recommendation-insight">
             <p>${escapeHtml(setup.summary)}</p>
           </div>
@@ -497,10 +501,10 @@ function openRecommendationDetail(detailId) {
   const body = document.querySelector("#recommendationDetailBody");
   if (!detail || !modal || !title || !signal || !body) return;
 
-  const { item, priorityScore, setup } = detail;
+  const { item, setup } = detail;
   title.textContent = item.name || "추천주 상세";
   signal.textContent = item.signal || "1개월 상승 후보";
-  body.innerHTML = buildRecommendationDetailMarkup(item, priorityScore, setup);
+  body.innerHTML = buildRecommendationDetailMarkup(item, setup);
   modal.hidden = false;
   document.body.classList.add("modal-open");
   modal.querySelector(".recommendation-modal-close")?.focus();
@@ -515,7 +519,7 @@ function closeRecommendationDetail() {
   lastRecommendationDetailTrigger = null;
 }
 
-function buildRecommendationDetailMarkup(item, priorityScore, setup) {
+function buildRecommendationDetailMarkup(item, setup) {
   const ticker = item.code || item.symbol || item.rawSymbol || "-";
   const externalUrl = recommendationExternalUrl(item);
   const marketCapText = formatKoreanMarketCap(item.marketCapKrw);
@@ -542,7 +546,6 @@ function buildRecommendationDetailMarkup(item, priorityScore, setup) {
 
   return `
     <div class="recommendation-detail-summary">
-      <span>우선 ${priorityScore}점</span>
       <strong>${escapeHtml(setup.label)}</strong>
       <p>${escapeHtml(setup.summary)}</p>
       <div class="recommendation-tags">
@@ -644,12 +647,20 @@ function recommendationPriorityScore(item) {
   return clamp(Math.round(score), 0, 99);
 }
 
+function recommendationEntryDecisionForItem(item) {
+  return recommendationEntryDecision({
+    monthHighDrawdown: Number(item.monthHighDrawdown),
+    monthlyReturn: Number(item.monthlyReturn),
+    recommendationStage: item.recommendationStage,
+  });
+}
+
 function scaleBetween(value, min, max, points) {
   if (!Number.isFinite(value) || max <= min) return 0;
   return clamp((value - min) / (max - min), 0, 1) * points;
 }
 
-function buildRecommendationSetup(item) {
+function buildRecommendationSetup(item, entryDecision = recommendationEntryDecisionForItem(item)) {
   const volumeRatio = Number(item.volumeRatio);
   const recentVolumeRatio = Number(item.recentVolumeRatio);
   const mfi = Number(item.mfi);
@@ -672,8 +683,10 @@ function buildRecommendationSetup(item) {
     .slice(0, 5);
 
   return {
+    entry: entryDecision,
     label: `${formatIsoDate(item.lastDate || "") || "추천 시점"} 기준`,
     summary: recommendationSetupSummary({
+      entryDecision,
       mfi,
       monthHighDrawdown,
       monthlyReturn,
@@ -687,6 +700,7 @@ function buildRecommendationSetup(item) {
 }
 
 function recommendationSetupSummary({
+  entryDecision,
   mfi,
   monthHighDrawdown,
   monthlyReturn,
@@ -695,11 +709,7 @@ function recommendationSetupSummary({
   relativeReturn,
   volumeRatio,
 }) {
-  const action = recommendationActionText({
-    monthHighDrawdown,
-    monthlyReturn,
-    recommendationStage,
-  });
+  const action = entryDecision.action;
   if (monthHighDrawdown <= -10) {
     return `1개월 조건은 통과했지만 고점 대비 ${formatSignedNumber(monthHighDrawdown, 1)}% 밀려 있어 재돌파 확인이 필요해. ${action}`;
   }
@@ -726,11 +736,56 @@ function recommendationActionText({
   monthlyReturn,
   recommendationStage,
 }) {
-  if (recommendationStage === "watch") return "우선 관찰해봐.";
-  if (monthHighDrawdown <= -10) return "추격 매수는 보류해봐.";
-  if (monthlyReturn >= 100) return "추격 매수는 조심해봐.";
-  if (monthHighDrawdown <= -5) return "분할 매수를 검토해봐.";
-  return "매수를 검토해봐.";
+  return recommendationEntryDecision({
+    monthHighDrawdown,
+    monthlyReturn,
+    recommendationStage,
+  }).action;
+}
+
+function recommendationEntryDecision({
+  monthHighDrawdown,
+  monthlyReturn,
+  recommendationStage,
+}) {
+  if (recommendationStage === "watch") {
+    return {
+      action: "우선 관찰해.",
+      label: "관찰",
+      rank: 1,
+      tone: "watch",
+    };
+  }
+  if (monthHighDrawdown <= -10) {
+    return {
+      action: "추격 매수는 보류해.",
+      label: "보류",
+      rank: 0,
+      tone: "hold",
+    };
+  }
+  if (monthlyReturn >= 100) {
+    return {
+      action: "추격 매수는 조심해.",
+      label: "주의",
+      rank: 2,
+      tone: "caution",
+    };
+  }
+  if (monthHighDrawdown <= -5) {
+    return {
+      action: "분할 매수를 검토해.",
+      label: "분할",
+      rank: 3,
+      tone: "partial",
+    };
+  }
+  return {
+    action: "매수를 검토해.",
+    label: "매수",
+    rank: 4,
+    tone: "buy",
+  };
 }
 
 function recommendationVolumeTag(value) {
