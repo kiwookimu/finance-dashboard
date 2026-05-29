@@ -154,6 +154,10 @@ async function loadRecommendations({ force = false, market = "domestic" } = {}) 
     const response = await fetch(config.endpoint, { cache: "no-store" });
     if (!response.ok) throw new Error("Stock recommendation request failed");
     const payload = await response.json();
+    if (payload?.logicOutdated) {
+      await refreshRecommendations(config, state);
+      return;
+    }
     renderRecommendations(payload, config);
     state.loaded = true;
     await resumeRecommendationRefreshIfRunning(config, state);
