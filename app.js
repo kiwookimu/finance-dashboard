@@ -586,11 +586,11 @@ function recommendationDrawdownTag(value) {
 }
 
 async function loadIndicators() {
+  const portfolioPromise = fetchPortfolioMetricsForMarket();
   try {
-    const [marketResponse, sentimentResponse, portfolioResponse] = await Promise.all([
+    const [marketResponse, sentimentResponse] = await Promise.all([
       fetch("/api/market-overview", { cache: "no-store" }),
       fetch("/api/market-sentiment", { cache: "no-store" }),
-      fetch("/api/portfolio-metrics", { cache: "no-store" }).catch(() => null),
     ]);
 
     if (!marketResponse.ok || !sentimentResponse.ok) {
@@ -599,9 +599,6 @@ async function loadIndicators() {
 
     const market = await marketResponse.json();
     const sentiment = await sentimentResponse.json();
-    const portfolioMetrics = portfolioResponse?.ok
-      ? await portfolioResponse.json()
-      : null;
 
     renderMarketIndicator("kospi", market.quotes.kospi);
     renderMarketIndicator("sp500", market.quotes.sp500);
@@ -612,10 +609,6 @@ async function loadIndicators() {
     renderMarketIndicator("sp500Breadth", market.quotes.sp500Breadth);
     renderMarketIndicator("semiBreadth", market.quotes.semiBreadth);
     renderMarketIndicator("semiLeadership", market.quotes.semiLeadership);
-    renderMarketIndicator(
-      "portfolioHighProximity",
-      buildPortfolioHighProximityQuote(portfolioMetrics),
-    );
     renderMarketIndicator("ddr5Spot", market.quotes.ddr5Spot);
     renderMarketIndicator("serverDdr5Contract", market.quotes.serverDdr5Contract);
     renderMarketIndicator("dxi", market.quotes.dxi);
@@ -628,12 +621,12 @@ async function loadIndicators() {
     renderVix(sentiment.vix);
     renderMarketIndicator("vixTerm", buildVixTermQuote(market.quotes.vix3m, sentiment.vix));
     renderTradingSignal(market.quotes, sentiment);
-    renderPortfolioSignal(market.quotes, sentiment, portfolioMetrics);
     renderTimestamp(market.quotes);
     setText(
       "#marketSource",
       `Yahoo Finance · FRED · Naver Finance · TrendForce · DRAMeXchange · 공포·탐욕 ${formatIsoDate(sentiment.fearGreed.date)} · VIX ${formatIsoDate(sentiment.vix.date)} 기준 지연 데이터`,
     );
+    renderPortfolioHighProximityWhenReady(market, sentiment, portfolioPromise);
   } catch (error) {
     console.warn("Indicator data unavailable", error);
     renderSignalState({
@@ -651,6 +644,42 @@ async function loadIndicators() {
     });
     setText("#marketSource", "시장 데이터 갱신 실패");
   }
+}
+
+async function fetchPortfolioMetricsForMarket() {
+  try {
+    const response = await fetch("/api/portfolio-metrics", { cache: "no-store" });
+    if (!response.ok) throw new Error("Portfolio metrics request failed");
+    return response.json();
+  } catch (error) {
+    console.warn("Portfolio metrics unavailable", error);
+    return null;
+  }
+}
+
+function renderPortfolioHighProximityWhenReady(market, sentiment, portfolioPromise) {
+  portfolioPromise.then((portfolioMetrics) => {
+    const quote =
+      buildPortfolioHighProximityQuote(portfolioMetrics) ||
+      portfolioHighProximityUnavailableQuote();
+    renderMarketIndicator("portfolioHighProximity", quote);
+    renderPortfolioSignal(market.quotes, sentiment, portfolioMetrics);
+  });
+}
+
+function portfolioHighProximityUnavailableQuote() {
+  return {
+    change: 0,
+    changeClass: "",
+    changeText: "네이버 데이터 지연",
+    decimals: 1,
+    history: [],
+    id: "portfolioHighProximity",
+    label: "보유 ETF 52주 고점 근접도",
+    price: null,
+    sparklineText: "갱신 지연",
+    valueText: "지연",
+  };
 }
 
 function renderTradingSignal(quotes, sentiment) {

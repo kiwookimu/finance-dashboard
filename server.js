@@ -110,10 +110,12 @@ const PORTFOLIO_HOLDINGS = [
 
 let cachedMarketOverview = null;
 let cachedMarketAt = 0;
+let marketOverviewRefreshPromise = null;
 let cachedSentiment = null;
 let cachedSentimentAt = 0;
 let cachedPortfolio = null;
 let cachedPortfolioAt = 0;
+let portfolioRefreshPromise = null;
 let cachedStockRecommendations = null;
 let cachedStockRecommendationsAt = 0;
 let stockRecommendationRefreshPromise = null;
@@ -202,6 +204,38 @@ async function getMarketOverview() {
     return { ...cachedMarketOverview, cached: true };
   }
 
+  if (cachedMarketOverview) {
+    refreshMarketOverview().catch((error) => {
+      console.warn("Market overview background refresh failed", error);
+    });
+    return {
+      ...cachedMarketOverview,
+      cached: true,
+      refreshing: Boolean(marketOverviewRefreshPromise),
+      stale: true,
+    };
+  }
+
+  return refreshMarketOverview();
+}
+
+function refreshMarketOverview() {
+  if (marketOverviewRefreshPromise) return marketOverviewRefreshPromise;
+
+  marketOverviewRefreshPromise = fetchMarketOverview()
+    .then((payload) => {
+      cachedMarketOverview = payload;
+      cachedMarketAt = Date.now();
+      return cachedMarketOverview;
+    })
+    .finally(() => {
+      marketOverviewRefreshPromise = null;
+    });
+
+  return marketOverviewRefreshPromise;
+}
+
+async function fetchMarketOverview() {
   const [
     quotes,
     derivedYahooQuotes,
@@ -211,48 +245,84 @@ async function getMarketOverview() {
     serverDdr5Contract,
     dxi,
   ] = await Promise.all([
-    Promise.all(MARKET_SOURCES.map(fetchYahooQuote)),
-    Promise.all(DERIVED_YAHOO_SOURCES.map(fetchYahooQuote)),
-    Promise.all(SEMI_LEADER_SOURCES.map(fetchYahooQuote)),
-    Promise.all(FRED_SOURCES.map(fetchFredQuote)),
-    fetchTrendForceDdr5Spot(),
-    fetchTrendForceServerDdr5Contract(),
-    fetchDramExchangeDxi(),
+    Promise.all(MARKET_SOURCES.map((source) => optionalMarketQuote(fetchYahooQuote(source), source))),
+    Promise.all(
+      DERIVED_YAHOO_SOURCES.map((source) => optionalMarketQuote(fetchYahooQuote(source), source)),
+    ),
+    Promise.all(
+      SEMI_LEADER_SOURCES.map((source) => optionalMarketQuote(fetchYahooQuote(source), source)),
+    ),
+    Promise.all(
+      FRED_SOURCES.map((source) => optionalMarketQuote(fetchFredQuote(source), source, 2500)),
+    ),
+    optionalMarketQuote(fetchTrendForceDdr5Spot(), {
+      decimals: 3,
+      id: "ddr5Spot",
+      label: "DDR5 16Gb 4800/5600 Spot",
+      symbol: "DDR5 16Gb (2Gx8) 4800/5600",
+      valuePrefix: "$",
+    }),
+    optionalMarketQuote(fetchTrendForceServerDdr5Contract(), {
+      id: "serverDdr5Contract",
+      label: "Server DDR5 Contract Price",
+      symbol: "Server DIMM Contract Price",
+    }),
+    optionalMarketQuote(fetchDramExchangeDxi(), {
+      id: "dxi",
+      label: "DXI Index",
+      symbol: "DRAMeXchange Index",
+    }),
   ]);
   const derivedById = Object.fromEntries(
     derivedYahooQuotes.map((quote) => [quote.id, quote]),
   );
   const syntheticQuotes = [
-    buildRelativeStrengthQuote({
-      id: "nasdaqBreadth",
-      label: "NASDAQ 시장 폭",
-      numerator: derivedById.qqqe,
-      denominator: derivedById.qqq,
-      summary: "QQQE/QQQ 28일 상대강도",
-    }),
-    buildRelativeStrengthQuote({
-      id: "sp500Breadth",
-      label: "S&P 500 시장 폭",
-      numerator: derivedById.rsp,
-      denominator: derivedById.spy,
-      summary: "RSP/SPY 28일 상대강도",
-    }),
-    buildRelativeStrengthQuote({
-      id: "semiLeadership",
-      label: "반도체/QQQ 상대강도",
-      numerator: derivedById.smh,
-      denominator: derivedById.qqq,
-      summary: "SMH/QQQ 28일 상대강도",
-    }),
-    buildMovingAverageBreadthQuote({
-      id: "semiBreadth",
-      label: "반도체 리더 폭",
-      period: 50,
-      quotes: semiLeaderQuotes,
-      summary: "주요 반도체 7종목 50일선 상회 비율",
-    }),
+    optionalBuiltMarketQuote(
+      () =>
+        buildRelativeStrengthQuote({
+          id: "nasdaqBreadth",
+          label: "NASDAQ 시장 폭",
+          numerator: derivedById.qqqe,
+          denominator: derivedById.qqq,
+          summary: "QQQE/QQQ 28일 상대강도",
+        }),
+      { id: "nasdaqBreadth", label: "NASDAQ 시장 폭", symbol: "QQQE/QQQ" },
+    ),
+    optionalBuiltMarketQuote(
+      () =>
+        buildRelativeStrengthQuote({
+          id: "sp500Breadth",
+          label: "S&P 500 시장 폭",
+          numerator: derivedById.rsp,
+          denominator: derivedById.spy,
+          summary: "RSP/SPY 28일 상대강도",
+        }),
+      { id: "sp500Breadth", label: "S&P 500 시장 폭", symbol: "RSP/SPY" },
+    ),
+    optionalBuiltMarketQuote(
+      () =>
+        buildRelativeStrengthQuote({
+          id: "semiLeadership",
+          label: "반도체/QQQ 상대강도",
+          numerator: derivedById.smh,
+          denominator: derivedById.qqq,
+          summary: "SMH/QQQ 28일 상대강도",
+        }),
+      { id: "semiLeadership", label: "반도체/QQQ 상대강도", symbol: "SMH/QQQ" },
+    ),
+    optionalBuiltMarketQuote(
+      () =>
+        buildMovingAverageBreadthQuote({
+          id: "semiBreadth",
+          label: "반도체 리더 폭",
+          period: 50,
+          quotes: semiLeaderQuotes,
+          summary: "주요 반도체 7종목 50일선 상회 비율",
+        }),
+      { id: "semiBreadth", label: "반도체 리더 폭", symbol: "7 semi leaders > MA50" },
+    ),
   ];
-  cachedMarketOverview = {
+  return {
     cached: false,
     generatedAt: new Date().toISOString(),
     quotes: Object.fromEntries(
@@ -275,9 +345,55 @@ async function getMarketOverview() {
       fred: "FRED CSV series",
     },
   };
-  cachedMarketAt = now;
+}
 
-  return cachedMarketOverview;
+async function optionalMarketQuote(promise, fallbackSource, timeoutMs = 5500) {
+  try {
+    return await withTimeout(promise, timeoutMs, fallbackSource.label || fallbackSource.id);
+  } catch (error) {
+    return unavailableMarketQuote(fallbackSource, error);
+  }
+}
+
+function optionalBuiltMarketQuote(factory, fallbackSource) {
+  try {
+    return factory();
+  } catch (error) {
+    return unavailableMarketQuote(fallbackSource, error);
+  }
+}
+
+function unavailableMarketQuote(source, error) {
+  return {
+    change: 0,
+    changeClass: "",
+    changePercent: 0,
+    changeText: "갱신 지연",
+    changeUnit: source.changeUnit || "",
+    decimals: Number.isFinite(source.decimals) ? source.decimals : 2,
+    history: [],
+    id: source.id,
+    label: source.label,
+    marketTime: "",
+    price: null,
+    sourceError: error?.message || String(error || "unavailable"),
+    sparklineText: "갱신 지연",
+    symbol: source.symbol || source.id,
+    valuePrefix: source.valuePrefix || "",
+    valueSuffix: source.valueSuffix || "",
+    valueText: "지연",
+  };
+}
+
+function withTimeout(promise, timeoutMs, label) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`${label} ${timeoutMs}ms timeout`));
+    }, timeoutMs);
+    timer.unref?.();
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 async function fetchDramExchangeDxi() {
@@ -431,6 +547,38 @@ async function getPortfolioMetrics() {
     return { ...cachedPortfolio, cached: true };
   }
 
+  if (cachedPortfolio) {
+    refreshPortfolioMetrics().catch((error) => {
+      console.warn("Portfolio metrics background refresh failed", error);
+    });
+    return {
+      ...cachedPortfolio,
+      cached: true,
+      refreshing: Boolean(portfolioRefreshPromise),
+      stale: true,
+    };
+  }
+
+  return refreshPortfolioMetrics();
+}
+
+function refreshPortfolioMetrics() {
+  if (portfolioRefreshPromise) return portfolioRefreshPromise;
+
+  portfolioRefreshPromise = fetchPortfolioMetrics()
+    .then((payload) => {
+      cachedPortfolio = payload;
+      cachedPortfolioAt = Date.now();
+      return cachedPortfolio;
+    })
+    .finally(() => {
+      portfolioRefreshPromise = null;
+    });
+
+  return portfolioRefreshPromise;
+}
+
+async function fetchPortfolioMetrics() {
   const holdings = await Promise.all(
     PORTFOLIO_HOLDINGS.map(async (holding) => {
       const [history, flow] = await Promise.all([
@@ -450,7 +598,7 @@ async function getPortfolioMetrics() {
     }),
   );
 
-  cachedPortfolio = {
+  return {
     cached: false,
     generatedAt: new Date().toISOString(),
     holdings,
@@ -463,8 +611,6 @@ async function getPortfolioMetrics() {
       0,
     ),
   };
-  cachedPortfolioAt = now;
-  return cachedPortfolio;
 }
 
 async function getStockRecommendations({
