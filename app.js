@@ -464,7 +464,6 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
           </div>
           <span class="recommendation-score">우선 ${priorityScore}점</span>
           <div class="recommendation-insight">
-            <span>${escapeHtml(setup.label)}</span>
             <p>${escapeHtml(setup.summary)}</p>
           </div>
         </article>
