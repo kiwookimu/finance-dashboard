@@ -380,22 +380,14 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
         Number(b.item.volumeRatio) - Number(a.item.volumeRatio),
     )
     .slice(0, 12);
-  const matchCount = payload?.logicOutdated
-    ? 0
-    : Number(payload?.matchCount ?? rawResults.length);
   const generatedAtText = formatDateTime(payload?.generatedAt);
   const invalidatedCount = Number(payload?.invalidatedCount);
   const showCurrentStatus = !payload?.logicOutdated;
   const showInvalidatedCount = !payload?.logicOutdated && invalidatedCount > 0;
-  const showMatchCount =
-    !payload?.logicOutdated && Number.isFinite(matchCount) && matchCount > 0;
   const statusParts = [
     showCurrentStatus ? payload?.marketMonth : "",
     showCurrentStatus ? generatedAtText : "",
-    showMatchCount ? `${matchCount}개` : "",
     showInvalidatedCount ? `무효화 ${invalidatedCount}개 제외` : "",
-    payload?.refreshed ? "갱신됨" : "",
-    recommendationCooldownText(payload),
   ].filter(Boolean);
   setText(
     config.statusSelector,
