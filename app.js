@@ -467,6 +467,7 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
           </div>
           <div class="recommendation-insight">
             <p>${escapeHtml(setup.summary)}</p>
+            ${setup.checkpoint ? `<p class="recommendation-checkpoint">${escapeHtml(setup.checkpoint)}</p>` : ""}
           </div>
         </article>
       `;
@@ -546,6 +547,7 @@ function buildRecommendationDetailMarkup(item, setup) {
     <div class="recommendation-detail-summary">
       <strong>${escapeHtml(setup.label)}</strong>
       <p>${escapeHtml(setup.summary)}</p>
+      ${setup.checkpoint ? `<p class="recommendation-checkpoint">${escapeHtml(setup.checkpoint)}</p>` : ""}
       <div class="recommendation-tags">
         ${setup.tags.map((tag) => `<b>${escapeHtml(tag)}</b>`).join("")}
       </div>
@@ -689,6 +691,7 @@ function buildRecommendationSetup(item, entryDecision = recommendationEntryDecis
     .slice(0, 5);
 
   return {
+    checkpoint: recommendationCheckpointText(item),
     entry: entryDecision,
     label: `${formatIsoDate(item.lastDate || "") || "추천 시점"} 기준`,
     summary: recommendationSetupSummary({
@@ -735,6 +738,63 @@ function recommendationSetupSummary({
     return `최근 21일 거래량이 평균의 ${formatNumber(volumeRatio, 2)}배까지 늘어 가격 돌파가 거래량으로 확인됐어. ${action}`;
   }
   return `최근 1개월 가격, 거래량, MFI, 상대강도가 모두 기준을 넘은 추천 시점 신호야. ${action}`;
+}
+
+function recommendationCheckpointText(item) {
+  const current = Number(item.liveClose ?? item.lastClose);
+  const monthHigh = Number(item.liveMonthHigh ?? item.monthHigh);
+  const previousCloseHigh = Number(item.previousCloseHigh);
+  const monthHighDrawdown = Number(item.liveMonthHighDrawdown ?? item.monthHighDrawdown);
+  const monthlyReturn = Number(item.monthlyReturn);
+  const checkpoints = [];
+  const addCheckpoint = (text) => {
+    if (text && !checkpoints.includes(text)) checkpoints.push(text);
+  };
+
+  if (!Number.isFinite(current) || current <= 0) return "";
+
+  if (Number.isFinite(monthHighDrawdown) && monthHighDrawdown <= -10) {
+    if (Number.isFinite(previousCloseHigh) && previousCloseHigh > current) {
+      addCheckpoint(`${formatRecommendationPrice(previousCloseHigh, item)} 회복`);
+    }
+    if (Number.isFinite(monthHigh) && monthHigh > current) {
+      addCheckpoint(`${formatRecommendationPrice(monthHigh, item)} 고점 재돌파`);
+    }
+  } else if (Number.isFinite(monthlyReturn) && monthlyReturn >= 100) {
+    if (Number.isFinite(monthHigh)) {
+      addCheckpoint(
+        monthHigh > current * 1.005
+          ? `${formatRecommendationPrice(monthHigh, item)} 고점 재돌파`
+          : `${formatRecommendationPrice(monthHigh, item)} 신고가권 지지`,
+      );
+    }
+    addCheckpoint(`${formatRecommendationPrice(current, item)} 부근 지지`);
+  } else if (Number.isFinite(monthHighDrawdown) && monthHighDrawdown <= -5) {
+    if (Number.isFinite(monthHigh) && monthHigh > current) {
+      addCheckpoint(`${formatRecommendationPrice(monthHigh, item)} 고점 재돌파`);
+    }
+    if (Number.isFinite(previousCloseHigh) && previousCloseHigh > 0) {
+      addCheckpoint(
+        previousCloseHigh > current
+          ? `${formatRecommendationPrice(previousCloseHigh, item)} 회복`
+          : `${formatRecommendationPrice(previousCloseHigh, item)} 지지 여부`,
+      );
+    }
+  } else if (item.breakout || (Number.isFinite(monthHighDrawdown) && monthHighDrawdown > -5)) {
+    if (Number.isFinite(monthHigh)) {
+      addCheckpoint(
+        monthHigh > current * 1.005
+          ? `${formatRecommendationPrice(monthHigh, item)} 고점 재돌파`
+          : `${formatRecommendationPrice(monthHigh, item)} 신고가권 지지`,
+      );
+    }
+    if (Number.isFinite(monthHigh) && monthHigh > current * 1.005) {
+      addCheckpoint(`${formatRecommendationPrice(current, item)} 부근 지지`);
+    }
+  }
+
+  if (!checkpoints.length) return "";
+  return `체크포인트: ${checkpoints.slice(0, 2).join(" · ")}.`;
 }
 
 function recommendationActionText({
