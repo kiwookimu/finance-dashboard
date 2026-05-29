@@ -384,7 +384,7 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
   ].filter(Boolean);
   setText(config.statusSelector, statusParts.join(" · ") || "후보 없음");
   hideRecommendationProgress(config);
-  setRecommendationRefreshVisibility(config, !hasTodayRecommendationData(payload));
+  setRecommendationRefreshVisibility(config, true);
   setText(
     config.conditionSelector,
     [
@@ -2776,26 +2776,6 @@ function formatDateTime(isoDate) {
     timeZone: "Asia/Seoul",
   }).format(date);
   return `${dateTimeText} KST`;
-}
-
-function hasTodayRecommendationData(payload) {
-  if (!payload?.generatedAt) return false;
-  if (payload.logicOutdated) return false;
-  const generatedDate = koreaDateKey(payload.generatedAt);
-  return generatedDate && generatedDate === koreaDateKey(new Date());
-}
-
-function koreaDateKey(value) {
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const parts = new Intl.DateTimeFormat("en-US", {
-    day: "2-digit",
-    month: "2-digit",
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-  }).formatToParts(date);
-  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${byType.year}-${byType.month}-${byType.day}`;
 }
 
 function formatNumber(value, decimals) {
