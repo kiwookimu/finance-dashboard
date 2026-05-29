@@ -519,6 +519,7 @@ function closeRecommendationDetail() {
 function buildRecommendationDetailMarkup(item, setup) {
   const ticker = item.code || item.symbol || item.rawSymbol || "-";
   const externalUrl = recommendationExternalUrl(item);
+  const externalLabel = recommendationExternalLabel(item);
   const marketCapText = formatKoreanMarketCap(item.marketCapKrw);
   const detailRows = [
     ["시장", [item.marketType || item.exchange, ticker].filter(Boolean).join(" · ")],
@@ -563,7 +564,7 @@ function buildRecommendationDetailMarkup(item, setup) {
     </dl>
     ${
       externalUrl
-        ? `<a class="recommendation-detail-link" href="${escapeHtml(externalUrl)}" target="_blank" rel="noreferrer">외부 상세 페이지 열기</a>`
+        ? `<a class="recommendation-detail-link" href="${escapeHtml(externalUrl)}" target="_blank" rel="noreferrer">${escapeHtml(externalLabel)}</a>`
         : ""
     }
   `;
@@ -577,6 +578,14 @@ function recommendationExternalUrl(item) {
   const symbol = String(item.symbol || item.rawSymbol || "").trim();
   if (symbol) return `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}`;
   return "";
+}
+
+function recommendationExternalLabel(item) {
+  const code = String(item.code || "").trim();
+  if (/^\d{6}$/.test(code)) return "네이버 증권에서 상세 정보 보기";
+  const symbol = String(item.symbol || item.rawSymbol || "").trim();
+  if (symbol) return "야후 파이낸스에서 상세 정보 보기";
+  return "외부 상세 페이지 열기";
 }
 
 function formatRecommendationPrice(value, item) {
