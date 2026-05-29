@@ -1079,6 +1079,12 @@ async function enrichDomesticRecommendationItem(item) {
 
     const lastClose = Number(item.lastClose);
     const returnFromSignal = percentChange(latest.close, lastClose);
+    const previousLiveRow = rows
+      .slice(0, -1)
+      .reverse()
+      .find((row) => row.date < latest.date && Number.isFinite(row.close));
+    const livePreviousClose = Number(previousLiveRow?.close);
+    const returnFromPreviousClose = percentChange(latest.close, livePreviousClose);
     const ma10 = movingAverage(rows.map((row) => row.close), 10);
     const referenceStartDate =
       item.rollingWindowStartDate || item.lastDate || String(item.lastDate || "").slice(0, 7);
@@ -1106,6 +1112,8 @@ async function enrichDomesticRecommendationItem(item) {
       liveDate: latest.date,
       liveMonthHigh: Number.isFinite(liveHighReference) ? liveHighReference : null,
       liveMonthHighDrawdown: roundFinite(liveMonthHighDrawdown, 2),
+      livePreviousClose: Number.isFinite(livePreviousClose) ? livePreviousClose : null,
+      liveReturnFromPreviousClose: roundFinite(returnFromPreviousClose, 2),
       liveReturnFromSignal: roundFinite(returnFromSignal, 2),
       liveTenDayAverage: roundFinite(ma10, 2),
       recommendationInvalidated: invalidationReasons.length > 0,

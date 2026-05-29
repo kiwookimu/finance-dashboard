@@ -530,10 +530,16 @@ function buildRecommendationDetailMarkup(item, setup) {
   const externalUrl = recommendationExternalUrl(item);
   const externalLabel = recommendationExternalLabel(item);
   const marketCapText = formatKoreanMarketCap(item.marketCapKrw);
+  const displayPrice = recommendationDisplayPrice(item);
+  const previousDayClose = recommendationPreviousDayClose(item);
+  const previousDayReturn = recommendationPreviousDayReturn(item);
   const detailRows = [
     ["시장", [item.marketType || item.exchange, ticker].filter(Boolean).join(" · ")],
     ["시가총액", marketCapText],
     ["추천 기준일", formatIsoDate(item.lastDate || "") || "-"],
+    ["갱신 시점 가격", formatRecommendationPrice(displayPrice, item)],
+    ["전일 종가", formatRecommendationPrice(previousDayClose, item)],
+    ["전일 대비", formatRecommendationPercent(previousDayReturn)],
     ["종가", formatRecommendationPrice(item.lastClose, item)],
     ["21거래일 전 종가", formatRecommendationPrice(item.previousMonthClose, item)],
     ["직전 21일 종가 고점", formatRecommendationPrice(item.previousCloseHigh, item)],
@@ -599,18 +605,37 @@ function recommendationExternalLabel(item) {
 }
 
 function recommendationQuoteInfo(item) {
-  const price = Number(item.liveClose ?? item.lastClose);
+  const price = recommendationDisplayPrice(item);
   if (!Number.isFinite(price) || price <= 0) return null;
-  const directReturn = Number(item.liveReturnFromSignal);
-  const basePrice = Number(item.lastClose);
-  const returnValue = Number.isFinite(directReturn)
-    ? directReturn
-    : percentChangeValue(price, basePrice);
+  const returnValue = recommendationPreviousDayReturn(item);
   if (!Number.isFinite(returnValue)) return null;
   return {
     text: `(${formatRecommendationPrice(price, item)} / ${formatSignedNumber(returnValue, 2)}%)`,
     tone: returnValue > 0 ? "up" : returnValue < 0 ? "down" : "flat",
   };
+}
+
+function recommendationDisplayPrice(item) {
+  return Number(item.liveClose ?? item.lastClose);
+}
+
+function recommendationPreviousDayClose(item) {
+  return firstFiniteNumber(item.livePreviousClose, item.previousDayClose);
+}
+
+function recommendationPreviousDayReturn(item) {
+  const directReturn = firstFiniteNumber(item.liveReturnFromPreviousClose, item.dayReturn);
+  if (Number.isFinite(directReturn)) return directReturn;
+  return percentChangeValue(recommendationDisplayPrice(item), recommendationPreviousDayClose(item));
+}
+
+function firstFiniteNumber(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const number = Number(value);
+    if (Number.isFinite(number)) return number;
+  }
+  return NaN;
 }
 
 function percentChangeValue(current, previous) {

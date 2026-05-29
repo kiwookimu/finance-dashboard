@@ -138,6 +138,7 @@ function screenStock(stock, rows, benchmarkRows) {
   if (targetIndex + 1 < MIN_HISTORY_DAYS) return null;
 
   const current = sortedRows[targetIndex];
+  const previousTradingDay = sortedRows[targetIndex - 1];
   const rowsUntilTarget = sortedRows.slice(0, targetIndex + 1);
   const volumeStats = rollingVolumeStats(
     sortedRows,
@@ -229,6 +230,7 @@ function screenStock(stock, rows, benchmarkRows) {
     breakout,
     code: stock.code,
     firstToLastReturn: round(percentChange(current.close, recentWindow[0]?.close), 2),
+    dayReturn: round(percentChange(current.close, previousTradingDay?.close), 2),
     lastClose: current.close,
     lastDate: current.date,
     market: stock.market,
@@ -243,6 +245,7 @@ function screenStock(stock, rows, benchmarkRows) {
     next6mReturn: round(forwardTradingDayReturn(sortedRows, targetIndex, 126), 2),
     previousAverageVolume: Math.round(volumeStats.previousAverageVolume),
     previousCloseHigh,
+    previousDayClose: previousTradingDay?.close ?? null,
     previousMonthClose: returnBase.close,
     recentVolumeDays: RECENT_VOLUME_DAYS,
     recentVolumeRatio: round(recentVolumeRatio, 2),
@@ -577,6 +580,8 @@ function toCsv(rows) {
     "setupScore",
     "lastDate",
     "lastClose",
+    "previousDayClose",
+    "dayReturn",
     "monthlyReturn",
     "rollingReturn",
     "benchmarkReturn",
