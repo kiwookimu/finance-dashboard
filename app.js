@@ -406,9 +406,6 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
       formatMarketFilter(payload?.condition?.marketFilter),
       formatMarketCapCondition(payload?.condition?.minimumMarketCapKrw),
       `21일 거래량 ${formatConditionNumber(payload?.condition?.volumeRatio)}`,
-      payload?.condition?.recentVolumeRatio
-        ? `5일 거래량 ${formatConditionNumber(payload.condition.recentVolumeRatio)}`
-        : "",
       `MFI ${formatConditionNumber(payload?.condition?.dailyMfi)}`,
       formatDrawdownCondition(payload?.condition?.monthHighDrawdown),
     ]
