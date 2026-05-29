@@ -66,9 +66,12 @@ const recommendationStates = {
     loading: false,
   },
 };
+const recommendationDetailById = new Map();
+let lastRecommendationDetailTrigger = null;
 
 initializeDashboardTabs();
 initializeRecommendationActions();
+initializeRecommendationDetailModal();
 loadIndicators();
 
 function initializeDashboardTabs() {
@@ -119,6 +122,15 @@ function initializeRecommendationActions() {
   usRefreshButton?.addEventListener("click", () =>
     loadRecommendations({ force: true, market: "us" }),
   );
+}
+
+function initializeRecommendationDetailModal() {
+  document.querySelectorAll("[data-recommendation-detail-close]").forEach((element) => {
+    element.addEventListener("click", closeRecommendationDetail);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeRecommendationDetail();
+  });
 }
 
 async function loadRecommendations({ force = false, market = "domestic" } = {}) {
@@ -384,6 +396,10 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
   const list = document.querySelector(config.listSelector);
   if (!list) return;
   list.classList.remove("is-refreshing");
+  const detailPrefix = config.listSelector.replace(/\W/g, "");
+  for (const key of recommendationDetailById.keys()) {
+    if (key.startsWith(`${detailPrefix}-`)) recommendationDetailById.delete(key);
+  }
 
   if (!results.length) {
     list.innerHTML = `<p class="recommendation-empty">조건 충족 종목 없음</p>`;
@@ -394,6 +410,8 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
     .map(({ item, priorityScore }, index) => {
       const ticker = item.code || item.symbol || item.rawSymbol;
       const setup = buildRecommendationSetup(item);
+      const detailId = `${detailPrefix}-${index}`;
+      recommendationDetailById.set(detailId, { item, priorityScore, setup });
       const detail = [
         item.marketType || item.exchange,
         ticker,
@@ -410,7 +428,7 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
         .filter(Boolean)
         .join(" · ");
       return `
-        <article class="recommendation-card">
+        <article class="recommendation-card" role="button" tabindex="0" data-recommendation-detail-id="${escapeHtml(detailId)}" aria-label="${escapeHtml(item.name)} 상세 정보 보기">
           <span class="recommendation-rank">${index + 1}</span>
           <div class="recommendation-copy">
             <div class="recommendation-title">
@@ -436,6 +454,129 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
       `;
     })
     .join("");
+  bindRecommendationDetailCards(list);
+}
+
+function bindRecommendationDetailCards(list) {
+  list.querySelectorAll(".recommendation-card[data-recommendation-detail-id]").forEach((card) => {
+    const open = () => {
+      lastRecommendationDetailTrigger = card;
+      openRecommendationDetail(card.dataset.recommendationDetailId);
+    };
+    card.addEventListener("click", open);
+    card.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      open();
+    });
+  });
+}
+
+function openRecommendationDetail(detailId) {
+  const detail = recommendationDetailById.get(detailId);
+  const modal = document.querySelector("#recommendationDetailModal");
+  const title = document.querySelector("#recommendationDetailTitle");
+  const signal = document.querySelector("#recommendationDetailSignal");
+  const body = document.querySelector("#recommendationDetailBody");
+  if (!detail || !modal || !title || !signal || !body) return;
+
+  const { item, priorityScore, setup } = detail;
+  title.textContent = item.name || "추천주 상세";
+  signal.textContent = item.signal || "월간 상승 후보";
+  body.innerHTML = buildRecommendationDetailMarkup(item, priorityScore, setup);
+  modal.hidden = false;
+  document.body.classList.add("modal-open");
+  modal.querySelector(".recommendation-modal-close")?.focus();
+}
+
+function closeRecommendationDetail() {
+  const modal = document.querySelector("#recommendationDetailModal");
+  if (!modal || modal.hidden) return;
+  modal.hidden = true;
+  document.body.classList.remove("modal-open");
+  lastRecommendationDetailTrigger?.focus?.();
+  lastRecommendationDetailTrigger = null;
+}
+
+function buildRecommendationDetailMarkup(item, priorityScore, setup) {
+  const ticker = item.code || item.symbol || item.rawSymbol || "-";
+  const externalUrl = recommendationExternalUrl(item);
+  const detailRows = [
+    ["시장", [item.marketType || item.exchange, ticker].filter(Boolean).join(" · ")],
+    ["시가총액", formatKoreanMarketCap(item.marketCapKrw)],
+    ["추천 기준일", formatIsoDate(item.lastDate || "") || "-"],
+    ["종가", formatRecommendationPrice(item.lastClose, item)],
+    ["전월 종가", formatRecommendationPrice(item.previousMonthClose, item)],
+    ["5개월 고점", formatRecommendationPrice(item.previousCloseHigh, item)],
+    ["월중 고점", formatRecommendationPrice(item.monthHigh, item)],
+    ["월중 고점 대비", formatRecommendationPercent(item.monthHighDrawdown)],
+    ["월간 상승률", formatRecommendationPercent(item.monthlyReturn)],
+    ["시장 대비 상대강도", `${formatSignedNumber(Number(item.relativeReturn), 1)}%p`],
+    ["거래량 배수", `${formatNumber(Number(item.volumeRatio), 2)}x`],
+    ["MFI", formatNumber(Number(item.mfi), 1)],
+    ["월간 거래량", formatInteger(item.targetMonthVolume)],
+    ["직전 5개월 평균 거래량", formatInteger(item.previousAverageVolume)],
+    ["최근 최악 일간 수익률", formatRecommendationPercent(item.recentWorstDailyReturn)],
+  ].filter(([, value]) => value && value !== "-");
+
+  return `
+    <div class="recommendation-detail-summary">
+      <span>우선 ${priorityScore}점</span>
+      <strong>${escapeHtml(setup.label)}</strong>
+      <p>${escapeHtml(setup.summary)}</p>
+      <div class="recommendation-tags">
+        ${setup.tags.map((tag) => `<b>${escapeHtml(tag)}</b>`).join("")}
+      </div>
+    </div>
+    <dl class="recommendation-detail-grid">
+      ${detailRows
+        .map(
+          ([label, value]) => `
+            <div>
+              <dt>${escapeHtml(label)}</dt>
+              <dd>${escapeHtml(value)}</dd>
+            </div>
+          `,
+        )
+        .join("")}
+    </dl>
+    ${
+      externalUrl
+        ? `<a class="recommendation-detail-link" href="${escapeHtml(externalUrl)}" target="_blank" rel="noreferrer">외부 상세 페이지 열기</a>`
+        : ""
+    }
+  `;
+}
+
+function recommendationExternalUrl(item) {
+  const code = String(item.code || "").trim();
+  if (/^\d{6}$/.test(code)) {
+    return `https://finance.naver.com/item/main.naver?code=${encodeURIComponent(code)}`;
+  }
+  const symbol = String(item.symbol || item.rawSymbol || "").trim();
+  if (symbol) return `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}`;
+  return "";
+}
+
+function formatRecommendationPrice(value, item) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  const code = String(item.code || "").trim();
+  if (/^\d{6}$/.test(code)) return `${formatNumber(number, 0)}원`;
+  const decimals = number >= 100 ? 2 : 3;
+  return `$${formatNumber(number, decimals)}`;
+}
+
+function formatRecommendationPercent(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `${formatSignedNumber(number, 1)}%`;
+}
+
+function formatInteger(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return Math.round(number).toLocaleString("ko-KR");
 }
 
 function recommendationPriorityScore(item) {

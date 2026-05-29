@@ -341,6 +341,20 @@
       </section>
     </main>
 
+    <div class="recommendation-modal" id="recommendationDetailModal" role="dialog" aria-modal="true" aria-labelledby="recommendationDetailTitle" hidden>
+      <div class="recommendation-modal-backdrop" data-recommendation-detail-close></div>
+      <section class="recommendation-modal-panel" aria-label="추천주 상세 정보">
+        <div class="recommendation-modal-head">
+          <div>
+            <span class="recommendation-detail-eyebrow" id="recommendationDetailSignal">월간 상승 후보</span>
+            <strong id="recommendationDetailTitle">추천주 상세</strong>
+          </div>
+          <button class="recommendation-modal-close" type="button" data-recommendation-detail-close>닫기</button>
+        </div>
+        <div class="recommendation-modal-body" id="recommendationDetailBody"></div>
+      </section>
+    </div>
+
     <script src="./app.js"></script>
   </body>
 </html>
