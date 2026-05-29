@@ -463,6 +463,7 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
             <div class="recommendation-metrics" aria-label="${escapeHtml(item.name)} 핵심 지표">
               <span><b>${formatSignedNumber(Number(item.monthlyReturn), 1)}%</b><em>1개월</em></span>
               <span><b>${formatNumber(Number(item.volumeRatio), 2)}x</b><em>21일 거래량</em></span>
+              <span><b>${formatNumber(Number(item.mfi), 1)}</b><em>MFI</em></span>
             </div>
             <p>${escapeHtml(reason)}</p>
           </div>
