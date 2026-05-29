@@ -695,25 +695,42 @@ function recommendationSetupSummary({
   relativeReturn,
   volumeRatio,
 }) {
+  const action = recommendationActionText({
+    monthHighDrawdown,
+    monthlyReturn,
+    recommendationStage,
+  });
   if (monthHighDrawdown <= -10) {
-    return `1개월 조건은 통과했지만 고점 대비 ${formatSignedNumber(monthHighDrawdown, 1)}% 밀려 있어 추격 매수보다 재돌파 확인이 필요해.`;
+    return `${action}. 1개월 조건은 통과했지만 고점 대비 ${formatSignedNumber(monthHighDrawdown, 1)}% 밀려 있어 재돌파 확인이 필요해.`;
   }
   if (recommendationStage === "watch") {
-    return `21일 거래량은 확인 전이지만 최근 5일 거래량이 ${formatNumber(recentVolumeRatio, 2)}배로 먼저 붙어 초기 관찰 후보로 분류됐어.`;
+    return `${action}. 21일 거래량은 확인 전이지만 최근 5일 거래량이 ${formatNumber(recentVolumeRatio, 2)}배로 먼저 붙어 초기 관찰 후보로 분류됐어.`;
   }
   if (volumeRatio >= 8) {
-    return `최근 21일 거래량이 과거 5개 21일 평균의 ${formatNumber(volumeRatio, 2)}배로 폭발했고, 상대강도도 ${formatSignedNumber(relativeReturn, 1)}%p라 수급 쏠림이 강했어.`;
+    return `${action}. 최근 21일 거래량이 과거 5개 21일 평균의 ${formatNumber(volumeRatio, 2)}배로 폭발했고, 상대강도도 ${formatSignedNumber(relativeReturn, 1)}%p라 수급 쏠림이 강했어.`;
   }
   if (mfi >= 90) {
-    return `MFI가 ${formatNumber(mfi, 1)}로 90을 넘어 추천 시점부터 자금 유입 강도가 가장 두드러졌어.`;
+    return `${action}. MFI가 ${formatNumber(mfi, 1)}로 90을 넘어 추천 시점부터 자금 유입 강도가 가장 두드러졌어.`;
   }
   if (relativeReturn >= 50) {
-    return `최근 1개월 상승률 ${formatSignedNumber(monthlyReturn, 1)}%, 상대강도 ${formatSignedNumber(relativeReturn, 1)}%p로 시장 대비 탄력이 매우 컸어.`;
+    return `${action}. 최근 1개월 상승률 ${formatSignedNumber(monthlyReturn, 1)}%, 상대강도 ${formatSignedNumber(relativeReturn, 1)}%p로 시장 대비 탄력이 매우 컸어.`;
   }
   if (volumeRatio >= 3) {
-    return `최근 21일 거래량이 평균의 ${formatNumber(volumeRatio, 2)}배까지 늘어 가격 돌파가 거래량으로 확인됐어.`;
+    return `${action}. 최근 21일 거래량이 평균의 ${formatNumber(volumeRatio, 2)}배까지 늘어 가격 돌파가 거래량으로 확인됐어.`;
   }
-  return `최근 1개월 가격, 거래량, MFI, 상대강도가 모두 기준을 넘은 추천 시점 신호야.`;
+  return `${action}. 최근 1개월 가격, 거래량, MFI, 상대강도가 모두 기준을 넘은 추천 시점 신호야.`;
+}
+
+function recommendationActionText({
+  monthHighDrawdown,
+  monthlyReturn,
+  recommendationStage,
+}) {
+  if (recommendationStage === "watch") return "판단: 관찰";
+  if (monthHighDrawdown <= -10) return "판단: 추격 매수 보류";
+  if (monthlyReturn >= 100) return "판단: 추격 주의";
+  if (monthHighDrawdown <= -5) return "판단: 분할 매수 검토";
+  return "판단: 매수 검토";
 }
 
 function recommendationVolumeTag(value) {
