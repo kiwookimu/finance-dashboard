@@ -740,8 +740,7 @@ function recommendationRecentVolumeTag(value) {
 function recommendationMfiTag(value) {
   if (!Number.isFinite(value)) return "";
   if (value >= 90) return "MFI 90+";
-  if (value >= 80) return "MFI 강세";
-  if (value >= 70) return "MFI 통과";
+  if (value >= 80) return "MFI 80+";
   return "";
 }
 

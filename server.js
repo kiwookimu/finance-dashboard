@@ -18,8 +18,8 @@ const RECOMMENDATION_SCRIPT_START_PERCENT = 8;
 const RECOMMENDATION_SCRIPT_DONE_PERCENT = 92;
 const RECOMMENDATION_STOP_LOSS_PERCENT = -8;
 const RECOMMENDATION_MAX_MONTH_HIGH_DRAWDOWN = -20;
-const DOMESTIC_STOCK_RECOMMENDATION_VERSION = "kr-rolling-21-v1";
-const US_STOCK_RECOMMENDATION_VERSION = "us-rolling-21-v1";
+const DOMESTIC_STOCK_RECOMMENDATION_VERSION = "kr-rolling-21-v2";
+const US_STOCK_RECOMMENDATION_VERSION = "us-rolling-21-v2";
 
 const MARKET_SOURCES = [
   { id: "kospi", label: "KOSPI", symbol: "^KS11", decimals: 2 },
@@ -1159,7 +1159,7 @@ function stockRecommendationCondition(
     Number.isFinite(Number(minimumMarketCapKrw)) && Number(minimumMarketCapKrw) > 0;
   return {
     breakout: "latest close reaches recent 21-trading-day closing high",
-    dailyMfi: ">= 70",
+    dailyMfi: ">= 80",
     earlyWatch:
       "21-day volume >= 1.2x, 5-day average volume >= 1.8x, MFI >= 85, and 21-day return >= 30% or 21-day high breakout",
     invalidation:

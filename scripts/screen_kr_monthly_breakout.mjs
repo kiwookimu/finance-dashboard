@@ -1,5 +1,5 @@
 const MARKET_MONTH = process.argv[2] || "2026-05";
-const SCREEN_VERSION = "kr-rolling-21-v1";
+const SCREEN_VERSION = "kr-rolling-21-v2";
 const COMPARISON_MONTH_COUNT = Number(
   process.env.COMPARE_MONTHS || process.argv[3] || 5,
 );
@@ -29,7 +29,7 @@ const MIN_ROLLING_RETURN = Number(
 );
 const MIN_WATCH_RETURN = Number(process.env.MIN_WATCH_RETURN || 30);
 const MIN_RELATIVE_RETURN = Number(process.env.MIN_RELATIVE_RETURN || 8);
-const MIN_MFI = Number(process.env.MIN_MFI || 70);
+const MIN_MFI = Number(process.env.MIN_MFI || 80);
 const MIN_WATCH_MFI = Number(process.env.MIN_WATCH_MFI || 85);
 const MOVING_AVERAGE_DAYS = Number(process.env.MOVING_AVERAGE_DAYS || 10);
 const MAX_ROLLING_HIGH_DRAWDOWN = Number(
