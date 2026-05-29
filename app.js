@@ -381,11 +381,12 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
     : Number(payload?.matchCount ?? rawResults.length);
   const generatedAtText = formatDateTime(payload?.generatedAt);
   const invalidatedCount = Number(payload?.invalidatedCount);
+  const showInvalidatedCount = !payload?.logicOutdated && invalidatedCount > 0;
   const statusParts = [
     payload?.marketMonth,
     generatedAtText,
     Number.isFinite(matchCount) ? `${matchCount}개` : "",
-    invalidatedCount > 0 ? `무효화 ${invalidatedCount}개 제외` : "",
+    showInvalidatedCount ? `무효화 ${invalidatedCount}개 제외` : "",
     payload?.refreshed ? "갱신됨" : payload?.saved ? "저장본" : "",
     payload?.logicOutdated ? "갱신 필요" : "",
     recommendationCooldownText(payload),
