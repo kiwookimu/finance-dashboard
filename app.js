@@ -32,6 +32,7 @@ const DEFAULT_PORTFOLIO_EXPOSURE_CONFIG = {
   strongTrim: 1,
   weakRed: 0.05,
 };
+const RECOMMENDATION_REFRESH_COOLDOWN_MS = 60 * 60 * 1000;
 const RECOMMENDATION_CONFIGS = {
   domestic: {
     buttonSelector: "#recommendationRefresh",
@@ -202,6 +203,12 @@ async function refreshRecommendations(config, state) {
       cache: "no-store",
     });
     if (!startResponse.ok) throw new Error("Stock recommendation refresh failed");
+    const startPayload = await startResponse.json();
+    if (startPayload?.refreshBlocked) {
+      renderRecommendations(startPayload, config);
+      state.loaded = true;
+      return;
+    }
 
     const finalProgress = await waitForRecommendationRefresh(config);
     if (finalProgress.state === "failed") {
@@ -232,6 +239,7 @@ function renderRecommendationLoading(config, state, force) {
     config.statusSelector,
     force ? config.refreshText : config.loadingText,
   );
+  if (force) setRecommendationRefreshVisibility(config, false);
   const list = document.querySelector(config.listSelector);
   if (force) {
     renderRecommendationProgress(config, {
@@ -380,11 +388,12 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
     invalidatedCount > 0 ? `무효화 ${invalidatedCount}개 제외` : "",
     payload?.refreshed ? "갱신됨" : payload?.saved ? "저장본" : "",
     payload?.logicOutdated ? "갱신 필요" : "",
+    recommendationCooldownText(payload),
     payload?.stale ? "이전 결과" : "",
   ].filter(Boolean);
   setText(config.statusSelector, statusParts.join(" · ") || "후보 없음");
   hideRecommendationProgress(config);
-  setRecommendationRefreshVisibility(config, true);
+  setRecommendationRefreshVisibility(config, canRefreshRecommendations(payload));
   setText(
     config.conditionSelector,
     [
@@ -2776,6 +2785,24 @@ function formatDateTime(isoDate) {
     timeZone: "Asia/Seoul",
   }).format(date);
   return `${dateTimeText} KST`;
+}
+
+function canRefreshRecommendations(payload) {
+  const availableAt = recommendationRefreshAvailableAt(payload);
+  return !availableAt || Date.now() >= availableAt.getTime();
+}
+
+function recommendationCooldownText(payload) {
+  const availableAt = recommendationRefreshAvailableAt(payload);
+  if (!availableAt || Date.now() >= availableAt.getTime()) return "";
+  return `다음 갱신 ${formatTime(availableAt.toISOString())}`;
+}
+
+function recommendationRefreshAvailableAt(payload) {
+  if (!payload?.generatedAt || payload.logicOutdated) return null;
+  const generatedAt = new Date(payload.generatedAt).getTime();
+  if (!Number.isFinite(generatedAt)) return null;
+  return new Date(generatedAt + RECOMMENDATION_REFRESH_COOLDOWN_MS);
 }
 
 function formatNumber(value, decimals) {

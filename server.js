@@ -11,6 +11,7 @@ const MARKET_CACHE_MS = 60 * 1000;
 const SENTIMENT_CACHE_MS = 15 * 60 * 1000;
 const PORTFOLIO_CACHE_MS = 5 * 60 * 1000;
 const STOCK_RECOMMENDATION_CACHE_MS = 30 * 60 * 1000;
+const STOCK_RECOMMENDATION_REFRESH_COOLDOWN_MS = 60 * 60 * 1000;
 const TREND_POINTS = 28;
 const ANALYSIS_POINTS = 260;
 const RECOMMENDATION_SCRIPT_START_PERCENT = 8;
@@ -565,17 +566,22 @@ async function getStockRecommendations({
     });
   }
 
+  const currentPayload = await readCurrentStockRecommendationPayload({
+    condition: stockRecommendationCondition(1_000_000_000_000),
+    marketMonth: month,
+    resultPath,
+    universe: "Saved Korea recommendation screen is not available yet",
+  });
+  if (isRecommendationRefreshCoolingDown(currentPayload)) {
+    return withRecommendationRefreshCooldown(currentPayload, { refreshBlocked: true });
+  }
+
   const refreshPromise = startStockRecommendationRefresh(month, markets, resultPath);
 
   if (asyncRefresh) {
     refreshPromise.catch(() => null);
     return {
-      ...(await readCurrentStockRecommendationPayload({
-        condition: stockRecommendationCondition(1_000_000_000_000),
-        marketMonth: month,
-        resultPath,
-        universe: "Saved Korea recommendation screen is not available yet",
-      })),
+      ...currentPayload,
       refreshStarted: true,
       refreshing: true,
     };
@@ -635,19 +641,24 @@ async function getUsStockRecommendations({
     });
   }
 
+  const currentPayload = await readCurrentStockRecommendationPayload({
+    condition: stockRecommendationCondition(10_000_000_000_000, {
+      relativeBenchmark: "QQQ",
+    }),
+    marketMonth: month,
+    resultPath,
+    universe: "Saved U.S. recommendation screen is not available yet",
+  });
+  if (isRecommendationRefreshCoolingDown(currentPayload)) {
+    return withRecommendationRefreshCooldown(currentPayload, { refreshBlocked: true });
+  }
+
   const refreshPromise = startUsStockRecommendationRefresh(month, resultPath);
 
   if (asyncRefresh) {
     refreshPromise.catch(() => null);
     return {
-      ...(await readCurrentStockRecommendationPayload({
-        condition: stockRecommendationCondition(10_000_000_000_000, {
-          relativeBenchmark: "QQQ",
-        }),
-        marketMonth: month,
-        resultPath,
-        universe: "Saved U.S. recommendation screen is not available yet",
-      })),
+      ...currentPayload,
       refreshStarted: true,
       refreshing: true,
     };
@@ -804,6 +815,30 @@ async function readCurrentStockRecommendationPayload({
     marketMonth,
     universe,
   });
+}
+
+function isRecommendationRefreshCoolingDown(payload) {
+  const availableAt = recommendationRefreshAvailableAt(payload);
+  return Boolean(availableAt && Date.now() < availableAt.getTime());
+}
+
+function withRecommendationRefreshCooldown(payload, extra = {}) {
+  const availableAt = recommendationRefreshAvailableAt(payload);
+  if (!availableAt) return { ...payload, ...extra };
+  const remainingMs = Math.max(0, availableAt.getTime() - Date.now());
+  return {
+    ...payload,
+    refreshAvailableAt: availableAt.toISOString(),
+    refreshCooldownSeconds: Math.ceil(remainingMs / 1000),
+    ...extra,
+  };
+}
+
+function recommendationRefreshAvailableAt(payload) {
+  if (!payload?.generatedAt || payload.logicOutdated) return null;
+  const generatedAt = new Date(payload.generatedAt).getTime();
+  if (!Number.isFinite(generatedAt)) return null;
+  return new Date(generatedAt + STOCK_RECOMMENDATION_REFRESH_COOLDOWN_MS);
 }
 
 async function refreshStockRecommendations(month, markets) {
