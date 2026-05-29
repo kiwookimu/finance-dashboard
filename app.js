@@ -436,16 +436,13 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
       const detail = [
         item.marketType || item.exchange,
         ticker,
-        marketCapText !== "-" ? marketCapText : "",
       ].filter(Boolean);
-      const reason = [
-        `상대강도 ${formatSignedNumber(Number(item.relativeReturn), 1)}%p`,
-        Number.isFinite(Number(item.monthHighDrawdown))
-          ? `고점낙폭 ${formatSignedNumber(Number(item.monthHighDrawdown), 1)}%`
-          : "",
-      ]
-        .filter(Boolean)
-        .join(" · ");
+      const relativeStrengthText = Number.isFinite(Number(item.relativeReturn))
+        ? `${formatSignedNumber(Number(item.relativeReturn), 1)}%p`
+        : "-";
+      const drawdownText = Number.isFinite(Number(item.monthHighDrawdown))
+        ? `${formatSignedNumber(Number(item.monthHighDrawdown), 1)}%`
+        : "-";
       return `
         <article class="recommendation-card" role="button" tabindex="0" data-recommendation-detail-id="${escapeHtml(detailId)}" aria-label="${escapeHtml(item.name)} 상세 정보 보기">
           <span class="recommendation-rank">${index + 1}</span>
@@ -460,7 +457,11 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
               <span><b>${formatNumber(Number(item.volumeRatio), 2)}x</b><em>21일 거래량</em></span>
               <span><b>${formatNumber(Number(item.mfi), 1)}</b><em>MFI</em></span>
             </div>
-            <p>${escapeHtml(reason)}</p>
+            <div class="recommendation-metrics recommendation-context-metrics" aria-label="${escapeHtml(item.name)} 보조 지표">
+              <span><b>${escapeHtml(relativeStrengthText)}</b><em>상대강도</em></span>
+              <span><b>${escapeHtml(drawdownText)}</b><em>고점낙폭</em></span>
+              <span><b>${escapeHtml(marketCapText)}</b><em>시가총액</em></span>
+            </div>
           </div>
           <span class="recommendation-score">우선 ${priorityScore}점</span>
           <div class="recommendation-insight">
