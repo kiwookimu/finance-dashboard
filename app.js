@@ -586,7 +586,6 @@ function recommendationDrawdownTag(value) {
 }
 
 async function loadIndicators() {
-  const portfolioPromise = fetchPortfolioMetricsForMarket();
   try {
     const [marketResponse, sentimentResponse] = await Promise.all([
       fetch("/api/market-overview", { cache: "no-store" }),
@@ -622,9 +621,8 @@ async function loadIndicators() {
     renderTimestamp(market.quotes);
     setText(
       "#marketSource",
-      `Yahoo Finance · FRED · Naver Finance · TrendForce · 공포·탐욕 ${formatIsoDate(sentiment.fearGreed.date)} · VIX ${formatIsoDate(sentiment.vix.date)} 기준 지연 데이터`,
+      `Yahoo Finance · FRED · TrendForce · 공포·탐욕 ${formatIsoDate(sentiment.fearGreed.date)} · VIX ${formatIsoDate(sentiment.vix.date)} 기준 지연 데이터`,
     );
-    renderPortfolioHighProximityWhenReady(market, sentiment, portfolioPromise);
   } catch (error) {
     console.warn("Indicator data unavailable", error);
     renderSignalState({
@@ -633,51 +631,8 @@ async function loadIndicators() {
       score: 0,
       summary: "데이터 갱신 실패",
     });
-    renderPortfolioState({
-      action: "중립",
-      checks: [],
-      className: "portfolio-hold",
-      score: 0,
-      summary: "데이터 갱신 실패",
-    });
     setText("#marketSource", "시장 데이터 갱신 실패");
   }
-}
-
-async function fetchPortfolioMetricsForMarket() {
-  try {
-    const response = await fetch("/api/portfolio-metrics", { cache: "no-store" });
-    if (!response.ok) throw new Error("Portfolio metrics request failed");
-    return response.json();
-  } catch (error) {
-    console.warn("Portfolio metrics unavailable", error);
-    return null;
-  }
-}
-
-function renderPortfolioHighProximityWhenReady(market, sentiment, portfolioPromise) {
-  portfolioPromise.then((portfolioMetrics) => {
-    const quote =
-      buildPortfolioHighProximityQuote(portfolioMetrics) ||
-      portfolioHighProximityUnavailableQuote();
-    renderMarketIndicator("portfolioHighProximity", quote);
-    renderPortfolioSignal(market.quotes, sentiment, portfolioMetrics);
-  });
-}
-
-function portfolioHighProximityUnavailableQuote() {
-  return {
-    change: 0,
-    changeClass: "",
-    changeText: "네이버 데이터 지연",
-    decimals: 1,
-    history: [],
-    id: "portfolioHighProximity",
-    label: "보유 ETF 52주 고점 근접도",
-    price: null,
-    sparklineText: "갱신 지연",
-    valueText: "지연",
-  };
 }
 
 function renderTradingSignal(quotes, sentiment) {
@@ -858,66 +813,6 @@ function renderHoldingSignals(signals) {
       `;
     })
     .join("");
-}
-
-function buildPortfolioHighProximityQuote(portfolioMetrics) {
-  const holdings = portfolioMetrics?.holdings || [];
-  const totalAmount = Number(portfolioMetrics?.totalAmount) || PORTFOLIO_TOTAL;
-  const series = buildWeightedHighProximitySeries(holdings, totalAmount);
-  const latest = series.at(-1);
-  const previous = series.at(-2);
-
-  if (!latest) return null;
-
-  const change = previous ? latest.value - previous.value : 0;
-  return {
-    change,
-    changePercent: change,
-    changeText: `1일 ${formatSignedNumber(change, 1)}p`,
-    changeUnit: "p",
-    decimals: 1,
-    history: series.slice(-28),
-    id: "portfolioHighProximity",
-    label: "보유 ETF 52주 고점 근접도",
-    marketTime: `${latest.date}T00:00:00+09:00`,
-    price: latest.value,
-    valueSuffix: "%",
-  };
-}
-
-function buildWeightedHighProximitySeries(holdings, totalAmount) {
-  const dates = [
-    ...new Set(
-      holdings.flatMap((holding) =>
-        (holding.analysisHistory || []).slice(-28).map((point) => point.date),
-      ),
-    ),
-  ].sort();
-
-  return dates
-    .map((date) => {
-      let weighted = 0;
-      let weight = 0;
-      for (const holding of holdings) {
-        const rows = (holding.analysisHistory || []).filter((point) => point.date <= date);
-        if (rows.length < 50) continue;
-        const latest = Number(rows.at(-1)?.value);
-        const high = Math.max(...rows.slice(-252).map((point) => Number(point.value)));
-        const holdingWeight = totalAmount ? Number(holding.amount) / totalAmount : 0;
-        if (
-          !Number.isFinite(latest) ||
-          !Number.isFinite(high) ||
-          high <= 0 ||
-          !Number.isFinite(holdingWeight)
-        ) {
-          continue;
-        }
-        weighted += (latest / high) * 100 * holdingWeight;
-        weight += holdingWeight;
-      }
-      return weight ? { date, value: weighted / weight } : null;
-    })
-    .filter(Boolean);
 }
 
 function buildVixTermQuote(vix3mQuote, vixData) {
