@@ -1,7 +1,6 @@
 const GOOD_WHEN_FALLING = new Set(["usdKrw", "wti", "us10y", "hySpread", "nfci"]);
 const NEXT_DAY_PREDICTION_TARGETS = [
   { id: "kospi", label: "KOSPI", market: "korea", profile: "broad" },
-  { id: "kosdaq", label: "KOSDAQ", market: "korea", profile: "growth" },
   { id: "nasdaq", label: "NASDAQ", market: "us", profile: "growth" },
   { id: "sp500", label: "S&P 500", market: "us", profile: "broad" },
 ];
@@ -1489,7 +1488,6 @@ function evaluateNextDayIndexPrediction(target, quotes, sentiment) {
 function backtestedIndexDirection(indexId, components) {
   const usMarket = Number(components["미국장"]);
   const spFuture = Number(components["S&P선물"]);
-  const wti = Number(components["유가"]);
   const vixTerm = Number(components["VIX구조"]);
 
   if (indexId === "kospi") {
@@ -1498,15 +1496,6 @@ function backtestedIndexDirection(indexId, components) {
     }
     if (spFuture <= -0.8) {
       return { direction: "하락", summary: "고신뢰 검증 구간 · S&P선물 급락" };
-    }
-  }
-
-  if (indexId === "kosdaq") {
-    if (usMarket > 0.45) {
-      return { direction: "상승", summary: "고신뢰 검증 구간 · 미국장 강세" };
-    }
-    if (wti <= -0.4) {
-      return { direction: "하락", summary: "고신뢰 검증 구간 · 유가 부담" };
     }
   }
 
