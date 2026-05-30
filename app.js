@@ -1455,15 +1455,55 @@ function evaluateNextDayIndexPrediction(target, quotes, sentiment) {
   if (!totalWeight) return null;
   const score =
     components.reduce((sum, item) => sum + item.weighted, 0) / totalWeight;
-  const direction = score >= 0 ? "상승" : "하락";
-  const summary = summarizeIndexPrediction(components, direction);
+  const componentScores = Object.fromEntries(
+    components.map((item) => [item.label, item.score]),
+  );
+  const calibrated = backtestedIndexDirection(target.id, componentScores);
+  const direction = calibrated?.direction || (score >= 0 ? "상승" : "하락");
+  const summary = [
+    calibrated?.summary || "일반 신호",
+    summarizeIndexPrediction(components, direction),
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return {
+    calibrated: Boolean(calibrated),
     direction,
     label: target.label,
     score,
     summary,
   };
+}
+
+function backtestedIndexDirection(indexId, components) {
+  const usMarket = Number(components["미국장"]);
+  const spFuture = Number(components["S&P선물"]);
+  const vixTerm = Number(components["VIX구조"]);
+
+  if (indexId === "kospi") {
+    if (usMarket > 0.45) {
+      return { direction: "상승", summary: "고신뢰 검증 구간 · 미국장 강세" };
+    }
+    if (spFuture <= -0.8) {
+      return { direction: "하락", summary: "고신뢰 검증 구간 · S&P선물 급락" };
+    }
+  }
+
+  if (indexId === "kosdaq" && usMarket > 0.45) {
+    return { direction: "상승", summary: "고신뢰 검증 구간 · 미국장 강세" };
+  }
+
+  if (indexId === "nasdaq" || indexId === "sp500") {
+    if (vixTerm >= 0.35) {
+      return { direction: "상승", summary: "고신뢰 검증 구간 · VIX 구조 양호" };
+    }
+    if (vixTerm <= 0) {
+      return { direction: "하락", summary: "고신뢰 검증 구간 · VIX 구조 경계" };
+    }
+  }
+
+  return null;
 }
 
 function scoreOneDayMove(quote) {
