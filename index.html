@@ -251,6 +251,16 @@
           data-tab-panel-group="main"
         >
 
+          <section class="prediction-panel" aria-label="다음 거래일 방향 예측">
+            <div class="prediction-heading">
+              <span>다음 거래일</span>
+              <strong>방향 예측</strong>
+            </div>
+            <div class="prediction-list" id="indexPredictionList">
+              <p class="prediction-empty">예측 데이터 계산 중</p>
+            </div>
+          </section>
+
           <div class="indicator-list" aria-label="주요 시장 지표">
           <article class="indicator-row" data-indicator="kospi">
             <div class="indicator-copy">
@@ -259,6 +269,15 @@
               <small id="kospiChange">지연 데이터</small>
             </div>
             <svg class="sparkline" id="kospiSparkline" viewBox="0 0 132 52" role="img" aria-label="KOSPI 최근 28일 추이"></svg>
+          </article>
+
+          <article class="indicator-row" data-indicator="kosdaq">
+            <div class="indicator-copy">
+              <span class="indicator-label">KOSDAQ</span>
+              <strong id="kosdaqValue">불러오는 중</strong>
+              <small id="kosdaqChange">지연 데이터</small>
+            </div>
+            <svg class="sparkline" id="kosdaqSparkline" viewBox="0 0 132 52" role="img" aria-label="KOSDAQ 최근 28일 추이"></svg>
           </article>
 
           <article class="indicator-row" data-indicator="sp500">

@@ -1,4 +1,10 @@
 const GOOD_WHEN_FALLING = new Set(["usdKrw", "wti", "us10y", "hySpread", "nfci"]);
+const NEXT_DAY_PREDICTION_TARGETS = [
+  { id: "kospi", label: "KOSPI", market: "korea", profile: "broad" },
+  { id: "kosdaq", label: "KOSDAQ", market: "korea", profile: "growth" },
+  { id: "nasdaq", label: "NASDAQ", market: "us", profile: "growth" },
+  { id: "sp500", label: "S&P 500", market: "us", profile: "broad" },
+];
 const PORTFOLIO_HOLDINGS = [
   { amount: 30041571, benchmark: "kospi", code: "395270", id: "hanaroSemi", name: "HANARO Fn K-반도체", tags: ["semi", "korea"] },
   { amount: 30003498, benchmark: "kospi", code: "487240", id: "kodexAiPower", name: "KODEX AI전력핵심설비", tags: ["aiPower", "korea"] },
@@ -1266,6 +1272,7 @@ async function loadIndicators() {
     const sentiment = await sentimentResponse.json();
 
     renderMarketIndicator("kospi", market.quotes.kospi);
+    renderMarketIndicator("kosdaq", market.quotes.kosdaq);
     renderMarketIndicator("sp500", market.quotes.sp500);
     renderMarketIndicator("nasdaq", market.quotes.nasdaq);
     renderMarketIndicator("sox", market.quotes.sox);
@@ -1284,6 +1291,7 @@ async function loadIndicators() {
     renderVix(sentiment.vix);
     renderMarketIndicator("vixTerm", buildVixTermQuote(market.quotes.vix3m, sentiment.vix));
     renderTradingSignal(market.quotes, sentiment);
+    renderIndexPredictions(market.quotes, sentiment);
     setText(
       "#marketSource",
       `Yahoo Finance · FRED · TrendForce · 공포·탐욕 ${formatIsoDate(sentiment.fearGreed.date)} · VIX ${formatIsoDate(sentiment.vix.date)} 기준 지연 데이터`,
@@ -1296,6 +1304,7 @@ async function loadIndicators() {
       score: 0,
       summary: "데이터 갱신 실패",
     });
+    renderIndexPredictionError();
     setText("#marketSource", "시장 데이터 갱신 실패");
   }
 }
@@ -1346,6 +1355,154 @@ function renderSignalState({
       .filter(Boolean)
       .join(" · "),
   );
+}
+
+function renderIndexPredictions(quotes = {}, sentiment = {}) {
+  const list = document.querySelector("#indexPredictionList");
+  if (!list) return;
+
+  const predictions = NEXT_DAY_PREDICTION_TARGETS.map((target) =>
+    evaluateNextDayIndexPrediction(target, quotes, sentiment),
+  ).filter(Boolean);
+
+  if (!predictions.length) {
+    list.innerHTML = `<p class="prediction-empty">예측 데이터 부족</p>`;
+    return;
+  }
+
+  list.innerHTML = predictions
+    .map((prediction) => {
+      const tone = prediction.direction === "상승" ? "up" : "down";
+      return `
+        <article class="prediction-row ${tone}">
+          <div class="prediction-copy">
+            <strong>${escapeHtml(prediction.label)}</strong>
+            <small>${escapeHtml(prediction.summary)}</small>
+          </div>
+          <div class="prediction-result">
+            <b>${escapeHtml(prediction.direction)}</b>
+            <span>${prediction.probability}%</span>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderIndexPredictionError() {
+  const list = document.querySelector("#indexPredictionList");
+  if (!list) return;
+  list.innerHTML = `<p class="prediction-empty">예측 데이터 갱신 실패</p>`;
+}
+
+function evaluateNextDayIndexPrediction(target, quotes, sentiment) {
+  const quote = quotes?.[target.id];
+  if (!quote || !Number.isFinite(Number(quote.price))) return null;
+
+  const components = [];
+  const add = (label, score, weight) => {
+    if (!Number.isFinite(score)) return;
+    const cleanScore = clamp(score, -1, 1);
+    components.push({ label, score: cleanScore, weight, weighted: cleanScore * weight });
+  };
+
+  add("당일", scoreOneDayMove(quote), 1);
+  add("5일", scoreShortMomentum(quote, 5, target.profile === "growth" ? 3.4 : 2.8), 0.75);
+  add("20일", scoreShortMomentum(quote, 20, target.profile === "growth" ? 7 : 5.5), 0.6);
+  add("추세", scoreRiskAsset(quote), 0.65);
+  add("VIX", scoreVix(sentiment?.vix), target.profile === "growth" ? 0.9 : 0.7);
+  add("VIX구조", scoreVixTermStructure(quotes?.vix3m, sentiment?.vix), 0.45);
+  add("공포탐욕", scoreFearGreed(sentiment?.fearGreed), 0.35);
+  add("금리", scoreYield(quotes?.us10y), target.profile === "growth" ? 0.7 : 0.45);
+
+  if (target.market === "korea") {
+    add("나스닥선물", scoreFutureMove(quotes?.nasdaqFutures?.changePercent), 0.9);
+    add("S&P선물", scoreFutureMove(quotes?.sp500Futures?.changePercent), 0.6);
+    add("니케이", scoreOneDayMove(quotes?.nikkei), 0.7);
+    add("달러원", scoreUsdKrw(quotes?.usdKrw), 0.65);
+    add("유가", scoreWti(quotes?.wti), 0.25);
+    add("미국장", average([
+      scoreOneDayMove(quotes?.nasdaq),
+      scoreOneDayMove(quotes?.sp500),
+    ]), 0.45);
+    if (target.profile === "growth") {
+      add("반도체", scoreSemiconductorCycle(quotes), 0.65);
+      add("나스닥폭", scoreRelativeBreadth(quotes?.nasdaqBreadth), 0.45);
+    }
+  } else {
+    add(
+      target.id === "nasdaq" ? "나스닥선물" : "S&P선물",
+      scoreFutureMove(
+        target.id === "nasdaq"
+          ? quotes?.nasdaqFutures?.changePercent
+          : quotes?.sp500Futures?.changePercent,
+      ),
+      1.3,
+    );
+    add(
+      target.id === "nasdaq" ? "나스닥폭" : "S&P폭",
+      scoreRelativeBreadth(target.id === "nasdaq" ? quotes?.nasdaqBreadth : quotes?.sp500Breadth),
+      0.8,
+    );
+    add("시장레짐", scoreMarketRegime(quotes), 0.55);
+    if (target.id === "nasdaq") {
+      add("반도체", scoreSemiconductorCycle(quotes), 0.65);
+    } else {
+      add("동일가중", scoreRelativeBreadth(quotes?.sp500Breadth), 0.55);
+    }
+  }
+
+  const totalWeight = components.reduce((sum, item) => sum + item.weight, 0);
+  if (!totalWeight) return null;
+  const score =
+    components.reduce((sum, item) => sum + item.weighted, 0) / totalWeight;
+  const direction = score >= 0 ? "상승" : "하락";
+  const probability = Math.round(clamp(50 + Math.abs(score) * 28, 51, 78));
+  const summary = summarizeIndexPrediction(components, direction);
+
+  return {
+    direction,
+    label: target.label,
+    probability,
+    score,
+    summary,
+  };
+}
+
+function scoreOneDayMove(quote) {
+  const change = Number(quote?.changePercent);
+  if (!Number.isFinite(change)) return NaN;
+  if (change >= 1.2) return 0.8;
+  if (change >= 0.45) return 0.45;
+  if (change > -0.35) return 0.08;
+  if (change > -1) return -0.4;
+  return -0.8;
+}
+
+function scoreFutureMove(changePercent) {
+  const change = Number(changePercent);
+  if (!Number.isFinite(change)) return NaN;
+  if (change >= 1) return 0.9;
+  if (change >= 0.45) return 0.55;
+  if (change > -0.25) return 0.08;
+  if (change > -0.75) return -0.45;
+  return -0.85;
+}
+
+function scoreShortMomentum(quote, days, threshold) {
+  const trend = trendPercentOverPeriod(quote?.analysisHistory || quote?.history, days);
+  if (!Number.isFinite(trend)) return NaN;
+  return clamp(trend / threshold, -1, 1);
+}
+
+function summarizeIndexPrediction(components, direction) {
+  const sorted = [...components]
+    .filter((item) => (direction === "상승" ? item.weighted > 0.05 : item.weighted < -0.05))
+    .sort((a, b) =>
+      direction === "상승" ? b.weighted - a.weighted : a.weighted - b.weighted,
+    )
+    .map((item) => `${item.label} ${direction === "상승" ? "양호" : "부담"}`);
+  return sorted.slice(0, 3).join(" · ") || "혼조 신호";
 }
 
 function renderMarketScoreRange(score) {

@@ -23,6 +23,7 @@ const US_STOCK_RECOMMENDATION_VERSION = "us-rolling-21-v3";
 
 const MARKET_SOURCES = [
   { id: "kospi", label: "KOSPI", symbol: "^KS11", decimals: 2 },
+  { id: "kosdaq", label: "KOSDAQ", symbol: "^KQ11", decimals: 2 },
   { id: "sp500", label: "S&P 500", symbol: "^GSPC", decimals: 2 },
   { id: "nasdaq", label: "NASDAQ", symbol: "^IXIC", decimals: 2 },
   { id: "sox", label: "SOX", symbol: "^SOX", decimals: 2 },
