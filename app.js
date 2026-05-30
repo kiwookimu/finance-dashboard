@@ -1372,7 +1372,12 @@ function renderIndexPredictions(quotes = {}, sentiment = {}) {
 
   list.innerHTML = predictions
     .map((prediction) => {
-      const tone = prediction.direction === "상승" ? "up" : "down";
+      const tone =
+        prediction.direction === "상승"
+          ? "up"
+          : prediction.direction === "하락"
+            ? "down"
+            : "unknown";
       return `
         <article class="prediction-row ${tone}">
           <div class="prediction-copy">
@@ -1459,13 +1464,18 @@ function evaluateNextDayIndexPrediction(target, quotes, sentiment) {
     components.map((item) => [item.label, item.score]),
   );
   const calibrated = backtestedIndexDirection(target.id, componentScores);
-  const direction = calibrated?.direction || (score >= 0 ? "상승" : "하락");
-  const summary = [
-    calibrated?.summary || "일반 신호",
-    summarizeIndexPrediction(components, direction),
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const rawDirection = score >= 0 ? "상승" : "하락";
+  const direction = calibrated?.direction || "예측불가";
+  const summary = calibrated
+    ? [calibrated.summary, summarizeIndexPrediction(components, calibrated.direction)]
+        .filter(Boolean)
+        .join(" · ")
+    : [
+        `고신뢰 조건 미충족 · 일반 점수는 ${rawDirection} 우위`,
+        summarizeIndexPrediction(components, rawDirection),
+      ]
+        .filter(Boolean)
+        .join(" · ");
 
   return {
     calibrated: Boolean(calibrated),

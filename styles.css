@@ -1189,6 +1189,11 @@ body.modal-open {
   border-color: rgba(223, 70, 70, 0.25);
 }
 
+.prediction-row.unknown .prediction-result {
+  color: var(--muted);
+  border-color: #dfe7e2;
+}
+
 .prediction-empty {
   margin: 0;
   padding: 12px;
