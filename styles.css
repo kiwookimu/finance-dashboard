@@ -1166,8 +1166,8 @@ body.modal-open {
 .prediction-result {
   display: grid;
   justify-items: center;
-  gap: 3px;
-  padding: 8px 6px;
+  align-items: center;
+  padding: 10px 6px;
   background: #f8faf9;
   border: 1px solid #e7eee9;
   border-radius: 8px;
@@ -1177,10 +1177,6 @@ body.modal-open {
 
 .prediction-result b {
   font-size: 15px;
-}
-
-.prediction-result span {
-  font-size: 12px;
 }
 
 .prediction-row.up .prediction-result {

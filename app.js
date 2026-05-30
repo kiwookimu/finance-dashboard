@@ -1381,7 +1381,6 @@ function renderIndexPredictions(quotes = {}, sentiment = {}) {
           </div>
           <div class="prediction-result">
             <b>${escapeHtml(prediction.direction)}</b>
-            <span>${prediction.probability}%</span>
           </div>
         </article>
       `;
@@ -1457,13 +1456,11 @@ function evaluateNextDayIndexPrediction(target, quotes, sentiment) {
   const score =
     components.reduce((sum, item) => sum + item.weighted, 0) / totalWeight;
   const direction = score >= 0 ? "상승" : "하락";
-  const probability = Math.round(clamp(50 + Math.abs(score) * 28, 51, 78));
   const summary = summarizeIndexPrediction(components, direction);
 
   return {
     direction,
     label: target.label,
-    probability,
     score,
     summary,
   };
