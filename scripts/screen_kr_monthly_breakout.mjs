@@ -51,6 +51,7 @@ const MAX_ROLLING_HIGH_DRAWDOWN = Number(
     process.env.MAX_MONTH_HIGH_DRAWDOWN ||
     20,
 );
+const MARKET_CAP_PREFILTER = process.env.MARKET_CAP_PREFILTER !== "0";
 const KRX_CORP_LIST =
   "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13";
 const BENCHMARKS = {
@@ -66,9 +67,27 @@ const benchmarkRowsByMarket = Object.fromEntries(
     ]),
   ),
 );
-const universe = (await fetchKrxUniverse())
+const rawUniverse = (await fetchKrxUniverse())
   .filter((stock) => ALLOWED_MARKETS.has(stock.marketType))
-  .slice(0, LIMIT || undefined);
+  .map((stock, universeIndex) => ({ ...stock, universeIndex }));
+const prefilterSourceUniverse = rawUniverse.slice(0, LIMIT || undefined);
+const universeInfo = MARKET_CAP_PREFILTER
+  ? await prefilterKrxUniverseByMarketCap(prefilterSourceUniverse)
+  : {
+      marketCapFailureCount: 0,
+      rawCount: prefilterSourceUniverse.length,
+      universe: prefilterSourceUniverse,
+      usedMarketCapPrefilter: false,
+    };
+const universe = universeInfo.universe;
+if (universeInfo.usedMarketCapPrefilter) {
+  console.error(
+    `prefiltered ${universeInfo.universe.length}/${universeInfo.rawCount} by market cap`,
+  );
+}
+if (prefilterSourceUniverse.length !== rawUniverse.length) {
+  console.error(`universe ${prefilterSourceUniverse.length}/${rawUniverse.length} after limit`);
+}
 const results = [];
 const failures = [];
 let completed = 0;
@@ -79,7 +98,9 @@ await runPool(universe, CONCURRENCY, async (stock) => {
     const screening = screenStock(stock, rows, benchmarkRowsByMarket[stock.marketType]);
     if (!screening) return;
 
-    const marketCapKrw = await fetchNaverMarketCapKrw(stock);
+    const marketCapKrw = Number.isFinite(stock.marketCapKrw)
+      ? stock.marketCapKrw
+      : await fetchNaverMarketCapKrw(stock);
     if (marketCapKrw < MIN_MARKET_CAP_KRW) return;
     results.push({ ...screening, marketCapKrw });
   } catch (error) {
@@ -138,6 +159,12 @@ const payload = {
     "Forward returns are included only for historical review and are not used in the screen.",
   screenVersion: SCREEN_VERSION,
   universe: "KRX listed corporations from KIND; KOSPI/KOSDAQ stocks only",
+  marketCapPrefilter: {
+    enabled: universeInfo.usedMarketCapPrefilter,
+    failureCount: universeInfo.marketCapFailureCount,
+    rawCount: universeInfo.rawCount,
+    universeCount: universeInfo.universe.length,
+  },
   universeCount: universe.length,
   matchCount: results.length,
   failureCount: failures.length,
@@ -482,6 +509,36 @@ async function fetchKrxUniverse() {
       };
     })
     .filter(Boolean);
+}
+
+async function prefilterKrxUniverseByMarketCap(rawUniverse) {
+  const universe = [];
+  const failures = [];
+  let completedMarketCap = 0;
+
+  await runPool(rawUniverse, CONCURRENCY, async (stock) => {
+    try {
+      const marketCapKrw = await fetchNaverMarketCapKrw(stock);
+      if (marketCapKrw >= MIN_MARKET_CAP_KRW) {
+        universe.push({ ...stock, marketCapKrw });
+      }
+    } catch (error) {
+      failures.push({ ...stock, error: error.message });
+    } finally {
+      completedMarketCap += 1;
+      if (completedMarketCap % 100 === 0 || completedMarketCap === rawUniverse.length) {
+        console.error(`marketcap ${completedMarketCap}/${rawUniverse.length}`);
+      }
+    }
+  });
+
+  universe.sort((a, b) => a.universeIndex - b.universeIndex);
+  return {
+    marketCapFailureCount: failures.length,
+    rawCount: rawUniverse.length,
+    universe,
+    usedMarketCapPrefilter: true,
+  };
 }
 
 async function fetchNaverDaily(stock) {

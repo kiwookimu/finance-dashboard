@@ -966,6 +966,29 @@ function updateRecommendationRefreshProgress(market, patch) {
 }
 
 function updateRecommendationCheckedProgress(market, text) {
+  const marketCapMatches = [...text.matchAll(/marketcap\s+(\d+)\/(\d+)/gi)];
+  const latestMarketCap = marketCapMatches.at(-1);
+  if (latestMarketCap) {
+    const completed = Number(latestMarketCap[1]);
+    const total = Number(latestMarketCap[2]);
+    if (Number.isFinite(completed) && Number.isFinite(total) && total > 0) {
+      const checkedRatio = Math.min(Math.max(completed / total, 0), 1);
+      const percent =
+        RECOMMENDATION_SCRIPT_START_PERCENT +
+        Math.round(checkedRatio * 8);
+      updateRecommendationRefreshProgress(market, {
+        completed,
+        detail: `${completed.toLocaleString("ko-KR")} / ${total.toLocaleString(
+          "ko-KR",
+        )}개 종목 시총 조건 확인`,
+        message: "시총 조건 확인 중",
+        percent: Math.min(percent, RECOMMENDATION_SCRIPT_START_PERCENT + 8),
+        state: "running",
+        total,
+      });
+    }
+  }
+
   const universeMatches = [
     ...text.matchAll(/prefiltered\s+(\d+)\/(\d+)\s+by market cap/gi),
   ];
