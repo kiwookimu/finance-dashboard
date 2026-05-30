@@ -294,14 +294,20 @@ h1 {
 }
 
 .dashboard-tabs {
+  --tab-columns: 2;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--tab-columns), minmax(0, 1fr));
   gap: 4px;
   margin: 12px 0;
   padding: 4px;
   background: #eef4f1;
   border: 1px solid #dce5e0;
   border-radius: 8px;
+}
+
+.dashboard-tabs-secondary {
+  --tab-columns: 4;
+  margin-top: 0;
 }
 
 .dashboard-tab {
@@ -1190,7 +1196,7 @@ body.modal-open {
   .dashboard-tab {
     min-height: 34px;
     padding: 6px 4px;
-    font-size: 13px;
+    font-size: 14px;
   }
 }
 

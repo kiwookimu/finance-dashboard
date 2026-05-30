@@ -110,11 +110,30 @@ initializeRecommendationDetailModal();
 loadIndicators();
 
 function initializeDashboardTabs() {
-  const tabs = [...document.querySelectorAll(".dashboard-tab")];
-  const panels = [...document.querySelectorAll(".tab-panel")];
+  initializeTabGroup("main", {
+    onActivate(panelId) {
+      if (panelId !== "recommendationRootPanel") return;
+      activateCurrentRecommendationPanel();
+    },
+  });
+  initializeTabGroup("recommendations", {
+    onActivate(panelId) {
+      if (document.querySelector("#recommendationRootPanel")?.hidden) return;
+      loadRecommendationPanel(panelId);
+    },
+  });
+}
+
+function initializeTabGroup(groupName, { onActivate } = {}) {
+  const tabList = document.querySelector(`[data-tab-group="${groupName}"]`);
+  if (!tabList) return;
+  const tabs = [...tabList.querySelectorAll(".dashboard-tab")];
+  const panels = [
+    ...document.querySelectorAll(`.tab-panel[data-tab-panel-group="${groupName}"]`),
+  ];
   if (!tabs.length || !panels.length) return;
 
-  const activateTab = (selectedTab, shouldFocus = false) => {
+  const activateTab = (selectedTab, shouldFocus = false, shouldNotify = true) => {
     const panelId = selectedTab.getAttribute("aria-controls");
     for (const tab of tabs) {
       const isSelected = tab === selectedTab;
@@ -127,14 +146,7 @@ function initializeDashboardTabs() {
       panel.classList.toggle("is-active", isSelected);
       panel.hidden = !isSelected;
     }
-    if (panelId === "recommendationsPanel") loadRecommendations();
-    if (panelId === "observationRecommendationsPanel") {
-      loadRecommendations({ market: "observation" });
-    }
-    if (panelId === "usObservationRecommendationsPanel") {
-      loadRecommendations({ market: "usObservation" });
-    }
-    if (panelId === "usRecommendationsPanel") loadRecommendations({ market: "us" });
+    if (shouldNotify) onActivate?.(panelId, selectedTab);
     if (shouldFocus) selectedTab.focus();
   };
 
@@ -153,7 +165,26 @@ function initializeDashboardTabs() {
     });
   }
 
-  activateTab(tabs.find((tab) => tab.classList.contains("is-active")) || tabs[0]);
+  activateTab(tabs.find((tab) => tab.classList.contains("is-active")) || tabs[0], false, false);
+}
+
+function activateCurrentRecommendationPanel() {
+  const selectedTab =
+    document.querySelector('[data-tab-group="recommendations"] .dashboard-tab.is-active') ||
+    document.querySelector('[data-tab-group="recommendations"] .dashboard-tab');
+  if (!selectedTab) return;
+  loadRecommendationPanel(selectedTab.getAttribute("aria-controls"));
+}
+
+function loadRecommendationPanel(panelId) {
+  if (panelId === "recommendationsPanel") loadRecommendations();
+  if (panelId === "observationRecommendationsPanel") {
+    loadRecommendations({ market: "observation" });
+  }
+  if (panelId === "usObservationRecommendationsPanel") {
+    loadRecommendations({ market: "usObservation" });
+  }
+  if (panelId === "usRecommendationsPanel") loadRecommendations({ market: "us" });
 }
 
 function initializeRecommendationActions() {
