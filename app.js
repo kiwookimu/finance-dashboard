@@ -68,6 +68,19 @@ const RECOMMENDATION_CONFIGS = {
     progressSelector: "#usRecommendationProgress",
     refreshText: "미국 후보 갱신 중",
     statusSelector: "#usRecommendationStatus",
+    view: "confirmed",
+  },
+  usObservation: {
+    buttonSelector: "#usObservationRecommendationRefresh",
+    conditionSelector: "#usObservationRecommendationCondition",
+    endpoint: "/api/us-stock-recommendations",
+    listSelector: "#usObservationRecommendationList",
+    loadingText: "미국 관찰 후보 계산 중",
+    progressEndpoint: "/api/recommendation-refresh-progress?market=us",
+    progressSelector: "#usObservationRecommendationProgress",
+    refreshText: "미국 관찰 후보 갱신 중",
+    statusSelector: "#usObservationRecommendationStatus",
+    view: "observation",
   },
 };
 const recommendationStates = {
@@ -80,6 +93,10 @@ const recommendationStates = {
     loading: false,
   },
   us: {
+    loaded: false,
+    loading: false,
+  },
+  usObservation: {
     loaded: false,
     loading: false,
   },
@@ -114,6 +131,9 @@ function initializeDashboardTabs() {
     if (panelId === "observationRecommendationsPanel") {
       loadRecommendations({ market: "observation" });
     }
+    if (panelId === "usObservationRecommendationsPanel") {
+      loadRecommendations({ market: "usObservation" });
+    }
     if (panelId === "usRecommendationsPanel") loadRecommendations({ market: "us" });
     if (shouldFocus) selectedTab.focus();
   };
@@ -146,6 +166,10 @@ function initializeRecommendationActions() {
   const usRefreshButton = document.querySelector("#usRecommendationRefresh");
   usRefreshButton?.addEventListener("click", () =>
     loadRecommendations({ force: true, market: "us" }),
+  );
+  const usObservationRefreshButton = document.querySelector("#usObservationRecommendationRefresh");
+  usObservationRefreshButton?.addEventListener("click", () =>
+    loadRecommendations({ force: true, market: "usObservation" }),
   );
 }
 

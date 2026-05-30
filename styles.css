@@ -295,7 +295,7 @@ h1 {
 
 .dashboard-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 4px;
   margin: 12px 0;
   padding: 4px;
@@ -1190,7 +1190,7 @@ body.modal-open {
   .dashboard-tab {
     min-height: 34px;
     padding: 6px 4px;
-    font-size: 14px;
+    font-size: 13px;
   }
 }
 
@@ -1198,6 +1198,10 @@ body.modal-open {
   .app-shell {
     padding-right: 12px;
     padding-left: 12px;
+  }
+
+  .dashboard-tab {
+    font-size: 12px;
   }
 
   .signal-panel {

@@ -1,5 +1,5 @@
 const MARKET_MONTH = process.argv[2] || "2025-09";
-const SCREEN_VERSION = "us-rolling-21-v2";
+const SCREEN_VERSION = "us-rolling-21-v3";
 const COMPARISON_MONTH_COUNT = Number(
   process.env.COMPARE_MONTHS || process.argv[3] || 5,
 );
@@ -31,6 +31,20 @@ const MIN_WATCH_RETURN = Number(process.env.MIN_WATCH_RETURN || 30);
 const MIN_RELATIVE_RETURN = Number(process.env.MIN_RELATIVE_RETURN || 8);
 const MIN_MFI = Number(process.env.MIN_MFI || 80);
 const MIN_WATCH_MFI = Number(process.env.MIN_WATCH_MFI || 85);
+const MIN_OBSERVATION_VOLUME_RATIO = Number(
+  process.env.MIN_OBSERVATION_VOLUME_RATIO || 1.0,
+);
+const MIN_OBSERVATION_RECENT_VOLUME_RATIO = Number(
+  process.env.MIN_OBSERVATION_RECENT_VOLUME_RATIO || 0.9,
+);
+const MIN_OBSERVATION_RETURN = Number(process.env.MIN_OBSERVATION_RETURN || 50);
+const MIN_OBSERVATION_RELATIVE_RETURN = Number(
+  process.env.MIN_OBSERVATION_RELATIVE_RETURN || 30,
+);
+const MIN_OBSERVATION_MFI = Number(process.env.MIN_OBSERVATION_MFI || 70);
+const MAX_OBSERVATION_HIGH_DRAWDOWN = Number(
+  process.env.MAX_OBSERVATION_HIGH_DRAWDOWN || 12,
+);
 const MOVING_AVERAGE_DAYS = Number(process.env.MOVING_AVERAGE_DAYS || 10);
 const MAX_ROLLING_HIGH_DRAWDOWN = Number(
   process.env.MAX_ROLLING_HIGH_DRAWDOWN ||
@@ -122,6 +136,12 @@ const payload = {
       `21-day volume >= ${MIN_WATCH_VOLUME_RATIO}x, ` +
       `${RECENT_VOLUME_DAYS}-day volume >= ${MIN_RECENT_VOLUME_RATIO}x, ` +
       `MFI >= ${MIN_WATCH_MFI}, and 21-day return >= ${MIN_WATCH_RETURN}% or 21-day high breakout`,
+    observation:
+      `21-day return >= ${MIN_OBSERVATION_RETURN}%, ` +
+      `relative return >= ${MIN_OBSERVATION_RELATIVE_RETURN}%p, ` +
+      `MFI >= ${MIN_OBSERVATION_MFI}, near ${ROLLING_WINDOW_DAYS}-day high, ` +
+      `21-day volume >= ${MIN_OBSERVATION_VOLUME_RATIO}x, and ` +
+      `${RECENT_VOLUME_DAYS}-day volume >= ${MIN_OBSERVATION_RECENT_VOLUME_RATIO}x`,
     minimumHistoryDays: MIN_HISTORY_DAYS,
     minimumMarketCapKrw: MIN_MARKET_CAP_KRW,
     minimumMarketCapUsd: Math.round(minimumMarketCapUsd),
@@ -225,6 +245,15 @@ function screenStock(stock, rows, benchmarkRows) {
     recentVolumeRatio >= MIN_RECENT_VOLUME_RATIO &&
     mfi >= MIN_WATCH_MFI &&
     (targetReturn >= MIN_WATCH_RETURN || breakout);
+  const earlyObservationCandidate =
+    volumeStats.volumeRatio >= MIN_OBSERVATION_VOLUME_RATIO &&
+    recentVolumeRatio >= MIN_OBSERVATION_RECENT_VOLUME_RATIO &&
+    targetReturn >= MIN_OBSERVATION_RETURN &&
+    relativeReturn >= MIN_OBSERVATION_RELATIVE_RETURN &&
+    mfi >= MIN_OBSERVATION_MFI &&
+    monthHighDrawdown >= -MAX_OBSERVATION_HIGH_DRAWDOWN &&
+    aboveTenDayAverage &&
+    (breakout || monthHighDrawdown >= -5);
   const confirmedCandidate =
     volumeStats.volumeRatio >= MIN_VOLUME_RATIO &&
     targetReturn >= MIN_ROLLING_RETURN &&
@@ -244,16 +273,24 @@ function screenStock(stock, rows, benchmarkRows) {
 
   if (
     setupScore < MIN_SETUP_SCORE ||
-    (!confirmedCandidate && !observationCandidate)
+    (!confirmedCandidate && !observationCandidate && !earlyObservationCandidate)
   ) {
     return null;
   }
 
-  const signal = confirmedCandidate
-    ? setupScore >= 85
-      ? "강한 1개월 상승 후보"
-      : "1개월 상승 후보"
-    : "초기 관찰 후보";
+  const recommendationStage = confirmedCandidate
+    ? "confirmed"
+    : observationCandidate
+      ? "watch"
+      : "observe";
+  const signal =
+    recommendationStage === "confirmed"
+      ? setupScore >= 85
+        ? "강한 1개월 상승 후보"
+        : "1개월 상승 후보"
+      : recommendationStage === "watch"
+        ? "강한 관찰 후보"
+        : "관찰 후보";
 
   return {
     aboveTenDayAverage,
@@ -281,7 +318,7 @@ function screenStock(stock, rows, benchmarkRows) {
     recentVolumeDays: RECENT_VOLUME_DAYS,
     recentVolumeRatio: round(recentVolumeRatio, 2),
     recentWorstDailyReturn: round(recentWorstDailyReturn, 2),
-    recommendationStage: confirmedCandidate ? "confirmed" : "watch",
+    recommendationStage,
     relativeReturn: round(relativeReturn, 2),
     rollingReturn: round(targetReturn, 2),
     rollingWindowDays: ROLLING_WINDOW_DAYS,
