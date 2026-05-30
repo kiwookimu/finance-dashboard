@@ -41,7 +41,6 @@ const RECOMMENDATION_CONFIGS = {
     listSelector: "#recommendationList",
     loadingText: "1개월 후보 계산 중",
     progressEndpoint: "/api/recommendation-refresh-progress?market=domestic",
-    progressSelector: "#recommendationProgress",
     refreshText: "최신 후보 갱신 중",
     statusSelector: "#recommendationStatus",
     view: "confirmed",
@@ -53,7 +52,6 @@ const RECOMMENDATION_CONFIGS = {
     listSelector: "#observationRecommendationList",
     loadingText: "관찰 후보 계산 중",
     progressEndpoint: "/api/recommendation-refresh-progress?market=domestic",
-    progressSelector: "#observationRecommendationProgress",
     refreshText: "관찰 후보 갱신 중",
     statusSelector: "#observationRecommendationStatus",
     view: "observation",
@@ -65,7 +63,6 @@ const RECOMMENDATION_CONFIGS = {
     listSelector: "#usRecommendationList",
     loadingText: "미국 후보 계산 중",
     progressEndpoint: "/api/recommendation-refresh-progress?market=us",
-    progressSelector: "#usRecommendationProgress",
     refreshText: "미국 후보 갱신 중",
     statusSelector: "#usRecommendationStatus",
     view: "confirmed",
@@ -77,7 +74,6 @@ const RECOMMENDATION_CONFIGS = {
     listSelector: "#usObservationRecommendationList",
     loadingText: "미국 관찰 후보 계산 중",
     progressEndpoint: "/api/recommendation-refresh-progress?market=us",
-    progressSelector: "#usObservationRecommendationProgress",
     refreshText: "미국 관찰 후보 갱신 중",
     statusSelector: "#usObservationRecommendationStatus",
     view: "observation",
@@ -106,7 +102,12 @@ const recommendationPayloadByBaseMarket = {
   domestic: null,
   us: null,
 };
+const recommendationProgressByBaseMarket = {
+  domestic: createRecommendationClientProgress("domestic"),
+  us: createRecommendationClientProgress("us"),
+};
 const recommendationDetailById = new Map();
+const recommendationGlobalRefreshActiveBases = new Set();
 let recommendationGlobalRefreshing = false;
 let lastRecommendationDetailTrigger = null;
 
@@ -212,10 +213,6 @@ function recommendationConfigEntriesForBase(baseMarket) {
   );
 }
 
-function recommendationConfigsForBase(baseMarket) {
-  return recommendationConfigEntriesForBase(baseMarket).map(([, config]) => config);
-}
-
 function preloadRecommendationPeerMarkets(activePanelId) {
   const activeMarket = recommendationMarketForPanel(activePanelId);
   const activeBaseMarket = RECOMMENDATION_CONFIGS[activeMarket]?.baseMarket;
@@ -283,6 +280,10 @@ async function refreshAllRecommendations() {
   }
 
   recommendationGlobalRefreshing = true;
+  recommendationGlobalRefreshActiveBases.clear();
+  refreshTargets.forEach((config) => {
+    recommendationGlobalRefreshActiveBases.add(config.baseMarket);
+  });
   updateRecommendationGlobalToolbar();
   try {
     await Promise.allSettled(
@@ -292,6 +293,8 @@ async function refreshAllRecommendations() {
     );
   } finally {
     recommendationGlobalRefreshing = false;
+    recommendationGlobalRefreshActiveBases.clear();
+    hideRecommendationGlobalProgress();
     updateRecommendationGlobalToolbar();
   }
 }
@@ -438,41 +441,137 @@ async function fetchRecommendationProgress(config) {
 }
 
 function renderRecommendationProgress(config, progress) {
-  const percent = clamp(Math.round(Number(progress?.percent) || 0), 0, 100);
-  const completed = Number(progress?.completed);
-  const total = Number(progress?.total);
-  const checkedText =
-    Number.isFinite(completed) && completed > 0 && Number.isFinite(total) && total > 0
-      ? `${completed.toLocaleString("ko-KR")} / ${total.toLocaleString("ko-KR")}개`
-      : "";
-  const elapsedText = Number(progress?.elapsedSeconds)
-    ? `${Number(progress.elapsedSeconds).toLocaleString("ko-KR")}초 경과`
-    : "";
-  const detailText = progress?.detail || checkedText;
-  const detail = [detailText, elapsedText].filter(Boolean).join(" · ");
-
-  for (const relatedConfig of recommendationConfigsForBase(config.baseMarket)) {
-    const element = document.querySelector(relatedConfig.progressSelector);
-    if (!element) continue;
-    element.hidden = false;
-    element.dataset.state = progress?.state || "running";
-    element.style.setProperty("--recommendation-progress", `${percent}%`);
-    element.querySelector(".recommendation-progress-title").textContent =
-      progress?.message || "후보 계산 중";
-    element.querySelector(".recommendation-progress-percent").textContent = `${percent}%`;
-    element.querySelector(".recommendation-progress-detail").textContent =
-      detail || "진행 상태를 확인하는 중입니다.";
-  }
+  recommendationProgressByBaseMarket[config.baseMarket] = normalizeRecommendationProgress(
+    config.baseMarket,
+    progress,
+  );
+  renderRecommendationGlobalProgress();
+  updateRecommendationGlobalToolbar();
 }
 
 function hideRecommendationProgress(config) {
-  for (const relatedConfig of recommendationConfigsForBase(config.baseMarket)) {
-    const element = document.querySelector(relatedConfig.progressSelector);
-    if (!element) continue;
-    element.hidden = true;
-    element.dataset.state = "idle";
-    element.style.setProperty("--recommendation-progress", "0%");
+  if (
+    recommendationGlobalRefreshActiveBases.has(config.baseMarket) ||
+    recommendationProgressByBaseMarket[config.baseMarket]?.state === "running"
+  ) {
+    renderRecommendationGlobalProgress();
+    return;
   }
+  recommendationProgressByBaseMarket[config.baseMarket] = createRecommendationClientProgress(
+    config.baseMarket,
+  );
+  renderRecommendationGlobalProgress();
+}
+
+function createRecommendationClientProgress(baseMarket) {
+  return {
+    baseMarket,
+    completed: 0,
+    detail: "",
+    elapsedSeconds: 0,
+    message: "",
+    percent: 0,
+    state: "idle",
+    total: 0,
+  };
+}
+
+function normalizeRecommendationProgress(baseMarket, progress = {}) {
+  const completed = Number(progress.completed);
+  const total = Number(progress.total);
+  return {
+    baseMarket,
+    completed: Number.isFinite(completed) ? completed : 0,
+    detail: progress.detail || "",
+    elapsedSeconds: Number(progress.elapsedSeconds) || 0,
+    message: progress.message || "",
+    percent: clamp(Math.round(Number(progress.percent) || 0), 0, 100),
+    state: progress.state || "running",
+    total: Number.isFinite(total) ? total : 0,
+  };
+}
+
+function renderRecommendationGlobalProgress() {
+  const element = document.querySelector("#recommendationGlobalProgress");
+  if (!element) return;
+
+  const activeProgress = RECOMMENDATION_BASE_MARKETS
+    .map((baseMarket) => recommendationProgressByBaseMarket[baseMarket])
+    .filter((progress) => progress && progress.state !== "idle");
+  if (!activeProgress.length) {
+    hideRecommendationGlobalProgress();
+    return;
+  }
+
+  const runningProgress = activeProgress.filter((progress) => progress.state === "running");
+  const failedProgress = activeProgress.filter((progress) => progress.state === "failed");
+  const state = failedProgress.length
+    ? "failed"
+    : runningProgress.length
+      ? "running"
+      : "succeeded";
+  const percent = combinedRecommendationProgressPercent(activeProgress);
+  const detail = activeProgress
+    .map((progress) => recommendationProgressSummary(progress))
+    .filter(Boolean)
+    .join(" · ");
+
+  element.hidden = false;
+  element.dataset.state = state;
+  element.style.setProperty("--recommendation-progress", `${percent}%`);
+  element.querySelector(".recommendation-progress-title").textContent =
+    state === "failed"
+      ? "추천 후보 갱신 실패"
+      : state === "succeeded"
+        ? "추천 후보 갱신 완료"
+        : "추천 후보 갱신 중";
+  element.querySelector(".recommendation-progress-percent").textContent = `${percent}%`;
+  element.querySelector(".recommendation-progress-detail").textContent =
+    detail || "진행 상태를 확인하는 중입니다.";
+}
+
+function hideRecommendationGlobalProgress() {
+  const element = document.querySelector("#recommendationGlobalProgress");
+  if (!element) return;
+  for (const baseMarket of RECOMMENDATION_BASE_MARKETS) {
+    recommendationProgressByBaseMarket[baseMarket] = createRecommendationClientProgress(baseMarket);
+  }
+  element.hidden = true;
+  element.dataset.state = "idle";
+  element.style.setProperty("--recommendation-progress", "0%");
+}
+
+function combinedRecommendationProgressPercent(progressItems) {
+  const itemsWithTotal = progressItems.filter((progress) => progress.total > 0);
+  if (itemsWithTotal.length) {
+    const completed = itemsWithTotal.reduce(
+      (sum, progress) =>
+        sum +
+        (progress.state === "succeeded"
+          ? progress.total
+          : Math.min(progress.completed || 0, progress.total)),
+      0,
+    );
+    const total = itemsWithTotal.reduce((sum, progress) => sum + progress.total, 0);
+    if (total > 0) return clamp(Math.round((completed / total) * 100), 0, 100);
+  }
+  const average =
+    progressItems.reduce((sum, progress) => sum + (progress.percent || 0), 0) /
+    progressItems.length;
+  return clamp(Math.round(average), 0, 100);
+}
+
+function recommendationProgressSummary(progress) {
+  const label = progress.baseMarket === "us" ? "미국" : "국내";
+  if (progress.state === "failed") return `${label} 실패`;
+  if (progress.total > 0 && progress.completed > 0) {
+    return `${label} ${Math.min(progress.completed, progress.total).toLocaleString(
+      "ko-KR",
+    )} / ${progress.total.toLocaleString("ko-KR")}개`;
+  }
+  if (progress.state === "succeeded") return `${label} 완료`;
+  if (progress.detail) return `${label} ${progress.detail}`;
+  return `${label} ${progress.percent}%`;
 }
 
 function renderRecommendationPayloadForBase(payload, baseMarket) {
@@ -513,9 +612,14 @@ function updateRecommendationGlobalToolbar() {
   if (!refreshButton) return;
 
   const canRefresh = RECOMMENDATION_BASE_MARKETS.some(canRefreshRecommendationBase);
-  refreshButton.hidden = recommendationGlobalRefreshing;
+  const isRefreshing =
+    recommendationGlobalRefreshing ||
+    Object.values(recommendationProgressByBaseMarket).some(
+      (progress) => progress?.state === "running",
+    );
+  refreshButton.hidden = isRefreshing;
   refreshButton.disabled = !canRefresh;
-  refreshButton.setAttribute("aria-busy", String(recommendationGlobalRefreshing));
+  refreshButton.setAttribute("aria-busy", String(isRefreshing));
   refreshButton.setAttribute("aria-disabled", String(!canRefresh));
   refreshButton.title = canRefresh ? "" : "최근 갱신 후 1시간 동안은 다시 갱신할 수 없습니다.";
 }

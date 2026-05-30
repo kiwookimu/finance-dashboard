@@ -612,6 +612,10 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.recommendation-global-progress {
+  margin: 0 0 8px;
+}
+
 .recommendation-heading {
   display: flex;
   align-items: center;
