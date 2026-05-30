@@ -81,31 +81,11 @@
           <div class="dashboard-tabs dashboard-tabs-secondary" data-tab-group="recommendations" role="tablist" aria-label="추천 구분">
             <button
               class="dashboard-tab is-active"
-              id="observationRecommendationsTab"
-              type="button"
-              role="tab"
-              aria-controls="observationRecommendationsPanel"
-              aria-selected="true"
-            >
-              국내 관찰
-            </button>
-            <button
-              class="dashboard-tab"
-              id="usObservationRecommendationsTab"
-              type="button"
-              role="tab"
-              aria-controls="usObservationRecommendationsPanel"
-              aria-selected="false"
-            >
-              미국 관찰
-            </button>
-            <button
-              class="dashboard-tab"
               id="recommendationsTab"
               type="button"
               role="tab"
               aria-controls="recommendationsPanel"
-              aria-selected="false"
+              aria-selected="true"
             >
               국내 추천
             </button>
@@ -119,14 +99,35 @@
             >
               미국 추천
             </button>
+            <button
+              class="dashboard-tab"
+              id="observationRecommendationsTab"
+              type="button"
+              role="tab"
+              aria-controls="observationRecommendationsPanel"
+              aria-selected="false"
+            >
+              국내 관찰
+            </button>
+            <button
+              class="dashboard-tab"
+              id="usObservationRecommendationsTab"
+              type="button"
+              role="tab"
+              aria-controls="usObservationRecommendationsPanel"
+              aria-selected="false"
+            >
+              미국 관찰
+            </button>
           </div>
 
         <section
-          class="tab-panel is-active"
+          class="tab-panel"
           id="observationRecommendationsPanel"
           role="tabpanel"
           aria-labelledby="observationRecommendationsTab"
           data-tab-panel-group="recommendations"
+          hidden
         >
           <section class="recommendation-panel" aria-label="관찰 후보">
             <div class="recommendation-heading">
@@ -207,12 +208,11 @@
         </section>
 
         <section
-          class="tab-panel"
+          class="tab-panel is-active"
           id="recommendationsPanel"
           role="tabpanel"
           aria-labelledby="recommendationsTab"
           data-tab-panel-group="recommendations"
-          hidden
         >
           <section class="recommendation-panel" aria-label="국내 추천">
             <div class="recommendation-heading">
