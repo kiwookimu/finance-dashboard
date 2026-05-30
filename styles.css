@@ -1337,6 +1337,254 @@ body.modal-open {
   line-height: 1.35;
 }
 
+.traffic-page {
+  display: grid;
+  gap: 14px;
+}
+
+.traffic-heading {
+  margin-bottom: 0;
+}
+
+.traffic-eyebrow {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.traffic-home-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 11px;
+  color: #18775b;
+  background: #f4fbf8;
+  border: 1px solid rgba(31, 157, 114, 0.28);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.traffic-updated {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.traffic-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.traffic-kpi-card,
+.traffic-sub-kpis div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  background: #f8faf9;
+  border: 1px solid #e7eee9;
+  border-radius: 8px;
+}
+
+.traffic-kpi-card span,
+.traffic-sub-kpis span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.traffic-kpi-card strong {
+  color: #15956d;
+  font-size: 24px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.traffic-kpi-card em,
+.traffic-sub-kpis em {
+  color: #83908a;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.traffic-sub-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.traffic-sub-kpis strong {
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.traffic-panel {
+  display: grid;
+  gap: 9px;
+  padding: 11px;
+  background: #ffffff;
+  border: 1px solid #e7eee9;
+  border-radius: 8px;
+}
+
+.traffic-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.traffic-panel-heading strong {
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.traffic-window-list {
+  display: grid;
+  gap: 8px;
+}
+
+.traffic-window-card {
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  background: #f8faf9;
+  border: 1px solid #e7eee9;
+  border-radius: 8px;
+}
+
+.traffic-window-card strong {
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.traffic-window-card div {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.traffic-window-card span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.traffic-window-card b {
+  color: #15956d;
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.traffic-window-card em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.traffic-path-list {
+  display: grid;
+  gap: 6px;
+}
+
+.traffic-path-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #edf2ef;
+}
+
+.traffic-path-row:last-child {
+  border-bottom: 0;
+}
+
+.traffic-path-row span {
+  min-width: 0;
+  overflow: hidden;
+  color: #334139;
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.traffic-path-row strong {
+  color: #15956d;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.traffic-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.traffic-history-table {
+  width: 100%;
+  min-width: 390px;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.traffic-history-table th,
+.traffic-history-table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid #edf2ef;
+  text-align: left;
+  vertical-align: top;
+}
+
+.traffic-history-table th {
+  color: var(--muted);
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.traffic-history-table td {
+  color: #334139;
+  font-weight: 750;
+}
+
+.traffic-history-table td:nth-child(3) {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.traffic-history-table td:nth-child(4),
+.traffic-history-table td:nth-child(5) {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.traffic-empty {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.traffic-note {
+  color: #87928d;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.4;
+  text-align: center;
+}
+
 @media (min-width: 700px) {
   body {
     padding: 24px 0;

@@ -1,5 +1,6 @@
 const http = require("node:http");
 const https = require("node:https");
+const crypto = require("node:crypto");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { readFile } = require("node:fs/promises");
@@ -20,6 +21,9 @@ const RECOMMENDATION_STOP_LOSS_PERCENT = -8;
 const RECOMMENDATION_MAX_MONTH_HIGH_DRAWDOWN = -20;
 const DOMESTIC_STOCK_RECOMMENDATION_VERSION = "kr-rolling-21-v3";
 const US_STOCK_RECOMMENDATION_VERSION = "us-rolling-21-v3";
+const TRAFFIC_EVENT_LIMIT = 20000;
+const TRAFFIC_RETENTION_MS = 31 * 24 * 60 * 60 * 1000;
+const TRAFFIC_VISITOR_SALT = crypto.randomBytes(16).toString("hex");
 
 const MARKET_SOURCES = [
   { id: "kospi", label: "KOSPI", symbol: "^KS11", decimals: 2 },
@@ -124,6 +128,8 @@ let stockRecommendationRefreshPromise = null;
 let cachedUsStockRecommendations = null;
 let cachedUsStockRecommendationsAt = 0;
 let usStockRecommendationRefreshPromise = null;
+const trafficEvents = [];
+const trafficStartedAt = new Date().toISOString();
 const recommendationRefreshProgress = {
   domestic: createRecommendationRefreshProgress("domestic"),
   us: createRecommendationRefreshProgress("us"),
@@ -132,9 +138,15 @@ const recommendationRefreshProgress = {
 const server = http.createServer(async (request, response) => {
   try {
     const url = new URL(request.url, `http://${request.headers.host}`);
+    trackTraffic(request, response, url);
 
     if (url.pathname === "/api/health") {
       sendJson(response, { ok: true, service: "finance-dashboard" });
+      return;
+    }
+
+    if (url.pathname === "/api/traffic") {
+      sendJson(response, getTrafficSummary());
       return;
     }
 
@@ -1777,7 +1789,12 @@ function fetchBinary(url, accept = "application/octet-stream,*/*") {
 }
 
 async function serveStatic(pathname, response) {
-  const safePath = pathname === "/" ? "/index.html" : pathname;
+  const safePath =
+    pathname === "/"
+      ? "/index.html"
+      : pathname === "/traffic" || pathname === "/traffic/"
+        ? "/traffic.html"
+        : pathname;
   const filePath = path.normalize(path.join(ROOT, safePath));
 
   if (!filePath.startsWith(ROOT)) {
@@ -1792,6 +1809,168 @@ async function serveStatic(pathname, response) {
     "Content-Type": getContentType(filePath),
   });
   response.end(file);
+}
+
+function trackTraffic(request, response, url) {
+  if (!shouldTrackTraffic(request, url)) return;
+
+  const startedAt = Date.now();
+  const eventBase = {
+    at: new Date(startedAt).toISOString(),
+    kind: trafficKind(url.pathname),
+    method: request.method || "GET",
+    path: normalizeTrafficPath(url.pathname),
+    visitorId: anonymizedVisitorId(request),
+  };
+
+  response.on("finish", () => {
+    trafficEvents.push({
+      ...eventBase,
+      durationMs: Date.now() - startedAt,
+      status: response.statusCode,
+    });
+    pruneTrafficEvents();
+  });
+}
+
+function shouldTrackTraffic(request, url) {
+  if ((request.method || "GET") !== "GET") return false;
+  if (url.pathname === "/api/traffic") return false;
+  if (url.pathname === "/traffic" || url.pathname === "/traffic/") return false;
+  if (url.pathname === "/traffic.js") return false;
+  if (url.pathname === "/traffic.html") return false;
+  if (url.pathname === "/favicon.ico") return false;
+  if (/\.(?:css|js|map|png|jpg|jpeg|gif|svg|webp|ico)$/i.test(url.pathname)) {
+    return false;
+  }
+  return true;
+}
+
+function normalizeTrafficPath(pathname) {
+  if (pathname === "/index.html") return "/";
+  if (pathname === "/traffic.html" || pathname === "/traffic/") return "/traffic";
+  return pathname || "/";
+}
+
+function trafficKind(pathname) {
+  if (pathname.startsWith("/api/")) return "api";
+  return "page";
+}
+
+function anonymizedVisitorId(request) {
+  const forwardedFor = String(request.headers["x-forwarded-for"] || "")
+    .split(",")[0]
+    .trim();
+  const ip = forwardedFor || request.socket.remoteAddress || "";
+  const userAgent = String(request.headers["user-agent"] || "");
+  return crypto
+    .createHash("sha256")
+    .update(`${TRAFFIC_VISITOR_SALT}|${ip}|${userAgent}`)
+    .digest("hex")
+    .slice(0, 16);
+}
+
+function pruneTrafficEvents() {
+  const cutoff = Date.now() - TRAFFIC_RETENTION_MS;
+  while (
+    trafficEvents.length > TRAFFIC_EVENT_LIMIT ||
+    (trafficEvents.length && Date.parse(trafficEvents[0].at) < cutoff)
+  ) {
+    trafficEvents.shift();
+  }
+}
+
+function getTrafficSummary() {
+  const now = Date.now();
+  const windows = [
+    { id: "1h", label: "최근 1시간", ms: 60 * 60 * 1000 },
+    { id: "24h", label: "최근 24시간", ms: 24 * 60 * 60 * 1000 },
+    { id: "30d", label: "최근 30일", ms: 30 * 24 * 60 * 60 * 1000 },
+  ];
+  const pageEvents = trafficEvents.filter((event) => event.kind === "page");
+  return {
+    generatedAt: new Date(now).toISOString(),
+    kpi: buildTrafficKpis(pageEvents, now),
+    retentionDays: 31,
+    startedAt: trafficStartedAt,
+    recent: trafficEvents
+      .slice(-30)
+      .reverse()
+      .map(({ at, durationMs, kind, method, path: eventPath, status }) => ({
+        at,
+        durationMs,
+        kind,
+        method,
+        path: eventPath,
+        status,
+      })),
+    windows: windows.map((window) => ({
+      id: window.id,
+      label: window.label,
+      ...summarizeTrafficWindow(
+        trafficEvents.filter((event) => Date.parse(event.at) >= now - window.ms),
+      ),
+    })),
+  };
+}
+
+function buildTrafficKpis(pageEvents, now) {
+  const todayKey = trafficDayKey(now);
+  const monthKey = trafficMonthKey(now);
+  const dailyEvents = pageEvents.filter((event) => trafficDayKey(Date.parse(event.at)) === todayKey);
+  const monthlyEvents = pageEvents.filter(
+    (event) => trafficMonthKey(Date.parse(event.at)) === monthKey,
+  );
+  const thirtyDayEvents = pageEvents.filter(
+    (event) => Date.parse(event.at) >= now - 30 * 24 * 60 * 60 * 1000,
+  );
+  return {
+    dau: uniqueTrafficVisitors(dailyEvents),
+    mau: uniqueTrafficVisitors(monthlyEvents),
+    pv30d: thirtyDayEvents.length,
+    pvToday: dailyEvents.length,
+    pvThisMonth: monthlyEvents.length,
+  };
+}
+
+function uniqueTrafficVisitors(events) {
+  return new Set(events.map((event) => event.visitorId)).size;
+}
+
+function trafficDayKey(timestamp) {
+  return new Date(timestamp + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function trafficMonthKey(timestamp) {
+  return trafficDayKey(timestamp).slice(0, 7);
+}
+
+function summarizeTrafficWindow(events) {
+  const visitors = new Set(events.map((event) => event.visitorId));
+  const pageViews = events.filter((event) => event.kind === "page").length;
+  const apiRequests = events.filter((event) => event.kind === "api").length;
+  const errorRequests = events.filter((event) => Number(event.status) >= 400).length;
+  return {
+    apiRequests,
+    avgDurationMs: roundFinite(average(events.map((event) => event.durationMs)), 0),
+    errorRequests,
+    pageViews,
+    topPaths: topTrafficPaths(events),
+    totalRequests: events.length,
+    uniqueVisitors: visitors.size,
+  };
+}
+
+function topTrafficPaths(events) {
+  const pathCounts = new Map();
+  for (const event of events) {
+    const current = pathCounts.get(event.path) || { path: event.path, requests: 0 };
+    current.requests += 1;
+    pathCounts.set(event.path, current);
+  }
+  return [...pathCounts.values()]
+    .sort((a, b) => b.requests - a.requests || a.path.localeCompare(b.path))
+    .slice(0, 8);
 }
 
 function sendJson(response, data, status = 200) {
@@ -1887,6 +2066,12 @@ function finiteNumber(value) {
 
 function sum(values) {
   return values.reduce((total, value) => total + (Number(value) || 0), 0);
+}
+
+function average(values) {
+  const cleanValues = values.map(Number).filter(Number.isFinite);
+  if (!cleanValues.length) return NaN;
+  return sum(cleanValues) / cleanValues.length;
 }
 
 function movingAverage(values, period) {

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>사이트 트래픽</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell" aria-label="사이트 트래픽">
+      <section class="section-block traffic-page" aria-labelledby="traffic-title">
+        <div class="section-heading traffic-heading">
+          <div>
+            <span class="traffic-eyebrow">KST 기준</span>
+            <h1 id="traffic-title">사이트 트래픽</h1>
+          </div>
+          <a class="traffic-home-link" href="/">시장</a>
+        </div>
+
+        <div class="traffic-updated" id="trafficUpdatedAt">집계 불러오는 중</div>
+
+        <section class="traffic-kpi-grid" aria-label="핵심 트래픽 지표">
+          <article class="traffic-kpi-card">
+            <span>DAU</span>
+            <strong id="trafficDau">-</strong>
+            <em>오늘 방문자</em>
+          </article>
+          <article class="traffic-kpi-card">
+            <span>MAU</span>
+            <strong id="trafficMau">-</strong>
+            <em>이번 달 방문자</em>
+          </article>
+          <article class="traffic-kpi-card">
+            <span>PV</span>
+            <strong id="trafficPvToday">-</strong>
+            <em>오늘 페이지뷰</em>
+          </article>
+        </section>
+
+        <section class="traffic-sub-kpis" aria-label="보조 페이지뷰 지표">
+          <div>
+            <span>이번 달 PV</span>
+            <strong id="trafficPvMonth">-</strong>
+          </div>
+          <div>
+            <span>최근 30일 PV</span>
+            <strong id="trafficPv30d">-</strong>
+          </div>
+        </section>
+
+        <section class="traffic-panel" aria-labelledby="traffic-window-title">
+          <div class="traffic-panel-heading">
+            <strong id="traffic-window-title">기간별 요약</strong>
+          </div>
+          <div class="traffic-window-list" id="trafficWindowList">
+            <p class="traffic-empty">집계 불러오는 중</p>
+          </div>
+        </section>
+
+        <section class="traffic-panel" aria-labelledby="traffic-path-title">
+          <div class="traffic-panel-heading">
+            <strong id="traffic-path-title">인기 경로</strong>
+          </div>
+          <div class="traffic-path-list" id="trafficPathList">
+            <p class="traffic-empty">집계 불러오는 중</p>
+          </div>
+        </section>
+
+        <section class="traffic-panel" aria-labelledby="traffic-recent-title">
+          <div class="traffic-panel-heading">
+            <strong id="traffic-recent-title">접속이력</strong>
+          </div>
+          <div class="traffic-table-wrap">
+            <table class="traffic-history-table">
+              <thead>
+                <tr>
+                  <th scope="col">시간</th>
+                  <th scope="col">구분</th>
+                  <th scope="col">경로</th>
+                  <th scope="col">상태</th>
+                  <th scope="col">ms</th>
+                </tr>
+              </thead>
+              <tbody id="trafficRecentList">
+                <tr>
+                  <td colspan="5">집계 불러오는 중</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <p class="traffic-note">
+          서버 메모리 기준 간이 집계입니다. 배포나 서버 재시작 후에는 집계가 초기화됩니다.
+        </p>
+      </section>
+    </main>
+    <script src="./traffic.js"></script>
+  </body>
+</html>
