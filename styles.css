@@ -1149,10 +1149,30 @@ body.modal-open {
   gap: 4px;
 }
 
-.prediction-copy strong {
-  font-size: 16px;
+.prediction-label {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.prediction-label-main {
+  flex: 0 0 auto;
   font-weight: 900;
-  line-height: 1.1;
+}
+
+.prediction-label-metrics {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  overflow: hidden;
 }
 
 .prediction-copy small {

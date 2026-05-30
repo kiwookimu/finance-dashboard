@@ -400,6 +400,14 @@ function evaluateNextDayIndexPrediction(target, quotes, sentiment) {
       scoreOneDayMove(quotes?.nasdaq),
       scoreOneDayMove(quotes?.sp500),
     ]), 0.45);
+    add("코스닥", average([
+      scoreOneDayMove(quotes?.kosdaq),
+      scoreShortMomentum(quotes?.kosdaq, 5, 3.2),
+      scoreRiskAsset(quotes?.kosdaq),
+    ]), 0.45);
+    add("코스닥상대", scoreRelativeMomentum(quotes?.kosdaq, quotes?.kospi), 0.35);
+    add("반도체", scoreSemiconductorCycle(quotes), 0.55);
+    add("시장레짐", scoreMarketRegime(quotes), 0.35);
     if (target.profile === "growth") {
       add("반도체", scoreSemiconductorCycle(quotes), 0.65);
       add("나스닥폭", scoreRelativeBreadth(quotes?.nasdaqBreadth), 0.45);
@@ -493,7 +501,7 @@ function summarizeHighConfidenceRules(rows) {
     },
     byIndex: Object.fromEntries(ruleRows.map((row) => [row.indexId, row])),
     rules: [
-      "KOSPI: 미국장 점수 >= 0.45 상승, S&P선물 점수 <= -0.8 하락",
+      "KOSPI: 미국장 점수 >= 0.45 상승, S&P선물 점수 <= -0.8 하락, 금리 점수 <= -0.7 하락, 니케이 점수 <= -0.8 상승, 종합점수 >= 0.30 상승",
       "NASDAQ/S&P 500: VIX 기간구조 점수 >= 0.35 상승, <= 0 하락",
     ],
   };
@@ -501,13 +509,19 @@ function summarizeHighConfidenceRules(rows) {
 
 function highConfidenceDirection(row) {
   const components = row.components || {};
+  const score = Number(row.score);
   const usMarket = Number(components["미국장"]);
+  const nikkei = Number(components["니케이"]);
+  const rate = Number(components["금리"]);
   const spFuture = Number(components["S&P선물"]);
   const vixTerm = Number(components["VIX구조"]);
 
   if (row.indexId === "kospi") {
     if (usMarket >= 0.45) return "상승";
     if (spFuture <= -0.8) return "하락";
+    if (rate <= -0.7) return "하락";
+    if (nikkei <= -0.8) return "상승";
+    if (score >= 0.3) return "상승";
   }
   if (row.indexId === "nasdaq" || row.indexId === "sp500") {
     if (vixTerm >= 0.35) return "상승";

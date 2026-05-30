@@ -4,6 +4,11 @@ const NEXT_DAY_PREDICTION_TARGETS = [
   { id: "nasdaq", label: "NASDAQ", market: "us", profile: "growth" },
   { id: "sp500", label: "S&P 500", market: "us", profile: "broad" },
 ];
+const NEXT_DAY_PREDICTION_BACKTEST_METRICS = {
+  kospi: { coverage: 75.2, hitRate: 74.7 },
+  nasdaq: { coverage: 86.4, hitRate: 70.8 },
+  sp500: { coverage: 86.4, hitRate: 69.4 },
+};
 const PORTFOLIO_HOLDINGS = [
   { amount: 30041571, benchmark: "kospi", code: "395270", id: "hanaroSemi", name: "HANARO Fn K-반도체", tags: ["semi", "korea"] },
   { amount: 30003498, benchmark: "kospi", code: "487240", id: "kodexAiPower", name: "KODEX AI전력핵심설비", tags: ["aiPower", "korea"] },
@@ -1380,7 +1385,7 @@ function renderIndexPredictions(quotes = {}, sentiment = {}) {
       return `
         <article class="prediction-row ${tone}">
           <div class="prediction-copy">
-            <strong>${escapeHtml(prediction.label)}</strong>
+            ${formatPredictionLabel(prediction)}
             <small>${escapeHtml(prediction.summary)}</small>
           </div>
           <div class="prediction-result">
@@ -1390,6 +1395,19 @@ function renderIndexPredictions(quotes = {}, sentiment = {}) {
       `;
     })
     .join("");
+}
+
+function formatPredictionLabel(prediction) {
+  const metrics = NEXT_DAY_PREDICTION_BACKTEST_METRICS[prediction.id];
+  if (!metrics) {
+    return `<strong class="prediction-label"><span class="prediction-label-main">${escapeHtml(prediction.label)}</span></strong>`;
+  }
+  return `
+    <strong class="prediction-label">
+      <span class="prediction-label-main">${escapeHtml(prediction.label)}</span>
+      <span class="prediction-label-metrics">(커버리지 ${metrics.coverage.toFixed(1)}%, 적중률 ${metrics.hitRate.toFixed(1)}%)</span>
+    </strong>
+  `;
 }
 
 function renderIndexPredictionError() {
@@ -1428,6 +1446,14 @@ function evaluateNextDayIndexPrediction(target, quotes, sentiment) {
       scoreOneDayMove(quotes?.nasdaq),
       scoreOneDayMove(quotes?.sp500),
     ]), 0.45);
+    add("코스닥", average([
+      scoreOneDayMove(quotes?.kosdaq),
+      scoreShortMomentum(quotes?.kosdaq, 5, 3.2),
+      scoreRiskAsset(quotes?.kosdaq),
+    ]), 0.45);
+    add("코스닥상대", scoreRelativeMomentum(quotes?.kosdaq, quotes?.kospi), 0.35);
+    add("반도체", scoreSemiconductorCycle(quotes), 0.55);
+    add("시장레짐", scoreMarketRegime(quotes), 0.35);
     if (target.profile === "growth") {
       add("반도체", scoreSemiconductorCycle(quotes), 0.65);
       add("나스닥폭", scoreRelativeBreadth(quotes?.nasdaqBreadth), 0.45);
@@ -1462,7 +1488,7 @@ function evaluateNextDayIndexPrediction(target, quotes, sentiment) {
   const componentScores = Object.fromEntries(
     components.map((item) => [item.label, item.score]),
   );
-  const calibrated = backtestedIndexDirection(target.id, componentScores);
+  const calibrated = backtestedIndexDirection(target.id, componentScores, score);
   const rawDirection = score >= 0 ? "상승" : "하락";
   const direction = calibrated?.direction || "예측불가";
   const summary = calibrated
@@ -1479,14 +1505,17 @@ function evaluateNextDayIndexPrediction(target, quotes, sentiment) {
   return {
     calibrated: Boolean(calibrated),
     direction,
+    id: target.id,
     label: target.label,
     score,
     summary,
   };
 }
 
-function backtestedIndexDirection(indexId, components) {
+function backtestedIndexDirection(indexId, components, score) {
   const usMarket = Number(components["미국장"]);
+  const nikkei = Number(components["니케이"]);
+  const rate = Number(components["금리"]);
   const spFuture = Number(components["S&P선물"]);
   const vixTerm = Number(components["VIX구조"]);
 
@@ -1496,6 +1525,15 @@ function backtestedIndexDirection(indexId, components) {
     }
     if (spFuture <= -0.8) {
       return { direction: "하락", summary: "고신뢰 검증 구간 · S&P선물 급락" };
+    }
+    if (rate <= -0.7) {
+      return { direction: "하락", summary: "고신뢰 확장 구간 · 금리 급락 위험회피" };
+    }
+    if (nikkei <= -0.8) {
+      return { direction: "상승", summary: "고신뢰 확장 구간 · 니케이 급락 후 되돌림" };
+    }
+    if (score >= 0.3) {
+      return { direction: "상승", summary: "고신뢰 확장 구간 · 코스피 종합점수 강세" };
     }
   }
 
