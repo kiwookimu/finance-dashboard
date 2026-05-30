@@ -1534,7 +1534,7 @@ body.modal-open {
 
 .traffic-history-table {
   width: 100%;
-  min-width: 390px;
+  min-width: 520px;
   border-collapse: collapse;
   font-size: 11px;
 }
@@ -1558,15 +1558,20 @@ body.modal-open {
   font-weight: 750;
 }
 
-.traffic-history-table td:nth-child(3) {
+.traffic-history-table td:nth-child(1),
+.traffic-history-table td:nth-child(2) {
+  white-space: nowrap;
+}
+
+.traffic-history-table td:nth-child(4) {
   max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.traffic-history-table td:nth-child(4),
-.traffic-history-table td:nth-child(5) {
+.traffic-history-table td:nth-child(5),
+.traffic-history-table td:nth-child(6) {
   text-align: right;
   white-space: nowrap;
 }

@@ -1817,6 +1817,7 @@ function trackTraffic(request, response, url) {
   const startedAt = Date.now();
   const eventBase = {
     at: new Date(startedAt).toISOString(),
+    ip: maskedTrafficIp(rawTrafficIp(request)),
     kind: trafficKind(url.pathname),
     method: request.method || "GET",
     path: normalizeTrafficPath(url.pathname),
@@ -1858,16 +1859,34 @@ function trafficKind(pathname) {
 }
 
 function anonymizedVisitorId(request) {
-  const forwardedFor = String(request.headers["x-forwarded-for"] || "")
-    .split(",")[0]
-    .trim();
-  const ip = forwardedFor || request.socket.remoteAddress || "";
+  const ip = rawTrafficIp(request);
   const userAgent = String(request.headers["user-agent"] || "");
   return crypto
     .createHash("sha256")
     .update(`${TRAFFIC_VISITOR_SALT}|${ip}|${userAgent}`)
     .digest("hex")
     .slice(0, 16);
+}
+
+function rawTrafficIp(request) {
+  const forwardedFor = String(request.headers["x-forwarded-for"] || "")
+    .split(",")[0]
+    .trim();
+  return forwardedFor || request.socket.remoteAddress || "";
+}
+
+function maskedTrafficIp(ip) {
+  const value = String(ip || "").replace(/^::ffff:/, "");
+  if (!value) return "-";
+  if (value === "::1" || value === "127.0.0.1") return "local";
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(value)) {
+    return value.replace(/\.\d{1,3}$/, ".xxx");
+  }
+  if (value.includes(":")) {
+    const parts = value.split(":").filter(Boolean);
+    return parts.length ? `${parts.slice(0, 4).join(":")}:…` : "IPv6";
+  }
+  return value.length > 12 ? `${value.slice(0, 12)}…` : value;
 }
 
 function pruneTrafficEvents() {
@@ -1896,9 +1915,10 @@ function getTrafficSummary() {
     recent: trafficEvents
       .slice(-30)
       .reverse()
-      .map(({ at, durationMs, kind, method, path: eventPath, status }) => ({
+      .map(({ at, durationMs, ip, kind, method, path: eventPath, status }) => ({
         at,
         durationMs,
+        ip,
         kind,
         method,
         path: eventPath,

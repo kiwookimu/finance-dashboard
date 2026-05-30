@@ -93,7 +93,7 @@ function renderRecent(items) {
   if (!trafficElements.recentList) return;
   if (!items.length) {
     trafficElements.recentList.innerHTML =
-      '<tr><td colspan="5">최근 접속이력이 없습니다.</td></tr>';
+      '<tr><td colspan="6">최근 접속이력이 없습니다.</td></tr>';
     return;
   }
   trafficElements.recentList.innerHTML = items
@@ -101,7 +101,8 @@ function renderRecent(items) {
     .map(
       (item) => `
         <tr>
-          <td>${formatDateTime(item.at)}</td>
+          <td>${formatAccessDateTime(item.at)}</td>
+          <td>${escapeHtml(item.ip || "-")}</td>
           <td>${escapeHtml(formatKind(item.kind))}</td>
           <td>${escapeHtml(item.path)}</td>
           <td>${formatStatus(item.status)}</td>
@@ -144,6 +145,26 @@ function formatDateTime(isoDate) {
     month: "2-digit",
     timeZone: "Asia/Seoul",
   }).format(date);
+}
+
+function formatAccessDateTime(isoDate) {
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) return "시간 없음";
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      day: "2-digit",
+      hour: "2-digit",
+      hour12: false,
+      minute: "2-digit",
+      month: "2-digit",
+      second: "2-digit",
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+    })
+      .formatToParts(date)
+      .map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
 function setText(element, value) {
