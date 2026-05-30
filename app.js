@@ -35,7 +35,7 @@ const DEFAULT_PORTFOLIO_EXPOSURE_CONFIG = {
 const RECOMMENDATION_REFRESH_COOLDOWN_MS = 60 * 60 * 1000;
 const RECOMMENDATION_CONFIGS = {
   domestic: {
-    buttonSelector: "#recommendationRefresh",
+    baseMarket: "domestic",
     conditionSelector: "#recommendationCondition",
     endpoint: "/api/stock-recommendations",
     listSelector: "#recommendationList",
@@ -47,7 +47,7 @@ const RECOMMENDATION_CONFIGS = {
     view: "confirmed",
   },
   observation: {
-    buttonSelector: "#observationRecommendationRefresh",
+    baseMarket: "domestic",
     conditionSelector: "#observationRecommendationCondition",
     endpoint: "/api/stock-recommendations",
     listSelector: "#observationRecommendationList",
@@ -59,7 +59,7 @@ const RECOMMENDATION_CONFIGS = {
     view: "observation",
   },
   us: {
-    buttonSelector: "#usRecommendationRefresh",
+    baseMarket: "us",
     conditionSelector: "#usRecommendationCondition",
     endpoint: "/api/us-stock-recommendations",
     listSelector: "#usRecommendationList",
@@ -71,7 +71,7 @@ const RECOMMENDATION_CONFIGS = {
     view: "confirmed",
   },
   usObservation: {
-    buttonSelector: "#usObservationRecommendationRefresh",
+    baseMarket: "us",
     conditionSelector: "#usObservationRecommendationCondition",
     endpoint: "/api/us-stock-recommendations",
     listSelector: "#usObservationRecommendationList",
@@ -83,6 +83,7 @@ const RECOMMENDATION_CONFIGS = {
     view: "observation",
   },
 };
+const RECOMMENDATION_BASE_MARKETS = ["domestic", "us"];
 const recommendationStates = {
   domestic: {
     loaded: false,
@@ -101,7 +102,12 @@ const recommendationStates = {
     loading: false,
   },
 };
+const recommendationPayloadByBaseMarket = {
+  domestic: null,
+  us: null,
+};
 const recommendationDetailById = new Map();
+let recommendationGlobalRefreshing = false;
 let lastRecommendationDetailTrigger = null;
 
 initializeDashboardTabs();
@@ -173,35 +179,54 @@ function activateCurrentRecommendationPanel() {
     document.querySelector('[data-tab-group="recommendations"] .dashboard-tab.is-active') ||
     document.querySelector('[data-tab-group="recommendations"] .dashboard-tab');
   if (!selectedTab) return;
-  loadRecommendationPanel(selectedTab.getAttribute("aria-controls"));
+  const panelId = selectedTab.getAttribute("aria-controls");
+  loadRecommendationPanel(panelId);
+  preloadRecommendationPeerMarkets(panelId);
 }
 
 function loadRecommendationPanel(panelId) {
-  if (panelId === "recommendationsPanel") loadRecommendations();
-  if (panelId === "observationRecommendationsPanel") {
-    loadRecommendations({ market: "observation" });
-  }
-  if (panelId === "usObservationRecommendationsPanel") {
-    loadRecommendations({ market: "usObservation" });
-  }
-  if (panelId === "usRecommendationsPanel") loadRecommendations({ market: "us" });
+  const market = recommendationMarketForPanel(panelId);
+  if (market) loadRecommendations({ market });
 }
 
 function initializeRecommendationActions() {
-  const refreshButton = document.querySelector("#recommendationRefresh");
-  refreshButton?.addEventListener("click", () => loadRecommendations({ force: true }));
-  const observationRefreshButton = document.querySelector("#observationRecommendationRefresh");
-  observationRefreshButton?.addEventListener("click", () =>
-    loadRecommendations({ force: true, market: "observation" }),
+  const refreshButton = document.querySelector("#recommendationGlobalRefresh");
+  refreshButton?.addEventListener("click", () => refreshAllRecommendations());
+  updateRecommendationGlobalToolbar();
+}
+
+function recommendationMarketForPanel(panelId) {
+  return (
+    {
+      observationRecommendationsPanel: "observation",
+      recommendationsPanel: "domestic",
+      usObservationRecommendationsPanel: "usObservation",
+      usRecommendationsPanel: "us",
+    }[panelId] || ""
   );
-  const usRefreshButton = document.querySelector("#usRecommendationRefresh");
-  usRefreshButton?.addEventListener("click", () =>
-    loadRecommendations({ force: true, market: "us" }),
+}
+
+function recommendationConfigEntriesForBase(baseMarket) {
+  return Object.entries(RECOMMENDATION_CONFIGS).filter(
+    ([, config]) => config.baseMarket === baseMarket,
   );
-  const usObservationRefreshButton = document.querySelector("#usObservationRecommendationRefresh");
-  usObservationRefreshButton?.addEventListener("click", () =>
-    loadRecommendations({ force: true, market: "usObservation" }),
-  );
+}
+
+function recommendationConfigsForBase(baseMarket) {
+  return recommendationConfigEntriesForBase(baseMarket).map(([, config]) => config);
+}
+
+function preloadRecommendationPeerMarkets(activePanelId) {
+  const activeMarket = recommendationMarketForPanel(activePanelId);
+  const activeBaseMarket = RECOMMENDATION_CONFIGS[activeMarket]?.baseMarket;
+  for (const baseMarket of RECOMMENDATION_BASE_MARKETS) {
+    if (baseMarket === activeBaseMarket) continue;
+    const state = recommendationStates[baseMarket];
+    if (state?.loaded || state?.loading) continue;
+    loadRecommendations({ market: baseMarket }).catch((error) => {
+      console.warn("Recommendation prefetch unavailable", error);
+    });
+  }
 }
 
 function initializeRecommendationDetailModal() {
@@ -218,7 +243,7 @@ async function loadRecommendations({ force = false, market = "domestic" } = {}) 
   const state = recommendationStates[market] || recommendationStates.domestic;
   if (state.loading) return;
   if (force) {
-    await refreshRecommendations(config, state);
+    await refreshAllRecommendations();
     return;
   }
   if (state.loaded && !force) {
@@ -227,25 +252,47 @@ async function loadRecommendations({ force = false, market = "domestic" } = {}) 
   }
 
   state.loading = true;
-  setRecommendationButtonBusy(config, true);
   renderRecommendationLoading(config, state, false);
   try {
     const response = await fetch(config.endpoint, { cache: "no-store" });
     if (!response.ok) throw new Error("Stock recommendation request failed");
     const payload = await response.json();
     if (payload?.logicOutdated) {
-      await refreshRecommendations(config, state);
+      await refreshAllRecommendations();
       return;
     }
-    renderRecommendations(payload, config);
-    state.loaded = true;
+    renderRecommendationPayloadForBase(payload, config.baseMarket);
     await resumeRecommendationRefreshIfRunning(config, state);
   } catch (error) {
     console.warn("Stock recommendations unavailable", error);
     renderRecommendationError(config);
   } finally {
     state.loading = false;
-    setRecommendationButtonBusy(config, false);
+  }
+}
+
+async function refreshAllRecommendations() {
+  if (recommendationGlobalRefreshing) return;
+
+  const refreshTargets = RECOMMENDATION_BASE_MARKETS
+    .filter((baseMarket) => canRefreshRecommendationBase(baseMarket))
+    .map((baseMarket) => RECOMMENDATION_CONFIGS[baseMarket]);
+  if (!refreshTargets.length) {
+    updateRecommendationGlobalToolbar();
+    return;
+  }
+
+  recommendationGlobalRefreshing = true;
+  updateRecommendationGlobalToolbar();
+  try {
+    await Promise.allSettled(
+      refreshTargets.map((config) =>
+        refreshRecommendations(config, recommendationStates[config.baseMarket]),
+      ),
+    );
+  } finally {
+    recommendationGlobalRefreshing = false;
+    updateRecommendationGlobalToolbar();
   }
 }
 
@@ -253,8 +300,7 @@ async function resumeRecommendationRefreshIfRunning(config, state) {
   const progress = await fetchRecommendationProgress(config).catch(() => null);
   if (progress?.state !== "running") return false;
 
-  state.loading = true;
-  setRecommendationButtonBusy(config, true);
+  setRecommendationBaseLoading(config.baseMarket, true);
   renderRecommendationLoading(config, state, true);
   renderRecommendationProgress(config, progress);
   try {
@@ -264,22 +310,19 @@ async function resumeRecommendationRefreshIfRunning(config, state) {
     }
     const response = await fetch(config.endpoint, { cache: "no-store" });
     if (!response.ok) throw new Error("Stock recommendation request failed");
-    renderRecommendations(await response.json(), config);
-    state.loaded = true;
+    renderRecommendationPayloadForBase(await response.json(), config.baseMarket);
     return true;
   } catch (error) {
     console.warn("Stock recommendations unavailable", error);
     renderRecommendationError(config);
     return false;
   } finally {
-    state.loading = false;
-    setRecommendationButtonBusy(config, false);
+    setRecommendationBaseLoading(config.baseMarket, false);
   }
 }
 
 async function refreshRecommendations(config, state) {
-  state.loading = true;
-  setRecommendationButtonBusy(config, true);
+  setRecommendationBaseLoading(config.baseMarket, true);
   renderRecommendationLoading(config, state, true);
   try {
     const startResponse = await fetch(`${config.endpoint}?refresh=1&async=1`, {
@@ -288,8 +331,7 @@ async function refreshRecommendations(config, state) {
     if (!startResponse.ok) throw new Error("Stock recommendation refresh failed");
     const startPayload = await startResponse.json();
     if (startPayload?.refreshBlocked) {
-      renderRecommendations(startPayload, config);
-      state.loaded = true;
+      renderRecommendationPayloadForBase(startPayload, config.baseMarket);
       return;
     }
 
@@ -306,24 +348,30 @@ async function refreshRecommendations(config, state) {
     });
     const response = await fetch(config.endpoint, { cache: "no-store" });
     if (!response.ok) throw new Error("Stock recommendation request failed");
-    renderRecommendations(await response.json(), config);
-    state.loaded = true;
+    renderRecommendationPayloadForBase(await response.json(), config.baseMarket);
   } catch (error) {
     console.warn("Stock recommendations unavailable", error);
     renderRecommendationError(config);
   } finally {
-    state.loading = false;
-    setRecommendationButtonBusy(config, false);
+    setRecommendationBaseLoading(config.baseMarket, false);
   }
 }
 
 function renderRecommendationLoading(config, state, force) {
-  setText(
-    config.statusSelector,
-    force ? config.refreshText : config.loadingText,
-  );
-  if (force) setRecommendationRefreshVisibility(config, false);
-  const list = document.querySelector(config.listSelector);
+  for (const [market, relatedConfig] of recommendationConfigEntriesForBase(config.baseMarket)) {
+    const relatedState = recommendationStates[market] || state;
+    setText(
+      relatedConfig.statusSelector,
+      force ? relatedConfig.refreshText : relatedConfig.loadingText,
+    );
+    const list = document.querySelector(relatedConfig.listSelector);
+    const hasRenderedCards = Boolean(list?.querySelector(".recommendation-card"));
+    if (list && (!relatedState.loaded || force) && !hasRenderedCards) {
+      list.innerHTML = `<p class="recommendation-empty">후보 계산 중</p>`;
+    }
+    list?.classList.toggle("is-refreshing", Boolean(force && hasRenderedCards));
+  }
+
   if (force) {
     renderRecommendationProgress(config, {
       detail: "스크리너를 실행하고 후보군을 다시 계산합니다.",
@@ -334,27 +382,24 @@ function renderRecommendationLoading(config, state, force) {
   } else {
     hideRecommendationProgress(config);
   }
-  const hasRenderedCards = Boolean(list?.querySelector(".recommendation-card"));
-  if (list && (!state.loaded || force) && !hasRenderedCards) {
-    list.innerHTML = `<p class="recommendation-empty">후보 계산 중</p>`;
-  }
-  list?.classList.toggle("is-refreshing", Boolean(force && hasRenderedCards));
 }
 
 function renderRecommendationError(config) {
-  setText(config.statusSelector, "후보 갱신 실패");
-  setRecommendationRefreshVisibility(config, true);
+  for (const [, relatedConfig] of recommendationConfigEntriesForBase(config.baseMarket)) {
+    setText(relatedConfig.statusSelector, "후보 갱신 실패");
+    const list = document.querySelector(relatedConfig.listSelector);
+    if (list) {
+      list.innerHTML = `<p class="recommendation-empty">데이터 갱신 실패</p>`;
+      list.classList.remove("is-refreshing");
+    }
+  }
   renderRecommendationProgress(config, {
     detail: "네트워크 또는 데이터 소스 응답 문제로 갱신하지 못했습니다.",
     message: "갱신 실패",
     percent: 100,
     state: "failed",
   });
-  const list = document.querySelector(config.listSelector);
-  if (list) {
-    list.innerHTML = `<p class="recommendation-empty">데이터 갱신 실패</p>`;
-    list.classList.remove("is-refreshing");
-  }
+  updateRecommendationGlobalToolbar();
 }
 
 async function waitForRecommendationRefresh(config) {
@@ -393,9 +438,6 @@ async function fetchRecommendationProgress(config) {
 }
 
 function renderRecommendationProgress(config, progress) {
-  const element = document.querySelector(config.progressSelector);
-  if (!element) return;
-
   const percent = clamp(Math.round(Number(progress?.percent) || 0), 0, 100);
   const completed = Number(progress?.completed);
   const total = Number(progress?.total);
@@ -409,36 +451,73 @@ function renderRecommendationProgress(config, progress) {
   const detailText = progress?.detail || checkedText;
   const detail = [detailText, elapsedText].filter(Boolean).join(" · ");
 
-  element.hidden = false;
-  element.dataset.state = progress?.state || "running";
-  element.style.setProperty("--recommendation-progress", `${percent}%`);
-  element.querySelector(".recommendation-progress-title").textContent =
-    progress?.message || "후보 계산 중";
-  element.querySelector(".recommendation-progress-percent").textContent = `${percent}%`;
-  element.querySelector(".recommendation-progress-detail").textContent =
-    detail || "진행 상태를 확인하는 중입니다.";
+  for (const relatedConfig of recommendationConfigsForBase(config.baseMarket)) {
+    const element = document.querySelector(relatedConfig.progressSelector);
+    if (!element) continue;
+    element.hidden = false;
+    element.dataset.state = progress?.state || "running";
+    element.style.setProperty("--recommendation-progress", `${percent}%`);
+    element.querySelector(".recommendation-progress-title").textContent =
+      progress?.message || "후보 계산 중";
+    element.querySelector(".recommendation-progress-percent").textContent = `${percent}%`;
+    element.querySelector(".recommendation-progress-detail").textContent =
+      detail || "진행 상태를 확인하는 중입니다.";
+  }
 }
 
 function hideRecommendationProgress(config) {
-  const element = document.querySelector(config.progressSelector);
-  if (!element) return;
-  element.hidden = true;
-  element.dataset.state = "idle";
-  element.style.setProperty("--recommendation-progress", "0%");
+  for (const relatedConfig of recommendationConfigsForBase(config.baseMarket)) {
+    const element = document.querySelector(relatedConfig.progressSelector);
+    if (!element) continue;
+    element.hidden = true;
+    element.dataset.state = "idle";
+    element.style.setProperty("--recommendation-progress", "0%");
+  }
 }
 
-function setRecommendationButtonBusy(config, isBusy) {
-  const button = document.querySelector(config.buttonSelector);
-  if (!button) return;
-  button.disabled = isBusy;
-  button.setAttribute("aria-busy", String(isBusy));
+function renderRecommendationPayloadForBase(payload, baseMarket) {
+  recommendationPayloadByBaseMarket[baseMarket] = payload;
+  for (const [market, config] of recommendationConfigEntriesForBase(baseMarket)) {
+    renderRecommendations(payload, config);
+    if (recommendationStates[market]) recommendationStates[market].loaded = true;
+  }
+  updateRecommendationGlobalToolbar();
 }
 
-function setRecommendationRefreshVisibility(config, isVisible) {
-  const button = document.querySelector(config.buttonSelector);
-  if (!button) return;
-  button.hidden = !isVisible;
-  button.setAttribute("aria-hidden", String(!isVisible));
+function setRecommendationBaseLoading(baseMarket, isLoading) {
+  for (const [market] of recommendationConfigEntriesForBase(baseMarket)) {
+    if (recommendationStates[market]) recommendationStates[market].loading = isLoading;
+  }
+}
+
+function canRefreshRecommendationBase(baseMarket) {
+  const payload = recommendationPayloadByBaseMarket[baseMarket];
+  return !payload || canRefreshRecommendations(payload);
+}
+
+function updateRecommendationGlobalToolbar() {
+  const dateLabel = document.querySelector("#recommendationGlobalUpdatedAt");
+  const refreshButton = document.querySelector("#recommendationGlobalRefresh");
+  const generatedTimes = Object.values(recommendationPayloadByBaseMarket)
+    .filter((payload) => payload?.generatedAt && !payload.logicOutdated)
+    .map((payload) => new Date(payload.generatedAt).getTime())
+    .filter(Number.isFinite);
+  const latestGeneratedAt = generatedTimes.length
+    ? new Date(Math.max(...generatedTimes)).toISOString()
+    : "";
+  if (dateLabel) {
+    dateLabel.textContent = `최근 갱신 일자 : ${
+      latestGeneratedAt ? formatRecommendationDateTime(latestGeneratedAt) : "확인 중"
+    }`;
+  }
+  if (!refreshButton) return;
+
+  const canRefresh = RECOMMENDATION_BASE_MARKETS.some(canRefreshRecommendationBase);
+  refreshButton.hidden = recommendationGlobalRefreshing;
+  refreshButton.disabled = !canRefresh;
+  refreshButton.setAttribute("aria-busy", String(recommendationGlobalRefreshing));
+  refreshButton.setAttribute("aria-disabled", String(!canRefresh));
+  refreshButton.title = canRefresh ? "" : "최근 갱신 후 1시간 동안은 다시 갱신할 수 없습니다.";
 }
 
 function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic) {
@@ -466,13 +545,11 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
         Number(b.item.volumeRatio) - Number(a.item.volumeRatio),
     )
     .slice(0, 12);
-  const generatedAtText = formatDateTime(payload?.generatedAt);
   const invalidatedCount = Number(payload?.invalidatedCount);
   const showCurrentStatus = !payload?.logicOutdated;
   const showInvalidatedCount = !payload?.logicOutdated && invalidatedCount > 0;
   const statusParts = [
     showCurrentStatus ? payload?.marketMonth : "",
-    showCurrentStatus ? generatedAtText : "",
     showInvalidatedCount ? `무효화 ${invalidatedCount}개 제외` : "",
   ].filter(Boolean);
   setText(
@@ -480,7 +557,6 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
     statusParts.join(" · ") || (payload?.logicOutdated ? "" : "후보 없음"),
   );
   hideRecommendationProgress(config);
-  setRecommendationRefreshVisibility(config, canRefreshRecommendations(payload));
   setText(
     config.conditionSelector,
     recommendationConditionText(payload, config),
@@ -3081,6 +3157,31 @@ function formatDateTime(isoDate) {
     timeZone: "Asia/Seoul",
   }).format(date);
   return `${dateTimeText} KST`;
+}
+
+function formatRecommendationDateTime(isoDate) {
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      day: "2-digit",
+      hour: "2-digit",
+      hour12: false,
+      minute: "2-digit",
+      month: "2-digit",
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+    })
+      .formatToParts(date)
+      .map((part) => [part.type, part.value]),
+  );
+  const hour = Number(parts.hour);
+  const displayHour = Number.isFinite(hour) ? ((hour + 11) % 12) + 1 : 0;
+  const period = hour < 12 ? "오전" : "오후";
+  return `${parts.year}-${parts.month}-${parts.day} ${period} ${String(displayHour).padStart(
+    2,
+    "0",
+  )}:${parts.minute}`;
 }
 
 function canRefreshRecommendations(payload) {

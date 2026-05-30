@@ -78,6 +78,13 @@
           data-tab-panel-group="main"
           hidden
         >
+          <div class="recommendation-global-toolbar" aria-live="polite">
+            <span id="recommendationGlobalUpdatedAt">최근 갱신 일자 : 확인 중</span>
+            <button class="recommendation-refresh" id="recommendationGlobalRefresh" type="button">
+              갱신
+            </button>
+          </div>
+
           <div class="dashboard-tabs dashboard-tabs-secondary" data-tab-group="recommendations" role="tablist" aria-label="추천 구분">
             <button
               class="dashboard-tab is-active"
@@ -135,9 +142,6 @@
                 <span class="recommendation-label">조기 관찰 기준</span>
                 <strong>관찰 후보</strong>
               </div>
-              <button class="recommendation-refresh" id="observationRecommendationRefresh" type="button" hidden>
-                갱신
-              </button>
             </div>
             <div class="recommendation-meta">
               <span id="observationRecommendationStatus">후보 수집 대기</span>
@@ -178,9 +182,6 @@
                 <span class="recommendation-label">조기 관찰 기준</span>
                 <strong>미국 관찰</strong>
               </div>
-              <button class="recommendation-refresh" id="usObservationRecommendationRefresh" type="button" hidden>
-                갱신
-              </button>
             </div>
             <div class="recommendation-meta">
               <span id="usObservationRecommendationStatus">후보 수집 대기</span>
@@ -220,9 +221,6 @@
                 <span class="recommendation-label">최근 1개월 기준</span>
                 <strong>국내 추천</strong>
               </div>
-              <button class="recommendation-refresh" id="recommendationRefresh" type="button" hidden>
-                갱신
-              </button>
             </div>
             <div class="recommendation-meta">
               <span id="recommendationStatus">후보 수집 대기</span>
@@ -263,9 +261,6 @@
                 <span class="recommendation-label">최근 1개월 기준</span>
                 <strong>미국 추천</strong>
               </div>
-              <button class="recommendation-refresh" id="usRecommendationRefresh" type="button" hidden>
-                갱신
-              </button>
             </div>
             <div class="recommendation-meta">
               <span id="usRecommendationStatus">후보 수집 대기</span>
