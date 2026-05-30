@@ -494,8 +494,8 @@ function summarizeHighConfidenceRules(rows) {
     },
     byIndex: Object.fromEntries(ruleRows.map((row) => [row.indexId, row])),
     rules: [
-      "KOSPI: 미국장 점수 > 0.45 상승, S&P선물 점수 <= -0.8 하락",
-      "KOSDAQ: 미국장 점수 > 0.45 상승",
+      "KOSPI: 미국장 점수 >= 0.45 상승, S&P선물 점수 <= -0.8 하락",
+      "KOSDAQ: 미국장 점수 > 0.45 상승, 유가 점수 <= -0.4 하락",
       "NASDAQ/S&P 500: VIX 기간구조 점수 >= 0.35 상승, <= 0 하락",
     ],
   };
@@ -505,13 +505,17 @@ function highConfidenceDirection(row) {
   const components = row.components || {};
   const usMarket = Number(components["미국장"]);
   const spFuture = Number(components["S&P선물"]);
+  const wti = Number(components["유가"]);
   const vixTerm = Number(components["VIX구조"]);
 
   if (row.indexId === "kospi") {
-    if (usMarket > 0.45) return "상승";
+    if (usMarket >= 0.45) return "상승";
     if (spFuture <= -0.8) return "하락";
   }
-  if (row.indexId === "kosdaq" && usMarket > 0.45) return "상승";
+  if (row.indexId === "kosdaq") {
+    if (usMarket > 0.45) return "상승";
+    if (wti <= -0.4) return "하락";
+  }
   if (row.indexId === "nasdaq" || row.indexId === "sp500") {
     if (vixTerm >= 0.35) return "상승";
     if (vixTerm <= 0) return "하락";
