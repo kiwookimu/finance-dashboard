@@ -1390,7 +1390,8 @@ function parseNaverInvestorFlowSummary(rows = []) {
 
 function applyDomesticFundamentalQuality(item) {
   const quality = evaluateDomesticFundamentalQuality(item);
-  const originalStage = item.technicalRecommendationStage || item.recommendationStage;
+  const originalStage =
+    item.technicalRecommendationStage || item.recommendationStage || "confirmed";
   const shouldDowngrade =
     originalStage === "confirmed" &&
     (quality.fundamentalStatus === "caution" || quality.severeValuationRisk);
@@ -1398,7 +1399,7 @@ function applyDomesticFundamentalQuality(item) {
     ...item,
     ...quality,
     qualityAdjusted: shouldDowngrade,
-    recommendationStage: shouldDowngrade ? "observe" : item.recommendationStage,
+    recommendationStage: shouldDowngrade ? "observe" : originalStage,
     signal: shouldDowngrade ? "실적 확인 관찰 후보" : item.signal,
     technicalRecommendationStage: originalStage,
   };
