@@ -870,7 +870,7 @@ function buildRecommendationDetailMarkup(item, setup) {
     Number.isFinite(finiteDisplayNumber(item.fundamentalScore))
       ? ["실적 점수", `${formatNumber(finiteDisplayNumber(item.fundamentalScore), 0)}점`]
       : null,
-    ["최근 분기", item.latestQuarterLabel || ""],
+    ["실적 기준", item.latestQuarterLabel || item.latestAnnualLabel || ""],
     Number.isFinite(finiteDisplayNumber(item.quarterRevenueGrowthYoy))
       ? ["매출 성장률", formatFundamentalPercent(item.quarterRevenueGrowthYoy)]
       : null,
@@ -881,7 +881,7 @@ function buildRecommendationDetailMarkup(item, setup) {
       ? ["영업이익률", formatFundamentalPercent(item.quarterOperatingMargin, false)]
       : null,
     Number.isFinite(finiteDisplayNumber(item.forwardPer))
-      ? ["추정PER", formatFundamentalPer(item.forwardPer)]
+      ? [recommendationForwardPerLabel(item), formatFundamentalPer(item.forwardPer)]
       : null,
     Number.isFinite(finiteDisplayNumber(item.trailingPer))
       ? ["PER", formatFundamentalPer(item.trailingPer)]
@@ -963,7 +963,7 @@ function recommendationFundamentalMetricsMarkup(item) {
   );
   if (!hasMetrics) return "";
   const perValue = Number.isFinite(forwardPer) ? forwardPer : trailingPer;
-  const perLabel = Number.isFinite(forwardPer) ? "추정PER" : "PER";
+  const perLabel = recommendationForwardPerLabel(item, Number.isFinite(forwardPer));
   return `
     <div class="recommendation-metrics recommendation-fundamental-metrics" aria-label="${escapeHtml(item.name)} 실적 지표">
       <span><b>${escapeHtml(formatFundamentalPercent(revenueGrowth))}</b><em>매출성장</em></span>
@@ -971,6 +971,12 @@ function recommendationFundamentalMetricsMarkup(item) {
       <span><b>${escapeHtml(formatFundamentalPer(perValue))}</b><em>${escapeHtml(perLabel)}</em></span>
     </div>
   `;
+}
+
+function recommendationForwardPerLabel(item, hasForwardPer = true) {
+  const isDomestic = /^\d{6}$/.test(String(item.code || "").trim());
+  if (hasForwardPer) return isDomestic ? "추정PER" : "포워드PER";
+  return isDomestic ? "PER" : "포워드PER";
 }
 
 function recommendationFundamentalText(item) {

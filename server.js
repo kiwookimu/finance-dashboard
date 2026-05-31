@@ -26,6 +26,12 @@ const US_STOCK_RECOMMENDATION_VERSION = "us-rolling-21-v3";
 const TRAFFIC_EVENT_LIMIT = 20000;
 const TRAFFIC_RETENTION_MS = 31 * 24 * 60 * 60 * 1000;
 const TRAFFIC_VISITOR_SALT = crypto.randomBytes(16).toString("hex");
+const NASDAQ_API_HEADERS = {
+  Accept: "application/json, text/plain, */*",
+  Origin: "https://www.nasdaq.com",
+  Referer: "https://www.nasdaq.com/",
+  "User-Agent": "Mozilla/5.0",
+};
 
 const MARKET_SOURCES = [
   { id: "kospi", label: "KOSPI", symbol: "^KS11", decimals: 2 },
@@ -627,7 +633,7 @@ async function getUsStockRecommendations({
     const filePayload = await readStockRecommendationFile(resultPath).catch(() => null);
     if (filePayload) {
       const logicOutdated = !isUsStockRecommendationCurrent(filePayload);
-      cachedUsStockRecommendations = normalizeStockRecommendationPayload(
+      cachedUsStockRecommendations = await normalizeUsStockRecommendationPayload(
         filePayload,
         {
           cached: false,
@@ -768,7 +774,7 @@ function startUsStockRecommendationRefresh(month, resultPath) {
       });
       if (fallback) {
         const logicOutdated = !isUsStockRecommendationCurrent(fallback);
-        cachedUsStockRecommendations = normalizeStockRecommendationPayload(fallback, {
+        cachedUsStockRecommendations = await normalizeUsStockRecommendationPayload(fallback, {
           cached: false,
           ...(logicOutdated
             ? {
@@ -805,7 +811,7 @@ async function readCurrentStockRecommendationPayload({
     const isUsResult = resultPath.includes("us_monthly_breakout_");
     const normalize = isDomesticResult
       ? normalizeDomesticStockRecommendationPayload
-      : async (payload, flags) => normalizeStockRecommendationPayload(payload, flags);
+      : normalizeUsStockRecommendationPayload;
     const logicOutdated =
       (isDomesticResult && !isDomesticStockRecommendationCurrent(filePayload)) ||
       (isUsResult && !isUsStockRecommendationCurrent(filePayload));
@@ -891,7 +897,7 @@ async function refreshUsStockRecommendations(month) {
     message: "결과 저장 중",
     percent: 96,
   });
-  return normalizeStockRecommendationPayload(
+  return normalizeUsStockRecommendationPayload(
     await readStockRecommendationFile(usStockRecommendationResultPath(month)),
     { cached: false, refreshed: true },
   );
@@ -1077,6 +1083,18 @@ function normalizeStockRecommendationPayload(payload, flags = {}) {
   };
 }
 
+async function normalizeUsStockRecommendationPayload(payload, flags = {}) {
+  const normalized = normalizeStockRecommendationPayload(payload, flags);
+  const enrichedResults = await Promise.all(
+    normalized.results.map((item) => enrichUsRecommendationItem(item)),
+  );
+  return {
+    ...normalized,
+    results: enrichedResults,
+    topResults: enrichedResults.slice(0, 12),
+  };
+}
+
 function isDomesticStockRecommendationCurrent(payload) {
   return payload?.screenVersion === DOMESTIC_STOCK_RECOMMENDATION_VERSION;
 }
@@ -1106,6 +1124,254 @@ async function normalizeDomesticStockRecommendationPayload(payload, flags = {}) 
     results: activeResults,
     topResults: activeResults.slice(0, 12),
   };
+}
+
+async function enrichUsRecommendationItem(item) {
+  const symbol = String(item?.symbol || item?.rawSymbol || "").trim().toUpperCase();
+  if (!symbol) return item;
+  try {
+    const fundamentals = await fetchNasdaqUsFundamentals(symbol, item);
+    return {
+      ...item,
+      ...fundamentals,
+    };
+  } catch (error) {
+    return {
+      ...item,
+      fundamentalStatusError: error.message,
+    };
+  }
+}
+
+async function fetchNasdaqUsFundamentals(symbol, item = {}) {
+  const encodedSymbol = encodeURIComponent(symbol);
+  const [summary, financials, forecast] = await Promise.all([
+    fetchNasdaqJson(
+      `https://api.nasdaq.com/api/quote/${encodedSymbol}/summary?assetclass=stocks`,
+    ),
+    fetchNasdaqJson(
+      `https://api.nasdaq.com/api/company/${encodedSymbol}/financials?frequency=1`,
+    ),
+    fetchNasdaqJson(
+      `https://api.nasdaq.com/api/analyst/${encodedSymbol}/earnings-forecast`,
+    ),
+  ]);
+  const summaryData = summary?.data?.summaryData || {};
+  const currentPrice =
+    parseNasdaqNumber(summaryData.PreviousClose?.value) ||
+    optionalNumber(item.liveClose) ||
+    optionalNumber(item.lastClose);
+  const incomeStatement = financials?.data?.incomeStatementTable || {};
+  const latestAnnualKey = "value2";
+  const previousAnnualKey = "value3";
+  const annualRevenue = nasdaqFinancialValue(
+    incomeStatement,
+    "Total Revenue",
+    latestAnnualKey,
+  );
+  const previousAnnualRevenue = nasdaqFinancialValue(
+    incomeStatement,
+    "Total Revenue",
+    previousAnnualKey,
+  );
+  const annualOperatingProfit = nasdaqFinancialValue(
+    incomeStatement,
+    "Operating Income",
+    latestAnnualKey,
+  );
+  const previousAnnualOperatingProfit = nasdaqFinancialValue(
+    incomeStatement,
+    "Operating Income",
+    previousAnnualKey,
+  );
+  const annualNetIncome = nasdaqFinancialValue(
+    incomeStatement,
+    "Net Income",
+    latestAnnualKey,
+  );
+  const previousAnnualNetIncome = nasdaqFinancialValue(
+    incomeStatement,
+    "Net Income",
+    previousAnnualKey,
+  );
+  const yearlyForecastRows = forecast?.data?.yearlyForecast?.rows || [];
+  const forwardEps = parseNasdaqNumber(
+    yearlyForecastRows[0]?.consensusEPSForecast,
+  );
+  const nextForwardEps = parseNasdaqNumber(
+    yearlyForecastRows[1]?.consensusEPSForecast,
+  );
+  const forwardPer =
+    Number.isFinite(currentPrice) &&
+    Number.isFinite(forwardEps) &&
+    forwardEps > 0
+      ? currentPrice / forwardEps
+      : NaN;
+  const revenueGrowth = percentChangeWithSignedBase(
+    annualRevenue,
+    previousAnnualRevenue,
+  );
+  const operatingProfitGrowth = percentChangeWithSignedBase(
+    annualOperatingProfit,
+    previousAnnualOperatingProfit,
+  );
+  const netIncomeGrowth = percentChangeWithSignedBase(
+    annualNetIncome,
+    previousAnnualNetIncome,
+  );
+  const operatingMargin =
+    Number.isFinite(annualRevenue) &&
+    annualRevenue !== 0 &&
+    Number.isFinite(annualOperatingProfit)
+      ? (annualOperatingProfit / annualRevenue) * 100
+      : NaN;
+  const epsGrowth = percentChangeWithSignedBase(nextForwardEps, forwardEps);
+  const quality = evaluateUsFundamentalQuality({
+    forwardPer,
+    netIncomeGrowth,
+    operatingProfitGrowth,
+    revenueGrowth,
+  });
+
+  return {
+    annualNetIncome,
+    annualNetIncomeGrowth: roundFinite(netIncomeGrowth, 2),
+    annualOperatingProfit,
+    annualOperatingProfitGrowth: roundFinite(operatingProfitGrowth, 2),
+    annualRevenue,
+    annualRevenueGrowth: roundFinite(revenueGrowth, 2),
+    estimatedEps: roundFinite(forwardEps, 4),
+    estimatedEpsGrowth: roundFinite(epsGrowth, 2),
+    forwardPer: roundFinite(forwardPer, 2),
+    fundamentalSource: "Nasdaq financials and analyst forecast",
+    latestAnnualLabel: incomeStatement.headers?.[latestAnnualKey] || "",
+    nextAnnualConsensusLabel: yearlyForecastRows[0]?.fiscalEnd || "",
+    quarterOperatingMargin: roundFinite(operatingMargin, 2),
+    quarterOperatingProfitGrowthYoy: roundFinite(
+      Number.isFinite(operatingProfitGrowth) ? operatingProfitGrowth : netIncomeGrowth,
+      2,
+    ),
+    quarterRevenueGrowthYoy: roundFinite(revenueGrowth, 2),
+    ...quality,
+  };
+}
+
+function evaluateUsFundamentalQuality({
+  forwardPer,
+  netIncomeGrowth,
+  operatingProfitGrowth,
+  revenueGrowth,
+}) {
+  const profitGrowth = Number.isFinite(operatingProfitGrowth)
+    ? operatingProfitGrowth
+    : netIncomeGrowth;
+  const hasData = [revenueGrowth, profitGrowth, forwardPer].some(Number.isFinite);
+  if (!hasData) {
+    return {
+      fundamentalLabel: "실적 확인 전",
+      fundamentalReasons: ["미국 실적/밸류 데이터 부족"],
+      fundamentalScore: null,
+      fundamentalStatus: "missing",
+      fundamentalSummary: "미국 실적과 포워드 PER 데이터가 부족해 가격 신호 중심으로 봐야 해.",
+    };
+  }
+
+  const reasons = [];
+  let score = 45;
+  if (Number.isFinite(revenueGrowth)) {
+    if (revenueGrowth >= 30) score += 22;
+    else if (revenueGrowth >= 15) score += 16;
+    else if (revenueGrowth >= 5) score += 9;
+    else if (revenueGrowth < 0) score -= 12;
+    reasons.push(`매출 ${formatSigned(revenueGrowth, 1)}%`);
+  }
+  if (Number.isFinite(profitGrowth)) {
+    if (profitGrowth >= 40) score += 24;
+    else if (profitGrowth >= 20) score += 18;
+    else if (profitGrowth >= 0) score += 8;
+    else score -= 18;
+    reasons.push(`이익 ${formatSigned(profitGrowth, 1)}%`);
+  }
+  if (Number.isFinite(forwardPer)) {
+    if (forwardPer <= 25) score += 12;
+    else if (forwardPer <= 45) score += 7;
+    else if (forwardPer >= 100) score -= 14;
+    else if (forwardPer >= 70) score -= 8;
+    reasons.push(`포워드PER ${formatNumber(forwardPer, 1)}배`);
+  }
+
+  const clampedScore = Math.round(Math.max(0, Math.min(100, score)));
+  const hasForwardPer = Number.isFinite(forwardPer);
+  const status =
+    clampedScore >= DOMESTIC_FUNDAMENTAL_SUPPORT_SCORE
+      ? "supportive"
+      : clampedScore < DOMESTIC_FUNDAMENTAL_CAUTION_SCORE
+        ? "caution"
+        : "neutral";
+  const fundamentalLabel =
+    status === "supportive"
+      ? "실적 지지"
+      : status === "caution"
+        ? "실적 점검"
+        : "실적 중립";
+  const summaryCore = reasons.join(", ");
+  const fundamentalSummary =
+    status === "supportive"
+      ? `${summaryCore}로 ${
+          hasForwardPer ? "실적과 포워드 PER이" : "실적 흐름이"
+        } 가격 신호를 받쳐줘.`
+      : status === "caution"
+        ? `${summaryCore}라 실적/밸류 확인 전까지는 관찰이 좋아.`
+        : `${summaryCore}로 실적 근거는 중립이야.`;
+
+  return {
+    fundamentalLabel,
+    fundamentalReasons: reasons,
+    fundamentalScore: clampedScore,
+    fundamentalStatus: status,
+    fundamentalSummary,
+  };
+}
+
+async function fetchNasdaqJson(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch(url, {
+      headers: NASDAQ_API_HEADERS,
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Nasdaq request failed: ${response.status}`);
+    }
+    return response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function nasdaqFinancialValue(table, title, key) {
+  const row = (table?.rows || []).find((entry) => entry.value1 === title);
+  return parseNasdaqNumber(row?.[key]);
+}
+
+function parseNasdaqNumber(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
+  let text = String(value ?? "").trim();
+  if (!text || text === "N/A" || text === "-") return NaN;
+  const isNegative = /^\(.*\)$/.test(text);
+  text = text
+    .replace(/[,$%]/g, "")
+    .replace(/[()]/g, "")
+    .trim();
+  const suffix = text.match(/([KMBT])$/i)?.[1]?.toUpperCase();
+  if (suffix) text = text.slice(0, -1);
+  const multiplier = { K: 1_000, M: 1_000_000, B: 1_000_000_000, T: 1_000_000_000_000 }[
+    suffix
+  ] || 1;
+  const number = Number(text);
+  if (!Number.isFinite(number)) return NaN;
+  return (isNegative ? -number : number) * multiplier;
 }
 
 async function enrichDomesticRecommendationItem(item) {
@@ -1619,7 +1885,7 @@ function stockRecommendationCondition(
     invalidation:
       "exclude active picks if latest price is <= -8% from signal, below 10-day average, or <= -20% from recent 21-trading-day high",
     fundamentalValidation:
-      "for Korean picks, downgrade confirmed candidates to observation when latest revenue/profit trend or valuation support is weak",
+      "enrich picks with revenue growth, profit growth, and forward PER when available; Korean confirmed picks can be downgraded when support is weak",
     minimumHistoryDays: 127,
     ...(hasMarketCap ? { minimumMarketCapKrw } : {}),
     monthHighDrawdown: `>= ${RECOMMENDATION_MAX_MONTH_HIGH_DRAWDOWN}% from recent 21-trading-day high`,
