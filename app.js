@@ -602,7 +602,7 @@ function setRecommendationBaseLoading(baseMarket, isLoading) {
 
 function canRefreshRecommendationBase(baseMarket) {
   const payload = recommendationPayloadByBaseMarket[baseMarket];
-  return Boolean(payload) && canRefreshRecommendations(payload);
+  return !payload || canRefreshRecommendations(payload);
 }
 
 function updateRecommendationGlobalToolbar() {
@@ -627,12 +627,15 @@ function updateRecommendationGlobalToolbar() {
   if (!refreshButton) return;
 
   const canRefresh = RECOMMENDATION_BASE_MARKETS.some(canRefreshRecommendationBase);
+  const refreshStateReady = RECOMMENDATION_BASE_MARKETS.every(
+    (baseMarket) => recommendationPayloadByBaseMarket[baseMarket],
+  );
   const isRefreshing =
     recommendationGlobalRefreshing ||
     Object.values(recommendationProgressByBaseMarket).some(
       (progress) => progress?.state === "running",
     );
-  refreshButton.hidden = isRefreshing || !canRefresh;
+  refreshButton.hidden = isRefreshing || !refreshStateReady || !canRefresh;
   refreshButton.disabled = isRefreshing || !canRefresh;
   refreshButton.setAttribute("aria-busy", String(isRefreshing));
   refreshButton.setAttribute("aria-disabled", String(!canRefresh));
