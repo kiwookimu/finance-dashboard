@@ -709,6 +709,7 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
         ? `${formatSignedNumber(Number(item.monthHighDrawdown), 1)}%`
         : "-";
       const quote = recommendationQuoteInfo(item);
+      const fundamentalMetrics = recommendationFundamentalMetricsMarkup(item);
       return `
         <article class="recommendation-card" role="button" tabindex="0" data-recommendation-detail-id="${escapeHtml(detailId)}" aria-label="${escapeHtml(item.name)} 상세 정보 보기">
           <span class="recommendation-rank">${index + 1}</span>
@@ -735,9 +736,11 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
               <span><b>${escapeHtml(drawdownText)}</b><em>고점낙폭</em></span>
               <span><b>${escapeHtml(marketCapText)}</b><em>시가총액</em></span>
             </div>
+            ${fundamentalMetrics}
           </div>
           <div class="recommendation-insight">
             <p>${escapeHtml(setup.summary)}</p>
+            ${setup.fundamental ? `<p class="recommendation-fundamental">${escapeHtml(setup.fundamental)}</p>` : ""}
             ${setup.checkpoint ? `<p class="recommendation-checkpoint">${escapeHtml(setup.checkpoint)}</p>` : ""}
           </div>
         </article>
@@ -773,6 +776,7 @@ function recommendationConditionText(payload, config = RECOMMENDATION_CONFIGS.do
     `21일 거래량 ${formatConditionNumber(payload?.condition?.volumeRatio)}`,
     `MFI ${formatConditionNumber(payload?.condition?.dailyMfi)}`,
     formatDrawdownCondition(payload?.condition?.monthHighDrawdown),
+    config.baseMarket === "domestic" ? "실적·밸류 보조 검증" : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -846,6 +850,29 @@ function buildRecommendationDetailMarkup(item, setup) {
       ? ["5일 거래량 배수", `${formatNumber(Number(item.recentVolumeRatio), 2)}x`]
       : null,
     ["MFI", formatNumber(Number(item.mfi), 1)],
+    ["실적 판단", item.fundamentalLabel || ""],
+    Number.isFinite(finiteDisplayNumber(item.fundamentalScore))
+      ? ["실적 점수", `${formatNumber(finiteDisplayNumber(item.fundamentalScore), 0)}점`]
+      : null,
+    ["최근 분기", item.latestQuarterLabel || ""],
+    Number.isFinite(finiteDisplayNumber(item.quarterRevenueGrowthYoy))
+      ? ["매출 성장률", formatFundamentalPercent(item.quarterRevenueGrowthYoy)]
+      : null,
+    Number.isFinite(finiteDisplayNumber(item.quarterOperatingProfitGrowthYoy))
+      ? ["영업이익 성장률", formatFundamentalPercent(item.quarterOperatingProfitGrowthYoy)]
+      : null,
+    Number.isFinite(finiteDisplayNumber(item.quarterOperatingMargin))
+      ? ["영업이익률", formatFundamentalPercent(item.quarterOperatingMargin, false)]
+      : null,
+    Number.isFinite(finiteDisplayNumber(item.forwardPer))
+      ? ["추정PER", formatFundamentalPer(item.forwardPer)]
+      : null,
+    Number.isFinite(finiteDisplayNumber(item.trailingPer))
+      ? ["PER", formatFundamentalPer(item.trailingPer)]
+      : null,
+    Number.isFinite(finiteDisplayNumber(item.estimatedEpsGrowth))
+      ? ["추정EPS 증가율", formatFundamentalPercent(item.estimatedEpsGrowth)]
+      : null,
     ["최근 21일 거래량", formatInteger(item.targetMonthVolume)],
     ["직전 5개 21일 평균 거래량", formatInteger(item.previousAverageVolume)],
     ["최근 최악 일간 수익률", formatRecommendationPercent(item.recentWorstDailyReturn)],
@@ -855,6 +882,7 @@ function buildRecommendationDetailMarkup(item, setup) {
     <div class="recommendation-detail-summary">
       <strong>${escapeHtml(setup.label)}</strong>
       <p>${escapeHtml(setup.summary)}</p>
+      ${setup.fundamental ? `<p class="recommendation-fundamental">${escapeHtml(setup.fundamental)}</p>` : ""}
       ${setup.checkpoint ? `<p class="recommendation-checkpoint">${escapeHtml(setup.checkpoint)}</p>` : ""}
       <div class="recommendation-tags">
         ${setup.tags.map((tag) => `<b>${escapeHtml(tag)}</b>`).join("")}
@@ -907,6 +935,52 @@ function recommendationQuoteInfo(item) {
     text: `(${formatRecommendationPrice(price, item)} / ${formatSignedNumber(returnValue, 2)}%)`,
     tone: returnValue > 0 ? "up" : returnValue < 0 ? "down" : "flat",
   };
+}
+
+function recommendationFundamentalMetricsMarkup(item) {
+  const revenueGrowth = finiteDisplayNumber(item.quarterRevenueGrowthYoy);
+  const profitGrowth = finiteDisplayNumber(item.quarterOperatingProfitGrowthYoy);
+  const forwardPer = finiteDisplayNumber(item.forwardPer);
+  const trailingPer = finiteDisplayNumber(item.trailingPer);
+  const hasMetrics = [revenueGrowth, profitGrowth, forwardPer, trailingPer].some(
+    Number.isFinite,
+  );
+  if (!hasMetrics) return "";
+  const perValue = Number.isFinite(forwardPer) ? forwardPer : trailingPer;
+  const perLabel = Number.isFinite(forwardPer) ? "추정PER" : "PER";
+  return `
+    <div class="recommendation-metrics recommendation-fundamental-metrics" aria-label="${escapeHtml(item.name)} 실적 지표">
+      <span><b>${escapeHtml(formatFundamentalPercent(revenueGrowth))}</b><em>매출성장</em></span>
+      <span><b>${escapeHtml(formatFundamentalPercent(profitGrowth))}</b><em>이익성장</em></span>
+      <span><b>${escapeHtml(formatFundamentalPer(perValue))}</b><em>${escapeHtml(perLabel)}</em></span>
+    </div>
+  `;
+}
+
+function recommendationFundamentalText(item) {
+  if (!item.fundamentalSummary) return "";
+  if (item.qualityAdjusted) {
+    return `${item.fundamentalSummary} 그래서 국내 추천이 아니라 국내 관찰로 낮췄어.`;
+  }
+  return item.fundamentalSummary;
+}
+
+function finiteDisplayNumber(value) {
+  if (value === null || value === undefined || value === "") return NaN;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : NaN;
+}
+
+function formatFundamentalPercent(value, signed = true) {
+  const number = finiteDisplayNumber(value);
+  if (!Number.isFinite(number)) return "-";
+  return signed ? `${formatSignedNumber(number, 1)}%` : `${formatNumber(number, 1)}%`;
+}
+
+function formatFundamentalPer(value) {
+  const number = finiteDisplayNumber(value);
+  if (!Number.isFinite(number)) return "-";
+  return `${formatNumber(number, 1)}배`;
 }
 
 function recommendationDisplayPrice(item) {
@@ -970,6 +1044,7 @@ function recommendationPriorityScore(item) {
   const monthlyReturn = Number(item.monthlyReturn);
   const monthHighDrawdown = Number(item.monthHighDrawdown);
   const marketCapKrw = Number(item.marketCapKrw);
+  const fundamentalScore = finiteDisplayNumber(item.fundamentalScore);
   let score = 0;
 
   if (Number.isFinite(volumeRatio)) {
@@ -993,9 +1068,15 @@ function recommendationPriorityScore(item) {
     else if (marketCapKrw < 30_000_000_000_000) score += 6;
     else score += 3;
   }
+  if (Number.isFinite(fundamentalScore)) {
+    if (fundamentalScore >= 70) score += 10;
+    else if (fundamentalScore >= 58) score += 6;
+    else if (fundamentalScore < 45) score -= 12;
+  }
   if (item.breakout) score += 8;
   if (item.aboveTrailing3Average) score += 5;
   if (item.recommendationStage === "watch") score -= 4;
+  if (item.qualityAdjusted) score -= 16;
 
   if (mfi > 94) score -= scaleBetween(mfi, 94, 100, 4);
   if (monthlyReturn > 100) score -= scaleBetween(monthlyReturn, 100, 150, 4);
@@ -1038,6 +1119,7 @@ function buildRecommendationSetup(item, entryDecision = recommendationEntryDecis
     item.breakout ? "1개월 고점 돌파" : "",
     item.recommendationStage === "watch" ? "초기 관찰" : "",
     item.recommendationStage === "observe" ? "조기 관찰" : "",
+    item.fundamentalLabel || "",
   ]
     .filter(Boolean)
     .slice(0, 5);
@@ -1045,6 +1127,7 @@ function buildRecommendationSetup(item, entryDecision = recommendationEntryDecis
   return {
     checkpoint: recommendationCheckpointText(item),
     entry: entryDecision,
+    fundamental: recommendationFundamentalText(item),
     label: `${formatIsoDate(item.lastDate || "") || "추천 시점"} 기준`,
     summary: recommendationSetupSummary({
       entryDecision,

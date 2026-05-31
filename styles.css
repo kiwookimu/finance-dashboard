@@ -909,6 +909,10 @@ h1 {
   white-space: nowrap;
 }
 
+.recommendation-fundamental-metrics b {
+  color: #2266a3;
+}
+
 .recommendation-insight {
   display: grid;
   grid-column: 1 / -1;
@@ -931,6 +935,11 @@ h1 {
 .recommendation-detail-summary .recommendation-checkpoint {
   color: #1f805f;
   font-weight: 900;
+}
+
+.recommendation-insight .recommendation-fundamental,
+.recommendation-detail-summary .recommendation-fundamental {
+  color: #314d6f;
 }
 
 .recommendation-tags {

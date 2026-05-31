@@ -19,6 +19,8 @@ const RECOMMENDATION_SCRIPT_START_PERCENT = 8;
 const RECOMMENDATION_SCRIPT_DONE_PERCENT = 92;
 const RECOMMENDATION_STOP_LOSS_PERCENT = -8;
 const RECOMMENDATION_MAX_MONTH_HIGH_DRAWDOWN = -20;
+const DOMESTIC_FUNDAMENTAL_SUPPORT_SCORE = 58;
+const DOMESTIC_FUNDAMENTAL_CAUTION_SCORE = 45;
 const DOMESTIC_STOCK_RECOMMENDATION_VERSION = "kr-rolling-21-v3";
 const US_STOCK_RECOMMENDATION_VERSION = "us-rolling-21-v3";
 const TRAFFIC_EVENT_LIMIT = 20000;
@@ -1108,10 +1110,24 @@ async function normalizeDomesticStockRecommendationPayload(payload, flags = {}) 
 
 async function enrichDomesticRecommendationItem(item) {
   if (!item?.code) return item;
+  const [priceResult, fundamentalResult] = await Promise.allSettled([
+    fetchNaverRecentPriceRows(item.code),
+    fetchNaverDomesticFundamentals(item.code),
+  ]);
+  let enrichedItem = {
+    ...item,
+    ...(fundamentalResult.status === "fulfilled"
+      ? fundamentalResult.value
+      : { fundamentalStatusError: fundamentalResult.reason?.message || "재무 데이터 확인 실패" }),
+  };
+
   try {
-    const rows = await fetchNaverRecentPriceRows(item.code);
+    if (priceResult.status !== "fulfilled") {
+      throw priceResult.reason || new Error("가격 데이터 확인 실패");
+    }
+    const rows = priceResult.value;
     const latest = rows.at(-1);
-    if (!latest) return item;
+    if (!latest) return applyDomesticFundamentalQuality(enrichedItem);
 
     const lastClose = Number(item.lastClose);
     const returnFromSignal = percentChange(latest.close, lastClose);
@@ -1142,8 +1158,8 @@ async function enrichDomesticRecommendationItem(item) {
         : "",
     ].filter(Boolean);
 
-    return {
-      ...item,
+    enrichedItem = {
+      ...enrichedItem,
       liveClose: latest.close,
       liveDate: latest.date,
       liveMonthHigh: Number.isFinite(liveHighReference) ? liveHighReference : null,
@@ -1155,13 +1171,404 @@ async function enrichDomesticRecommendationItem(item) {
       recommendationInvalidated: invalidationReasons.length > 0,
       recommendationInvalidationReasons: invalidationReasons,
     };
+    return applyDomesticFundamentalQuality(enrichedItem);
   } catch (error) {
-    return {
-      ...item,
+    return applyDomesticFundamentalQuality({
+      ...enrichedItem,
       recommendationInvalidated: false,
       recommendationStatusError: error.message,
+    });
+  }
+}
+
+async function fetchNaverDomesticFundamentals(code) {
+  const [integration, quarter, annual] = await Promise.all([
+    fetchNaverStockIntegration(code),
+    fetchNaverFinanceInfo(code, "quarter"),
+    fetchNaverFinanceInfo(code, "annual"),
+  ]);
+  const totalInfo = naverTotalInfoMap(integration);
+  const valuation = {
+    consensusDate: integration.consensusInfo?.createDate || "",
+    consensusRecommendation: parseOptionalKoreanNumber(
+      integration.consensusInfo?.recommMean,
+    ),
+    consensusTargetPrice: parseOptionalKoreanNumber(
+      integration.consensusInfo?.priceTargetMean,
+    ),
+    estimatedEps: parseOptionalKoreanNumber(totalInfo.cnsEps?.value),
+    eps: parseOptionalKoreanNumber(totalInfo.eps?.value),
+    forwardPer: parseOptionalKoreanNumber(totalInfo.cnsPer?.value),
+    foreignOwnershipRate: parseOptionalKoreanNumber(totalInfo.foreignRate?.value),
+    pbr: parseOptionalKoreanNumber(totalInfo.pbr?.value),
+    trailingPer: parseOptionalKoreanNumber(totalInfo.per?.value),
+  };
+  const finance = {
+    ...parseNaverQuarterFinance(quarter),
+    ...parseNaverAnnualFinance(annual),
+  };
+  const flows = parseNaverInvestorFlowSummary(integration.dealTrendInfos);
+  const estimatedEpsGrowth = percentChangeWithSignedBase(
+    valuation.estimatedEps,
+    valuation.eps,
+  );
+
+  return {
+    ...valuation,
+    ...finance,
+    ...flows,
+    estimatedEpsGrowth: roundFinite(estimatedEpsGrowth, 2),
+    fundamentalSource: "Naver Finance mobile",
+  };
+}
+
+async function fetchNaverStockIntegration(code) {
+  const url = `https://m.stock.naver.com/api/stock/${encodeURIComponent(
+    code,
+  )}/integration`;
+  return JSON.parse(await fetchText(url, "application/json,text/plain,*/*"));
+}
+
+async function fetchNaverFinanceInfo(code, periodType) {
+  const url = `https://m.stock.naver.com/api/stock/${encodeURIComponent(
+    code,
+  )}/finance/${encodeURIComponent(periodType)}`;
+  return JSON.parse(await fetchText(url, "application/json,text/plain,*/*"));
+}
+
+function naverTotalInfoMap(payload) {
+  return Object.fromEntries(
+    (payload?.totalInfos || []).map((entry) => [entry.code, entry]),
+  );
+}
+
+function parseNaverQuarterFinance(payload) {
+  const financeInfo = payload?.financeInfo;
+  const titles = financeInfo?.trTitleList || [];
+  const actualTitles = titles.filter((title) => title.isConsensus !== "Y");
+  const latest = actualTitles.at(-1);
+  if (!latest) return {};
+  const previous = actualTitles.at(-2);
+  const yoy = actualTitles.find(
+    (title) => title.key === String(Number(latest.key) - 100),
+  );
+  const revenue = naverFinanceValue(financeInfo, "매출액", latest.key);
+  const revenuePrevious = previous
+    ? naverFinanceValue(financeInfo, "매출액", previous.key)
+    : null;
+  const revenueYoyBase = yoy
+    ? naverFinanceValue(financeInfo, "매출액", yoy.key)
+    : null;
+  const operatingProfit = naverFinanceValue(financeInfo, "영업이익", latest.key);
+  const operatingProfitPrevious = previous
+    ? naverFinanceValue(financeInfo, "영업이익", previous.key)
+    : null;
+  const operatingProfitYoyBase = yoy
+    ? naverFinanceValue(financeInfo, "영업이익", yoy.key)
+    : null;
+  const operatingMargin = naverFinanceValue(financeInfo, "영업이익률", latest.key);
+  const operatingMarginPrevious = previous
+    ? naverFinanceValue(financeInfo, "영업이익률", previous.key)
+    : null;
+  const nextConsensus = titles.find((title) => title.isConsensus === "Y");
+  const nextRevenue = nextConsensus
+    ? naverFinanceValue(financeInfo, "매출액", nextConsensus.key)
+    : null;
+  const nextOperatingProfit = nextConsensus
+    ? naverFinanceValue(financeInfo, "영업이익", nextConsensus.key)
+    : null;
+
+  return {
+    latestQuarterLabel: latest.title || "",
+    nextQuarterConsensusLabel: nextConsensus?.title || "",
+    nextQuarterOperatingProfit: nextOperatingProfit,
+    nextQuarterOperatingProfitGrowthQoq: roundFinite(
+      percentChangeWithSignedBase(nextOperatingProfit, operatingProfit),
+      2,
+    ),
+    nextQuarterRevenue: nextRevenue,
+    nextQuarterRevenueGrowthQoq: roundFinite(
+      percentChangeWithSignedBase(nextRevenue, revenue),
+      2,
+    ),
+    quarterOperatingMargin: operatingMargin,
+    quarterOperatingMarginChangeQoq: roundFinite(
+      Number.isFinite(operatingMargin) && Number.isFinite(operatingMarginPrevious)
+        ? operatingMargin - operatingMarginPrevious
+        : NaN,
+      2,
+    ),
+    quarterOperatingProfit: operatingProfit,
+    quarterOperatingProfitGrowthQoq: roundFinite(
+      percentChangeWithSignedBase(operatingProfit, operatingProfitPrevious),
+      2,
+    ),
+    quarterOperatingProfitGrowthYoy: roundFinite(
+      percentChangeWithSignedBase(operatingProfit, operatingProfitYoyBase),
+      2,
+    ),
+    quarterRevenue: revenue,
+    quarterRevenueGrowthQoq: roundFinite(
+      percentChangeWithSignedBase(revenue, revenuePrevious),
+      2,
+    ),
+    quarterRevenueGrowthYoy: roundFinite(
+      percentChangeWithSignedBase(revenue, revenueYoyBase),
+      2,
+    ),
+  };
+}
+
+function parseNaverAnnualFinance(payload) {
+  const financeInfo = payload?.financeInfo;
+  const titles = financeInfo?.trTitleList || [];
+  const actualTitles = titles.filter((title) => title.isConsensus !== "Y");
+  const latest = actualTitles.at(-1);
+  const previous = actualTitles.at(-2);
+  const nextConsensus = titles.find((title) => title.isConsensus === "Y");
+  if (!latest) return {};
+  const revenue = naverFinanceValue(financeInfo, "매출액", latest.key);
+  const revenuePrevious = previous
+    ? naverFinanceValue(financeInfo, "매출액", previous.key)
+    : null;
+  const operatingProfit = naverFinanceValue(financeInfo, "영업이익", latest.key);
+  const operatingProfitPrevious = previous
+    ? naverFinanceValue(financeInfo, "영업이익", previous.key)
+    : null;
+  const nextRevenue = nextConsensus
+    ? naverFinanceValue(financeInfo, "매출액", nextConsensus.key)
+    : null;
+  const nextOperatingProfit = nextConsensus
+    ? naverFinanceValue(financeInfo, "영업이익", nextConsensus.key)
+    : null;
+
+  return {
+    annualOperatingProfit: operatingProfit,
+    annualOperatingProfitGrowth: roundFinite(
+      percentChangeWithSignedBase(operatingProfit, operatingProfitPrevious),
+      2,
+    ),
+    annualRevenue: revenue,
+    annualRevenueGrowth: roundFinite(
+      percentChangeWithSignedBase(revenue, revenuePrevious),
+      2,
+    ),
+    latestAnnualLabel: latest.title || "",
+    nextAnnualConsensusLabel: nextConsensus?.title || "",
+    nextAnnualOperatingProfit: nextOperatingProfit,
+    nextAnnualOperatingProfitGrowth: roundFinite(
+      percentChangeWithSignedBase(nextOperatingProfit, operatingProfit),
+      2,
+    ),
+    nextAnnualRevenue: nextRevenue,
+    nextAnnualRevenueGrowth: roundFinite(
+      percentChangeWithSignedBase(nextRevenue, revenue),
+      2,
+    ),
+  };
+}
+
+function naverFinanceValue(financeInfo, title, key) {
+  const row = (financeInfo?.rowList || []).find((entry) => entry.title === title);
+  return parseOptionalKoreanNumber(row?.columns?.[key]?.value);
+}
+
+function parseNaverInvestorFlowSummary(rows = []) {
+  const recentRows = rows.slice(0, 3);
+  const foreignNet3Days = sum(
+    recentRows.map((row) => parseOptionalKoreanNumber(row.foreignerPureBuyQuant)),
+  );
+  const institutionNet3Days = sum(
+    recentRows.map((row) => parseOptionalKoreanNumber(row.organPureBuyQuant)),
+  );
+  return {
+    foreignInstitutionNet3Days: foreignNet3Days + institutionNet3Days,
+    foreignNet3Days,
+    institutionNet3Days,
+  };
+}
+
+function applyDomesticFundamentalQuality(item) {
+  const quality = evaluateDomesticFundamentalQuality(item);
+  const originalStage = item.technicalRecommendationStage || item.recommendationStage;
+  const shouldDowngrade =
+    originalStage === "confirmed" &&
+    (quality.fundamentalStatus === "caution" || quality.severeValuationRisk);
+  return {
+    ...item,
+    ...quality,
+    qualityAdjusted: shouldDowngrade,
+    recommendationStage: shouldDowngrade ? "observe" : item.recommendationStage,
+    signal: shouldDowngrade ? "실적 확인 관찰 후보" : item.signal,
+    technicalRecommendationStage: originalStage,
+  };
+}
+
+function evaluateDomesticFundamentalQuality(item) {
+  const revenueGrowth = optionalNumber(item.quarterRevenueGrowthYoy);
+  const profitGrowth = optionalNumber(item.quarterOperatingProfitGrowthYoy);
+  const profitGrowthQoq = optionalNumber(item.quarterOperatingProfitGrowthQoq);
+  const marginChange = optionalNumber(item.quarterOperatingMarginChangeQoq);
+  const forwardPer = optionalNumber(item.forwardPer);
+  const trailingPer = optionalNumber(item.trailingPer);
+  const epsGrowth = optionalNumber(item.estimatedEpsGrowth);
+  const nextProfitGrowth = optionalNumber(item.nextAnnualOperatingProfitGrowth);
+  const hasData = [
+    revenueGrowth,
+    profitGrowth,
+    forwardPer,
+    trailingPer,
+    nextProfitGrowth,
+  ].some(Number.isFinite);
+
+  if (!hasData) {
+    return {
+      fundamentalLabel: "실적 확인 전",
+      fundamentalReasons: ["실적/밸류 데이터 부족"],
+      fundamentalScore: null,
+      fundamentalStatus: "missing",
+      fundamentalSummary: "실적과 밸류 데이터가 부족해 가격 신호만으로는 관찰이 좋아.",
+      severeValuationRisk: false,
     };
   }
+
+  const reasons = [];
+  let score = 45;
+
+  if (Number.isFinite(revenueGrowth)) {
+    if (revenueGrowth >= 15) score += 18;
+    else if (revenueGrowth >= 5) score += 12;
+    else if (revenueGrowth >= 0) score += 5;
+    else score -= 10;
+    reasons.push(`매출 ${formatSigned(revenueGrowth, 1)}%`);
+  }
+
+  if (Number.isFinite(profitGrowth)) {
+    if (profitGrowth >= 30) score += 24;
+    else if (profitGrowth >= 10) score += 16;
+    else if (profitGrowth >= 0) score += 7;
+    else score -= 20;
+    reasons.push(`영업이익 ${formatSigned(profitGrowth, 1)}%`);
+  }
+
+  if (Number.isFinite(profitGrowthQoq)) {
+    if (profitGrowthQoq >= 15) score += 6;
+    else if (profitGrowthQoq < -20) score -= 6;
+  }
+
+  if (Number.isFinite(marginChange)) {
+    if (marginChange > 0) score += 4;
+    else if (marginChange < -1) score -= 4;
+  }
+
+  if (Number.isFinite(nextProfitGrowth)) {
+    if (nextProfitGrowth >= 30) score += 8;
+    else if (nextProfitGrowth >= 10) score += 5;
+    else if (nextProfitGrowth < 0) score -= 6;
+  }
+
+  if (Number.isFinite(epsGrowth)) {
+    if (epsGrowth >= 30) score += 8;
+    else if (epsGrowth >= 10) score += 4;
+    else if (epsGrowth < 0) score -= 6;
+  }
+
+  const valuationPer = Number.isFinite(forwardPer) ? forwardPer : trailingPer;
+  if (Number.isFinite(valuationPer)) {
+    if (valuationPer <= 25) score += 12;
+    else if (valuationPer <= 45) score += 6;
+    else if (valuationPer >= 90) score -= 14;
+    else if (valuationPer >= 70) score -= 8;
+    reasons.push(
+      `${Number.isFinite(forwardPer) ? "추정PER" : "PER"} ${formatNumber(
+        valuationPer,
+        1,
+      )}배`,
+    );
+  }
+
+  const strongGrowth =
+    (Number.isFinite(profitGrowth) && profitGrowth >= 30) ||
+    (Number.isFinite(epsGrowth) && epsGrowth >= 30) ||
+    (Number.isFinite(nextProfitGrowth) && nextProfitGrowth >= 30);
+  const severeValuationRisk =
+    Number.isFinite(valuationPer) &&
+    valuationPer >= 90 &&
+    !strongGrowth &&
+    !(Number.isFinite(revenueGrowth) && revenueGrowth >= 15);
+
+  if (severeValuationRisk) score -= 12;
+
+  const clampedScore = Math.round(Math.max(0, Math.min(100, score)));
+  const status =
+    clampedScore >= DOMESTIC_FUNDAMENTAL_SUPPORT_SCORE
+      ? "supportive"
+      : clampedScore < DOMESTIC_FUNDAMENTAL_CAUTION_SCORE || severeValuationRisk
+        ? "caution"
+        : "neutral";
+  const fundamentalLabel =
+    status === "supportive"
+      ? "실적 지지"
+      : status === "caution"
+        ? "실적 점검"
+        : "실적 중립";
+
+  return {
+    fundamentalLabel,
+    fundamentalReasons: reasons,
+    fundamentalScore: clampedScore,
+    fundamentalStatus: status,
+    fundamentalSummary: domesticFundamentalSummary({
+      epsGrowth,
+      forwardPer,
+      profitGrowth,
+      revenueGrowth,
+      severeValuationRisk,
+      status,
+      trailingPer,
+    }),
+    severeValuationRisk,
+  };
+}
+
+function domesticFundamentalSummary({
+  epsGrowth,
+  forwardPer,
+  profitGrowth,
+  revenueGrowth,
+  severeValuationRisk,
+  status,
+  trailingPer,
+}) {
+  const parts = [];
+  if (Number.isFinite(revenueGrowth)) {
+    parts.push(`최근 분기 매출 ${formatSigned(revenueGrowth, 1)}%`);
+  }
+  if (Number.isFinite(profitGrowth)) {
+    parts.push(`영업이익 ${formatSigned(profitGrowth, 1)}%`);
+  }
+  const valuationPer = Number.isFinite(forwardPer) ? forwardPer : trailingPer;
+  const valuationLabel = Number.isFinite(forwardPer) ? "추정PER" : "PER";
+  if (Number.isFinite(valuationPer)) {
+    parts.push(`${valuationLabel} ${formatNumber(valuationPer, 1)}배`);
+  }
+  if (status === "supportive") {
+    const suffix =
+      Number.isFinite(valuationPer) && valuationPer >= 70
+        ? "실적은 받쳐주지만 밸류 부담은 같이 점검해야 해."
+        : "실적 흐름이 가격 신호를 받쳐줘.";
+    return `${parts.join(", ")}로 ${suffix}`;
+  }
+  if (status === "caution") {
+    return `${parts.join(", ")}라 실적/밸류 확인 전까지는 추천보다 관찰이 좋아.`;
+  }
+  if (severeValuationRisk) {
+    return `${parts.join(", ")}라 고PER 부담이 커. 실적 재확인이 필요해.`;
+  }
+  if (Number.isFinite(epsGrowth) && epsGrowth > 0) {
+    parts.push(`추정EPS ${formatSigned(epsGrowth, 1)}%`);
+  }
+  return `${parts.join(", ")}로 실적 근거는 중립이야.`;
 }
 
 async function fetchNaverRecentPriceRows(code) {
@@ -1210,6 +1617,8 @@ function stockRecommendationCondition(
       "21-day return >= 50%, relative return >= 30%p, MFI >= 70, near 21-day high, 21-day volume >= 1.0x, and 5-day volume >= 0.9x",
     invalidation:
       "exclude active picks if latest price is <= -8% from signal, below 10-day average, or <= -20% from recent 21-trading-day high",
+    fundamentalValidation:
+      "for Korean picks, downgrade confirmed candidates to observation when latest revenue/profit trend or valuation support is weak",
     minimumHistoryDays: 127,
     ...(hasMarketCap ? { minimumMarketCapKrw } : {}),
     monthHighDrawdown: `>= ${RECOMMENDATION_MAX_MONTH_HIGH_DRAWDOWN}% from recent 21-trading-day high`,
@@ -2079,7 +2488,23 @@ function parseKoreanNumber(value) {
   return Number.isFinite(number) ? number : NaN;
 }
 
+function parseOptionalKoreanNumber(value) {
+  const text = String(value ?? "")
+    .replace(/,/g, "")
+    .replace(/\s+/g, "")
+    .replace(/[％%배원]/g, "");
+  if (!text || text === "-" || /^N\/?A$/i.test(text)) return null;
+  const number = Number(text);
+  return Number.isFinite(number) ? number : null;
+}
+
 function finiteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : NaN;
+}
+
+function optionalNumber(value) {
+  if (value === null || value === undefined || value === "") return NaN;
   const number = Number(value);
   return Number.isFinite(number) ? number : NaN;
 }
@@ -2114,6 +2539,19 @@ function percentChange(current, previous) {
   return ((currentValue - previousValue) / previousValue) * 100;
 }
 
+function percentChangeWithSignedBase(current, previous) {
+  const currentValue = Number(current);
+  const previousValue = Number(previous);
+  if (
+    !Number.isFinite(currentValue) ||
+    !Number.isFinite(previousValue) ||
+    previousValue === 0
+  ) {
+    return NaN;
+  }
+  return ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
+}
+
 function roundFinite(value, decimals) {
   if (!Number.isFinite(value)) return null;
   const scale = 10 ** decimals;
@@ -2142,6 +2580,12 @@ function formatSigned(value, decimals = 2) {
   const number = Number(value);
   if (!Number.isFinite(number)) return "-";
   return `${number >= 0 ? "+" : ""}${number.toFixed(decimals)}`;
+}
+
+function formatNumber(value, decimals = 2) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return number.toFixed(decimals);
 }
 
 function scoreFlowRatio(ratio5, ratio20) {
