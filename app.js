@@ -602,7 +602,7 @@ function setRecommendationBaseLoading(baseMarket, isLoading) {
 
 function canRefreshRecommendationBase(baseMarket) {
   const payload = recommendationPayloadByBaseMarket[baseMarket];
-  return !payload || canRefreshRecommendations(payload);
+  return Boolean(payload) && canRefreshRecommendations(payload);
 }
 
 function updateRecommendationGlobalToolbar() {
