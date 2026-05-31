@@ -119,6 +119,7 @@ const recommendationProgressByBaseMarket = {
 const recommendationDetailById = new Map();
 const recommendationGlobalRefreshActiveBases = new Set();
 let recommendationGlobalRefreshing = false;
+let recommendationRefreshToolbarTimer = null;
 let lastRecommendationDetailTrigger = null;
 
 initializeDashboardTabs();
@@ -605,6 +606,10 @@ function canRefreshRecommendationBase(baseMarket) {
 }
 
 function updateRecommendationGlobalToolbar() {
+  if (recommendationRefreshToolbarTimer) {
+    window.clearTimeout(recommendationRefreshToolbarTimer);
+    recommendationRefreshToolbarTimer = null;
+  }
   const dateLabel = document.querySelector("#recommendationGlobalUpdatedAt");
   const refreshButton = document.querySelector("#recommendationGlobalRefresh");
   const generatedTimes = Object.values(recommendationPayloadByBaseMarket)
@@ -627,11 +632,19 @@ function updateRecommendationGlobalToolbar() {
     Object.values(recommendationProgressByBaseMarket).some(
       (progress) => progress?.state === "running",
     );
-  refreshButton.hidden = isRefreshing;
-  refreshButton.disabled = !canRefresh;
+  refreshButton.hidden = isRefreshing || !canRefresh;
+  refreshButton.disabled = isRefreshing || !canRefresh;
   refreshButton.setAttribute("aria-busy", String(isRefreshing));
   refreshButton.setAttribute("aria-disabled", String(!canRefresh));
   refreshButton.title = canRefresh ? "" : "최근 갱신 후 1시간 동안은 다시 갱신할 수 없습니다.";
+  const nextAvailableAt = nextRecommendationRefreshAvailableAt();
+  if (!canRefresh && nextAvailableAt) {
+    const delay = Math.max(0, nextAvailableAt.getTime() - Date.now() + 250);
+    recommendationRefreshToolbarTimer = window.setTimeout(
+      updateRecommendationGlobalToolbar,
+      Math.min(delay, 2_147_483_647),
+    );
+  }
 }
 
 function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic) {
@@ -3624,6 +3637,16 @@ function recommendationRefreshAvailableAt(payload) {
   const generatedAt = new Date(payload.generatedAt).getTime();
   if (!Number.isFinite(generatedAt)) return null;
   return new Date(generatedAt + RECOMMENDATION_REFRESH_COOLDOWN_MS);
+}
+
+function nextRecommendationRefreshAvailableAt() {
+  const upcomingTimes = Object.values(recommendationPayloadByBaseMarket)
+    .map(recommendationRefreshAvailableAt)
+    .filter((date) => date && date.getTime() > Date.now())
+    .map((date) => date.getTime())
+    .filter(Number.isFinite);
+  if (!upcomingTimes.length) return null;
+  return new Date(Math.min(...upcomingTimes));
 }
 
 function formatNumber(value, decimals) {
