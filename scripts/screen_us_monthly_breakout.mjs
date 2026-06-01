@@ -73,6 +73,12 @@ const benchmarkRows = await fetchYahooDaily(
   historyStartDate(),
   historyEndDate(),
 );
+const EFFECTIVE_MARKET_MONTH = effectiveMarketMonth(MARKET_MONTH, benchmarkRows);
+if (EFFECTIVE_MARKET_MONTH !== MARKET_MONTH) {
+  console.error(
+    `using ${EFFECTIVE_MARKET_MONTH} because ${MARKET_MONTH} has no ${BENCHMARK_SYMBOL} trading data yet`,
+  );
+}
 const universeInfo = await fetchUsUniverse({ minimumMarketCapUsd });
 const universe = filteredUniverse(universeInfo.universe, universeInfo.allBySymbol).slice(
   0,
@@ -158,9 +164,12 @@ const payload = {
     pair: "USD/KRW",
     value: round(usdKrw, 4),
   },
-  marketMonth: MARKET_MONTH,
+  marketMonth: EFFECTIVE_MARKET_MONTH,
   note:
     "Forward returns are included only for historical review and are not used in the screen.",
+  ...(EFFECTIVE_MARKET_MONTH !== MARKET_MONTH
+    ? { requestedMonth: MARKET_MONTH }
+    : {}),
   screenVersion: SCREEN_VERSION,
   universe:
     SYMBOL_FILTER.size > 0
@@ -186,7 +195,7 @@ console.log(JSON.stringify(payload, null, 2));
 
 function screenStock(stock, rows, benchmarkRows) {
   const sortedRows = rows.slice().sort((a, b) => a.date.localeCompare(b.date));
-  const targetIndex = latestIndexInMonth(sortedRows, MARKET_MONTH);
+  const targetIndex = latestIndexInMonth(sortedRows, EFFECTIVE_MARKET_MONTH);
   if (targetIndex < 0) return null;
   if (targetIndex + 1 < MIN_HISTORY_DAYS) return null;
 
@@ -397,6 +406,19 @@ function latestIndexInMonth(rows, month) {
     if (rows[index].date.startsWith(month)) return index;
   }
   return -1;
+}
+
+function effectiveMarketMonth(requestedMonth, benchmarkRows) {
+  if (benchmarkRows.some((row) => row.date?.startsWith(requestedMonth))) {
+    return requestedMonth;
+  }
+
+  const firstDayOfNextMonth = `${shiftMonth(requestedMonth, 1)}-01`;
+  const latestAvailableRow = benchmarkRows
+    .filter((row) => row.date && row.date < firstDayOfNextMonth)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .at(-1);
+  return latestAvailableRow?.date?.slice(0, 7) || requestedMonth;
 }
 
 function latestIndexAtOrBefore(rows, date) {
