@@ -1839,9 +1839,17 @@ function domesticFundamentalSummary({
 }
 
 async function fetchNaverRecentPriceRows(code) {
-  const url = `https://m.stock.naver.com/api/stock/${encodeURIComponent(code)}/price`;
-  const rows = JSON.parse(await fetchText(url, "application/json,text/plain,*/*"));
+  const encodedCode = encodeURIComponent(code);
+  const url = `https://m.stock.naver.com/api/stock/${encodedCode}/price`;
+  const [rows, basic] = await Promise.all([
+    JSON.parse(await fetchText(url, "application/json,text/plain,*/*")),
+    fetchNaverStockBasic(code).catch(() => null),
+  ]);
   if (!Array.isArray(rows)) return [];
+  const preopenDate =
+    basic?.marketStatus === "PREOPEN"
+      ? String(basic.localTradedAt || "").slice(0, 10)
+      : "";
   return rows
     .map((row) => ({
       close: parseKoreanNumber(row.closePrice),
@@ -1851,8 +1859,14 @@ async function fetchNaverRecentPriceRows(code) {
       open: parseKoreanNumber(row.openPrice),
       volume: Number(row.accumulatedTradingVolume) || 0,
     }))
+    .filter((row) => !preopenDate || row.date !== preopenDate)
     .filter((row) => row.date && Number.isFinite(row.close) && row.close > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+async function fetchNaverStockBasic(code) {
+  const url = `https://m.stock.naver.com/api/stock/${encodeURIComponent(code)}/basic`;
+  return JSON.parse(await fetchText(url, "application/json,text/plain,*/*"));
 }
 
 function emptyStockRecommendationPayload({ condition, marketMonth, universe }) {
