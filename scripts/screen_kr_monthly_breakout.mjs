@@ -1,5 +1,5 @@
 const MARKET_MONTH = process.argv[2] || "2026-05";
-const SCREEN_VERSION = "kr-rolling-21-v3";
+const SCREEN_VERSION = "kr-rolling-21-v4";
 const COMPARISON_MONTH_COUNT = Number(
   process.env.COMPARE_MONTHS || process.argv[3] || 5,
 );
@@ -32,18 +32,18 @@ const MIN_RELATIVE_RETURN = Number(process.env.MIN_RELATIVE_RETURN || 8);
 const MIN_MFI = Number(process.env.MIN_MFI || 80);
 const MIN_WATCH_MFI = Number(process.env.MIN_WATCH_MFI || 85);
 const MIN_OBSERVATION_VOLUME_RATIO = Number(
-  process.env.MIN_OBSERVATION_VOLUME_RATIO || 1.0,
+  process.env.MIN_OBSERVATION_VOLUME_RATIO || 1.3,
 );
 const MIN_OBSERVATION_RECENT_VOLUME_RATIO = Number(
-  process.env.MIN_OBSERVATION_RECENT_VOLUME_RATIO || 0.9,
+  process.env.MIN_OBSERVATION_RECENT_VOLUME_RATIO || 1.3,
 );
-const MIN_OBSERVATION_RETURN = Number(process.env.MIN_OBSERVATION_RETURN || 50);
+const MIN_OBSERVATION_RETURN = Number(process.env.MIN_OBSERVATION_RETURN || 60);
 const MIN_OBSERVATION_RELATIVE_RETURN = Number(
-  process.env.MIN_OBSERVATION_RELATIVE_RETURN || 30,
+  process.env.MIN_OBSERVATION_RELATIVE_RETURN || 40,
 );
-const MIN_OBSERVATION_MFI = Number(process.env.MIN_OBSERVATION_MFI || 70);
+const MIN_OBSERVATION_MFI = Number(process.env.MIN_OBSERVATION_MFI || 75);
 const MAX_OBSERVATION_HIGH_DRAWDOWN = Number(
-  process.env.MAX_OBSERVATION_HIGH_DRAWDOWN || 12,
+  process.env.MAX_OBSERVATION_HIGH_DRAWDOWN || 8,
 );
 const MOVING_AVERAGE_DAYS = Number(process.env.MOVING_AVERAGE_DAYS || 10);
 const MAX_ROLLING_HIGH_DRAWDOWN = Number(
