@@ -74,6 +74,38 @@ const NASDAQ_API_HEADERS = {
   Referer: "https://www.nasdaq.com/",
   "User-Agent": "Mozilla/5.0",
 };
+const US_STOCK_KOREAN_ALIASES = new Map([
+  ["AAPL", ["애플"]],
+  ["ADBE", ["어도비"]],
+  ["AMD", ["AMD", "에이엠디"]],
+  ["AMAT", ["어플라이드머티리얼즈", "어플라이드 머티리얼즈", "어플라이드"]],
+  ["AMZN", ["아마존"]],
+  ["ARM", ["ARM", "암홀딩스", "암 홀딩스"]],
+  ["ASML", ["ASML", "에이에스엠엘"]],
+  ["AVGO", ["브로드컴"]],
+  ["BRKR", ["브루커", "브루커코퍼레이션", "브루커 코퍼레이션"]],
+  ["CSCO", ["시스코"]],
+  ["DELL", ["델", "델테크놀로지스", "델 테크놀로지스"]],
+  ["GOOG", ["구글C", "알파벳C"]],
+  ["GOOGL", ["구글", "알파벳", "구글A", "알파벳A"]],
+  ["INTC", ["인텔"]],
+  ["KLAC", ["KLA", "케이엘에이"]],
+  ["LRCX", ["램리서치", "램 리서치"]],
+  ["META", ["메타", "페이스북"]],
+  ["MSFT", ["마이크로소프트"]],
+  ["MU", ["마이크론", "마이크론테크놀로지", "마이크론 테크놀로지"]],
+  ["NFLX", ["넷플릭스"]],
+  ["NVDA", ["엔비디아", "엔비다아"]],
+  ["ON", ["온세미", "온세미컨덕터", "온 세미컨덕터"]],
+  ["ORCL", ["오라클"]],
+  ["PLTR", ["팔란티어"]],
+  ["QCOM", ["퀄컴"]],
+  ["SMCI", ["슈퍼마이크로", "슈퍼마이크로컴퓨터", "슈퍼 마이크로 컴퓨터"]],
+  ["SNDK", ["샌디스크", "샌디스크코퍼레이션", "샌디스크 코퍼레이션"]],
+  ["TSLA", ["테슬라"]],
+  ["TSM", ["TSMC", "티에스엠씨", "대만반도체", "대만 반도체"]],
+  ["WDC", ["웨스턴디지털", "웨스턴 디지털"]],
+]);
 
 const MARKET_SOURCES = [
   { id: "kospi", label: "KOSPI", symbol: "^KS11", decimals: 2 },
@@ -682,11 +714,11 @@ async function searchUsStocks(query) {
     .map((stock) => {
       const symbol = stock.symbol.toUpperCase();
       const nameUpper = stock.name.toUpperCase();
-      let score = 0;
-      if (symbol === query.upper) score = 120;
-      else if (symbol.startsWith(query.upper)) score = 94;
-      else if (nameUpper === query.upper) score = 88;
-      else if (nameUpper.includes(query.upper)) score = 72;
+      let score = usKoreanAliasScore(symbol, query);
+      if (symbol === query.upper) score = Math.max(score, 120);
+      else if (symbol.startsWith(query.upper)) score = Math.max(score, 94);
+      else if (nameUpper === query.upper) score = Math.max(score, 88);
+      else if (nameUpper.includes(query.upper)) score = Math.max(score, 72);
       if (!score) return null;
       return {
         exchange: stock.exchange || "US",
@@ -765,6 +797,25 @@ async function getCachedUsSearchUniverse() {
     .sort((a, b) => a.symbol.localeCompare(b.symbol));
   cachedUsSearchUniverseAt = now;
   return cachedUsSearchUniverse;
+}
+
+function usKoreanAliasScore(symbol, query) {
+  const aliases = US_STOCK_KOREAN_ALIASES.get(symbol) || [];
+  if (!aliases.length) return 0;
+  const queryText = query.compact;
+  for (const alias of aliases) {
+    const compactAlias = String(alias).replace(/\s+/g, "").toUpperCase();
+    if (compactAlias === queryText) return 130;
+  }
+  for (const alias of aliases) {
+    const compactAlias = String(alias).replace(/\s+/g, "").toUpperCase();
+    if (compactAlias.startsWith(queryText)) return 100;
+  }
+  for (const alias of aliases) {
+    const compactAlias = String(alias).replace(/\s+/g, "").toUpperCase();
+    if (compactAlias.includes(queryText) || queryText.includes(compactAlias)) return 84;
+  }
+  return 0;
 }
 
 async function getStockEvaluation({ code, market, symbol }) {

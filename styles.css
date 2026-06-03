@@ -18,12 +18,15 @@
 
 html {
   min-height: 100%;
+  overflow-x: hidden;
   background: var(--bg);
 }
 
 body {
+  position: relative;
   min-height: 100%;
   margin: 0;
+  overflow-x: hidden;
   color: var(--ink);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0) 220px),
@@ -35,8 +38,10 @@ body {
 
 .app-shell {
   width: min(100%, 440px);
+  max-width: 100%;
   min-height: 100vh;
   margin: 0 auto;
+  overflow-x: hidden;
   padding: 18px 16px;
 }
 
@@ -312,6 +317,10 @@ h1 {
 
 .dashboard-tabs-primary {
   --tab-columns: 3;
+}
+
+.recommendation-root-panel {
+  touch-action: pan-y;
 }
 
 .dashboard-tab {
@@ -1414,6 +1423,8 @@ body.modal-open {
 .stock-evaluation-check-group > div {
   display: grid;
   gap: 4px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .stock-evaluation-check {
@@ -1421,6 +1432,8 @@ body.modal-open {
   grid-template-columns: minmax(0, 0.76fr) minmax(0, 0.82fr) minmax(0, 1fr) 56px;
   align-items: stretch;
   gap: 0;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   min-height: 38px;
   padding: 0;
@@ -1442,6 +1455,7 @@ body.modal-open {
 .stock-evaluation-check small,
 .stock-evaluation-check i {
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   min-height: 100%;
   padding: 8px 6px;

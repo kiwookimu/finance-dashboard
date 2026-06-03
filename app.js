@@ -124,8 +124,10 @@ let lastRecommendationDetailTrigger = null;
 let stockSearchAbortController = null;
 let stockEvaluationAbortController = null;
 let stockSearchTimer = null;
+const dashboardTabGroups = new Map();
 
 initializeDashboardTabs();
+initializeRecommendationSwipeTabs();
 initializeRecommendationActions();
 initializeRecommendationDetailModal();
 initializeStockSearch();
@@ -187,7 +189,60 @@ function initializeTabGroup(groupName, { onActivate } = {}) {
     });
   }
 
+  dashboardTabGroups.set(groupName, {
+    activateByOffset(offset) {
+      const currentIndex = Math.max(
+        0,
+        tabs.findIndex((tab) => tab.classList.contains("is-active")),
+      );
+      const nextIndex = Math.max(0, Math.min(tabs.length - 1, currentIndex + offset));
+      if (nextIndex === currentIndex) return false;
+      activateTab(tabs[nextIndex]);
+      return true;
+    },
+  });
+
   activateTab(tabs.find((tab) => tab.classList.contains("is-active")) || tabs[0], false, false);
+}
+
+function initializeRecommendationSwipeTabs() {
+  const panel = document.querySelector("#recommendationRootPanel");
+  if (!panel) return;
+
+  let startX = 0;
+  let startY = 0;
+  let isTrackingSwipe = false;
+
+  panel.addEventListener(
+    "touchstart",
+    (event) => {
+      if (event.touches.length !== 1) return;
+      const targetElement =
+        event.target instanceof Element ? event.target : event.target?.parentElement;
+      if (targetElement?.closest("button, a, input, textarea, select, [role='dialog']")) return;
+      startX = event.touches[0].clientX;
+      startY = event.touches[0].clientY;
+      isTrackingSwipe = true;
+    },
+    { passive: true },
+  );
+
+  panel.addEventListener(
+    "touchend",
+    (event) => {
+      if (!isTrackingSwipe || event.changedTouches.length !== 1) return;
+      isTrackingSwipe = false;
+
+      const deltaX = event.changedTouches[0].clientX - startX;
+      const deltaY = event.changedTouches[0].clientY - startY;
+      const isHorizontalSwipe = Math.abs(deltaX) >= 48 && Math.abs(deltaX) > Math.abs(deltaY) * 1.6;
+      if (!isHorizontalSwipe) return;
+
+      const tabGroup = dashboardTabGroups.get("recommendations");
+      tabGroup?.activateByOffset(deltaX < 0 ? 1 : -1);
+    },
+    { passive: true },
+  );
 }
 
 function activateCurrentRecommendationPanel() {
@@ -292,9 +347,7 @@ function renderStockSearchResults(results, emptyText = "검색 결과가 없습�
     .join("");
   container.querySelectorAll(".stock-search-result").forEach((button) => {
     button.addEventListener("click", () => {
-      container.querySelectorAll(".stock-search-result").forEach((item) => {
-        item.classList.toggle("is-selected", item === button);
-      });
+      clearStockSearchInputAndResults();
       evaluateSelectedStock({
         code: button.dataset.code,
         market: button.dataset.market,
@@ -302,6 +355,16 @@ function renderStockSearchResults(results, emptyText = "검색 결과가 없습�
       });
     });
   });
+}
+
+function clearStockSearchInputAndResults() {
+  window.clearTimeout(stockSearchTimer);
+  stockSearchAbortController?.abort();
+  stockSearchAbortController = null;
+  const input = document.querySelector("#stockSearchInput");
+  const container = document.querySelector("#stockSearchResults");
+  if (input) input.value = "";
+  if (container) container.innerHTML = "";
 }
 
 async function evaluateSelectedStock({ code, market, symbol }) {
