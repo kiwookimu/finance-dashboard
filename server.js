@@ -21,8 +21,8 @@ const RECOMMENDATION_STOP_LOSS_PERCENT = -8;
 const RECOMMENDATION_MAX_MONTH_HIGH_DRAWDOWN = -20;
 const DOMESTIC_FUNDAMENTAL_SUPPORT_SCORE = 58;
 const DOMESTIC_FUNDAMENTAL_CAUTION_SCORE = 45;
-const DOMESTIC_STOCK_RECOMMENDATION_VERSION = "kr-rolling-21-v4";
-const US_STOCK_RECOMMENDATION_VERSION = "us-rolling-21-v4";
+const DOMESTIC_STOCK_RECOMMENDATION_VERSION = "kr-rolling-21-v8";
+const US_STOCK_RECOMMENDATION_VERSION = "us-rolling-21-v7";
 const TRAFFIC_EVENT_LIMIT = 20000;
 const TRAFFIC_RETENTION_MS = 31 * 24 * 60 * 60 * 1000;
 const TRAFFIC_VISITOR_SALT = crypto.randomBytes(16).toString("hex");
@@ -569,7 +569,11 @@ async function getStockRecommendations({
         {
           cached: false,
           ...(logicOutdated
-            ? { condition: stockRecommendationCondition(1_000_000_000_000) }
+            ? {
+                condition: stockRecommendationCondition(1_000_000_000_000, {
+                  domesticTightConfirmation: true,
+                }),
+              }
             : {}),
           logicOutdated,
           refreshed: false,
@@ -581,14 +585,18 @@ async function getStockRecommendations({
       return cachedStockRecommendations;
     }
     return emptyStockRecommendationPayload({
-      condition: stockRecommendationCondition(1_000_000_000_000),
+      condition: stockRecommendationCondition(1_000_000_000_000, {
+        domesticTightConfirmation: true,
+      }),
       marketMonth: month,
       universe: "Saved Korea recommendation screen is not available yet",
     });
   }
 
   const currentPayload = await readCurrentStockRecommendationPayload({
-    condition: stockRecommendationCondition(1_000_000_000_000),
+    condition: stockRecommendationCondition(1_000_000_000_000, {
+      domesticTightConfirmation: true,
+    }),
     marketMonth: month,
     resultPath,
     universe: "Saved Korea recommendation screen is not available yet",
@@ -725,7 +733,11 @@ function startStockRecommendationRefresh(month, markets, resultPath) {
           {
             cached: false,
             ...(logicOutdated
-              ? { condition: stockRecommendationCondition(1_000_000_000_000) }
+              ? {
+                  condition: stockRecommendationCondition(1_000_000_000_000, {
+                    domesticTightConfirmation: true,
+                  }),
+                }
               : {}),
             logicOutdated,
             refreshError: error.message,
@@ -821,7 +833,9 @@ async function readCurrentStockRecommendationPayload({
         ? {
             condition: stockRecommendationCondition(
               isDomesticResult ? 1_000_000_000_000 : 10_000_000_000_000,
-              isUsResult ? { relativeBenchmark: "QQQ" } : {},
+              isUsResult
+                ? { relativeBenchmark: "QQQ" }
+                : { domesticTightConfirmation: true },
             ),
           }
         : {}),
@@ -1131,15 +1145,15 @@ async function enrichUsRecommendationItem(item) {
   if (!symbol) return item;
   try {
     const fundamentals = await fetchNasdaqUsFundamentals(symbol, item);
-    return {
+    return applyUsFundamentalQuality({
       ...item,
       ...fundamentals,
-    };
+    });
   } catch (error) {
-    return {
+    return applyUsFundamentalQuality({
       ...item,
       fundamentalStatusError: error.message,
-    };
+    });
   }
 }
 
@@ -1300,10 +1314,19 @@ function evaluateUsFundamentalQuality({
     reasons.push(`포워드PER ${formatNumber(forwardPer, 1)}배`);
   }
 
+  const strongGrowth =
+    (Number.isFinite(revenueGrowth) && revenueGrowth >= 30) ||
+    (Number.isFinite(profitGrowth) && profitGrowth >= 40);
+  const severeValuationRisk =
+    Number.isFinite(forwardPer) && forwardPer >= 100 && !strongGrowth;
+  if (severeValuationRisk) score -= 12;
+
   const clampedScore = Math.round(Math.max(0, Math.min(100, score)));
   const hasForwardPer = Number.isFinite(forwardPer);
   const status =
-    clampedScore >= DOMESTIC_FUNDAMENTAL_SUPPORT_SCORE
+    severeValuationRisk
+      ? "caution"
+      : clampedScore >= DOMESTIC_FUNDAMENTAL_SUPPORT_SCORE
       ? "supportive"
       : clampedScore < DOMESTIC_FUNDAMENTAL_CAUTION_SCORE
         ? "caution"
@@ -1330,6 +1353,22 @@ function evaluateUsFundamentalQuality({
     fundamentalScore: clampedScore,
     fundamentalStatus: status,
     fundamentalSummary,
+    severeValuationRisk,
+  };
+}
+
+function applyUsFundamentalQuality(item) {
+  const screenStage = item.recommendationStage || "confirmed";
+  const technicalStage = item.technicalRecommendationStage || screenStage;
+  const shouldDowngrade =
+    screenStage === "confirmed" &&
+    (item.fundamentalStatus === "caution" || item.severeValuationRisk);
+  return {
+    ...item,
+    qualityAdjusted: shouldDowngrade,
+    recommendationStage: shouldDowngrade ? "observe" : screenStage,
+    signal: shouldDowngrade ? "실적 확인 관찰 후보" : item.signal,
+    technicalRecommendationStage: technicalStage,
   };
 }
 
@@ -1656,18 +1695,18 @@ function parseNaverInvestorFlowSummary(rows = []) {
 
 function applyDomesticFundamentalQuality(item) {
   const quality = evaluateDomesticFundamentalQuality(item);
-  const originalStage =
-    item.technicalRecommendationStage || item.recommendationStage || "confirmed";
+  const screenStage = item.recommendationStage || "confirmed";
+  const technicalStage = item.technicalRecommendationStage || screenStage;
   const shouldDowngrade =
-    originalStage === "confirmed" &&
+    screenStage === "confirmed" &&
     (quality.fundamentalStatus === "caution" || quality.severeValuationRisk);
   return {
     ...item,
     ...quality,
     qualityAdjusted: shouldDowngrade,
-    recommendationStage: shouldDowngrade ? "observe" : originalStage,
+    recommendationStage: shouldDowngrade ? "observe" : screenStage,
     signal: shouldDowngrade ? "실적 확인 관찰 후보" : item.signal,
-    technicalRecommendationStage: originalStage,
+    technicalRecommendationStage: technicalStage,
   };
 }
 
@@ -1885,7 +1924,10 @@ function emptyStockRecommendationPayload({ condition, marketMonth, universe }) {
 
 function stockRecommendationCondition(
   minimumMarketCapKrw,
-  { relativeBenchmark = "own market benchmark" } = {},
+  {
+    domesticTightConfirmation = false,
+    relativeBenchmark = "own market benchmark",
+  } = {},
 ) {
   const hasMarketCap =
     Number.isFinite(Number(minimumMarketCapKrw)) && Number(minimumMarketCapKrw) > 0;
@@ -1893,20 +1935,28 @@ function stockRecommendationCondition(
     breakout: "latest close reaches recent 21-trading-day closing high",
     dailyMfi: ">= 80",
     earlyWatch:
-      "21-day volume >= 1.2x, 5-day average volume >= 1.8x, MFI >= 85, and 21-day return >= 30% or 21-day high breakout",
+      "21-day return >= 60%, relative return >= 40%p, 21-day volume >= 1.2x, 5-day average volume >= 1.5x, MFI >= 75, within -5% from the 21-day high, and above the 10-day average",
     observation:
-      "21-day return >= 60%, relative return >= 40%p, MFI >= 75, near 21-day high, 21-day volume >= 1.3x, and 5-day volume >= 1.3x",
+      "21-day return >= 60%, relative return >= 40%p, MFI >= 75, within -5% from the 21-day high, 21-day volume >= 1.2x, 5-day volume >= 1.5x, and above the 10-day average",
     invalidation:
       "exclude active picks if latest price is <= -8% from signal, below 10-day average, or <= -20% from recent 21-trading-day high",
+    confirmationGuard:
+      "confirmed picks require 5-day volume >= 1.8x, setup score >= 75, high drawdown within -10%, and no overheat or weak-market downgrade",
+    ...(domesticTightConfirmation
+      ? {
+          domesticConfirmationGuard:
+            "Korean confirmed picks additionally require 21-day volume >= 2x, relative return >= 30%p, MFI >= 88, and benchmark 21-day return >= 0%",
+        }
+      : {}),
     fundamentalValidation:
-      "enrich picks with revenue growth, profit growth, and forward PER when available; Korean confirmed picks can be downgraded when support is weak",
+      "enrich picks with revenue growth, profit growth, and forward PER when available; confirmed picks can be downgraded when support is weak",
     minimumHistoryDays: 127,
     ...(hasMarketCap ? { minimumMarketCapKrw } : {}),
     monthHighDrawdown: `>= ${RECOMMENDATION_MAX_MONTH_HIGH_DRAWDOWN}% from recent 21-trading-day high`,
     monthlyReturn: ">= 15% over recent 21 trading days",
     recentVolumeRatio: ">= 1.8x vs previous 105-trading-day daily average",
     relativeReturn: `>= 8% vs ${relativeBenchmark}`,
-    setupScore: ">= 70",
+    setupScore: ">= 70 overall, >= 75 for confirmed picks",
     tenDayTrend: "close >= 10-day average for confirmed candidates",
     volumeRatio: ">= 1.8x vs previous 5 rolling 21-trading-day averages",
   };

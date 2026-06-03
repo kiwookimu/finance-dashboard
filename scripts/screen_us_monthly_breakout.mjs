@@ -1,5 +1,5 @@
 const MARKET_MONTH = process.argv[2] || "2025-09";
-const SCREEN_VERSION = "us-rolling-21-v4";
+const SCREEN_VERSION = "us-rolling-21-v7";
 const COMPARISON_MONTH_COUNT = Number(
   process.env.COMPARE_MONTHS || process.argv[3] || 5,
 );
@@ -21,21 +21,22 @@ const MIN_HISTORY_DAYS = Number(
     ROLLING_WINDOW_DAYS * (COMPARISON_MONTH_COUNT + 1) + 1,
 );
 const MIN_SETUP_SCORE = Number(process.env.MIN_SETUP_SCORE || 70);
+const MIN_CONFIRMED_SETUP_SCORE = Number(process.env.MIN_CONFIRMED_SETUP_SCORE || 75);
 const MIN_VOLUME_RATIO = Number(process.env.MIN_VOLUME_RATIO || 1.8);
 const MIN_RECENT_VOLUME_RATIO = Number(process.env.MIN_RECENT_VOLUME_RATIO || 1.8);
 const MIN_WATCH_VOLUME_RATIO = Number(process.env.MIN_WATCH_VOLUME_RATIO || 1.2);
 const MIN_ROLLING_RETURN = Number(
   process.env.MIN_ROLLING_RETURN || process.env.MIN_MONTHLY_RETURN || 15,
 );
-const MIN_WATCH_RETURN = Number(process.env.MIN_WATCH_RETURN || 30);
+const MIN_WATCH_RETURN = Number(process.env.MIN_WATCH_RETURN || 60);
 const MIN_RELATIVE_RETURN = Number(process.env.MIN_RELATIVE_RETURN || 8);
 const MIN_MFI = Number(process.env.MIN_MFI || 80);
-const MIN_WATCH_MFI = Number(process.env.MIN_WATCH_MFI || 85);
+const MIN_WATCH_MFI = Number(process.env.MIN_WATCH_MFI || 75);
 const MIN_OBSERVATION_VOLUME_RATIO = Number(
-  process.env.MIN_OBSERVATION_VOLUME_RATIO || 1.3,
+  process.env.MIN_OBSERVATION_VOLUME_RATIO || 1.2,
 );
 const MIN_OBSERVATION_RECENT_VOLUME_RATIO = Number(
-  process.env.MIN_OBSERVATION_RECENT_VOLUME_RATIO || 1.3,
+  process.env.MIN_OBSERVATION_RECENT_VOLUME_RATIO || 1.5,
 );
 const MIN_OBSERVATION_RETURN = Number(process.env.MIN_OBSERVATION_RETURN || 60);
 const MIN_OBSERVATION_RELATIVE_RETURN = Number(
@@ -43,13 +44,27 @@ const MIN_OBSERVATION_RELATIVE_RETURN = Number(
 );
 const MIN_OBSERVATION_MFI = Number(process.env.MIN_OBSERVATION_MFI || 75);
 const MAX_OBSERVATION_HIGH_DRAWDOWN = Number(
-  process.env.MAX_OBSERVATION_HIGH_DRAWDOWN || 8,
+  process.env.MAX_OBSERVATION_HIGH_DRAWDOWN || 5,
 );
 const MOVING_AVERAGE_DAYS = Number(process.env.MOVING_AVERAGE_DAYS || 10);
 const MAX_ROLLING_HIGH_DRAWDOWN = Number(
   process.env.MAX_ROLLING_HIGH_DRAWDOWN ||
     process.env.MAX_MONTH_HIGH_DRAWDOWN ||
     20,
+);
+const MAX_CONFIRMED_HIGH_DRAWDOWN = Number(
+  process.env.MAX_CONFIRMED_HIGH_DRAWDOWN || 10,
+);
+const OVERHEAT_MFI = Number(process.env.OVERHEAT_MFI || 92);
+const OVERHEAT_RETURN = Number(process.env.OVERHEAT_RETURN || 70);
+const EXTREME_RETURN = Number(process.env.EXTREME_RETURN || 100);
+const EXTREME_VOLUME_RATIO = Number(process.env.EXTREME_VOLUME_RATIO || 12);
+const WEAK_MARKET_RETURN = Number(process.env.WEAK_MARKET_RETURN || -5);
+const WEAK_MARKET_OVERRIDE_RELATIVE_RETURN = Number(
+  process.env.WEAK_MARKET_OVERRIDE_RELATIVE_RETURN || 25,
+);
+const WEAK_MARKET_OVERRIDE_RETURN = Number(
+  process.env.WEAK_MARKET_OVERRIDE_RETURN || 30,
 );
 const BENCHMARK_SYMBOL = process.env.BENCHMARK_SYMBOL || "QQQ";
 const MARKET_CAP_PREFILTER = process.env.MARKET_CAP_PREFILTER !== "0";
@@ -139,15 +154,22 @@ const payload = {
     breakout: `latest close reaches recent ${ROLLING_WINDOW_DAYS}-trading-day closing high`,
     dailyMfi: `>= ${MIN_MFI}`,
     earlyWatch:
+      `21-day return >= ${MIN_WATCH_RETURN}%, ` +
+      `relative return >= ${MIN_OBSERVATION_RELATIVE_RETURN}%p, ` +
+      `MFI >= ${MIN_WATCH_MFI}, ` +
       `21-day volume >= ${MIN_WATCH_VOLUME_RATIO}x, ` +
       `${RECENT_VOLUME_DAYS}-day volume >= ${MIN_RECENT_VOLUME_RATIO}x, ` +
-      `MFI >= ${MIN_WATCH_MFI}, and 21-day return >= ${MIN_WATCH_RETURN}% or 21-day high breakout`,
+      `within -${MAX_OBSERVATION_HIGH_DRAWDOWN}% from the 21-day high, and above the ${MOVING_AVERAGE_DAYS}-day average`,
     observation:
       `21-day return >= ${MIN_OBSERVATION_RETURN}%, ` +
       `relative return >= ${MIN_OBSERVATION_RELATIVE_RETURN}%p, ` +
-      `MFI >= ${MIN_OBSERVATION_MFI}, near ${ROLLING_WINDOW_DAYS}-day high, ` +
+      `MFI >= ${MIN_OBSERVATION_MFI}, within -${MAX_OBSERVATION_HIGH_DRAWDOWN}% from the ${ROLLING_WINDOW_DAYS}-day high, ` +
       `21-day volume >= ${MIN_OBSERVATION_VOLUME_RATIO}x, and ` +
       `${RECENT_VOLUME_DAYS}-day volume >= ${MIN_OBSERVATION_RECENT_VOLUME_RATIO}x`,
+    confirmationGuard:
+      `confirmed picks require ${RECENT_VOLUME_DAYS}-day volume >= ${MIN_RECENT_VOLUME_RATIO}x, ` +
+      `setup score >= ${MIN_CONFIRMED_SETUP_SCORE}, high drawdown within -${MAX_CONFIRMED_HIGH_DRAWDOWN}%, ` +
+      `and no overheat or weak-market downgrade`,
     minimumHistoryDays: MIN_HISTORY_DAYS,
     minimumMarketCapKrw: MIN_MARKET_CAP_KRW,
     minimumMarketCapUsd: Math.round(minimumMarketCapUsd),
@@ -251,9 +273,12 @@ function screenStock(stock, rows, benchmarkRows) {
     Number.isFinite(tenDayAverage) && current.close >= tenDayAverage;
   const observationCandidate =
     volumeStats.volumeRatio >= MIN_WATCH_VOLUME_RATIO &&
-    recentVolumeRatio >= MIN_RECENT_VOLUME_RATIO &&
+    recentVolumeRatio >= MIN_OBSERVATION_RECENT_VOLUME_RATIO &&
     mfi >= MIN_WATCH_MFI &&
-    (targetReturn >= MIN_WATCH_RETURN || breakout);
+    targetReturn >= MIN_WATCH_RETURN &&
+    relativeReturn >= MIN_OBSERVATION_RELATIVE_RETURN &&
+    monthHighDrawdown >= -MAX_OBSERVATION_HIGH_DRAWDOWN &&
+    aboveTenDayAverage;
   const earlyObservationCandidate =
     volumeStats.volumeRatio >= MIN_OBSERVATION_VOLUME_RATIO &&
     recentVolumeRatio >= MIN_OBSERVATION_RECENT_VOLUME_RATIO &&
@@ -265,6 +290,7 @@ function screenStock(stock, rows, benchmarkRows) {
     (breakout || monthHighDrawdown >= -5);
   const confirmedCandidate =
     volumeStats.volumeRatio >= MIN_VOLUME_RATIO &&
+    recentVolumeRatio >= MIN_RECENT_VOLUME_RATIO &&
     targetReturn >= MIN_ROLLING_RETURN &&
     relativeReturn >= MIN_RELATIVE_RETURN &&
     monthHighDrawdown >= -MAX_ROLLING_HIGH_DRAWDOWN &&
@@ -279,6 +305,25 @@ function screenStock(stock, rows, benchmarkRows) {
     targetReturn,
     volumeRatio: volumeStats.volumeRatio,
   });
+  const overheatRisk = recommendationOverheatRisk({
+    mfi,
+    monthHighDrawdown,
+    recentWorstDailyReturn,
+    targetReturn,
+    volumeRatio: volumeStats.volumeRatio,
+  });
+  const weakMarketRegime = recommendationWeakMarketRegime({
+    benchmarkReturn,
+    breakout,
+    relativeReturn,
+    targetReturn,
+  });
+  const technicalCautionReasons = [
+    overheatRisk ? "과열 신호" : "",
+    monthHighDrawdown <= -MAX_CONFIRMED_HIGH_DRAWDOWN ? "고점 이탈" : "",
+    weakMarketRegime ? "시장 약세" : "",
+    setupScore < MIN_CONFIRMED_SETUP_SCORE ? "확신 점수 부족" : "",
+  ].filter(Boolean);
 
   if (
     setupScore < MIN_SETUP_SCORE ||
@@ -287,9 +332,15 @@ function screenStock(stock, rows, benchmarkRows) {
     return null;
   }
 
-  const recommendationStage = confirmedCandidate
+  const confirmationReady =
+    confirmedCandidate &&
+    setupScore >= MIN_CONFIRMED_SETUP_SCORE &&
+    monthHighDrawdown > -MAX_CONFIRMED_HIGH_DRAWDOWN &&
+    !overheatRisk &&
+    !weakMarketRegime;
+  const recommendationStage = confirmationReady
     ? "confirmed"
-    : observationCandidate
+    : confirmedCandidate || observationCandidate
       ? "watch"
       : "observe";
   const signal =
@@ -336,8 +387,45 @@ function screenStock(stock, rows, benchmarkRows) {
     signal,
     symbol: stock.symbol,
     targetMonthVolume: Math.round(volumeStats.recentVolume),
+    technicalCautionReasons,
+    technicalRecommendationStage: confirmedCandidate ? "confirmed" : recommendationStage,
+    weakMarketRegime,
     volumeRatio: round(volumeStats.volumeRatio, 2),
   };
+}
+
+function recommendationOverheatRisk({
+  mfi,
+  monthHighDrawdown,
+  recentWorstDailyReturn,
+  targetReturn,
+  volumeRatio,
+}) {
+  if (targetReturn >= EXTREME_RETURN) return true;
+  if (mfi >= OVERHEAT_MFI && targetReturn >= OVERHEAT_RETURN && monthHighDrawdown > -3) {
+    return true;
+  }
+  return (
+    volumeRatio >= EXTREME_VOLUME_RATIO &&
+    mfi >= OVERHEAT_MFI &&
+    recentWorstDailyReturn <= -8
+  );
+}
+
+function recommendationWeakMarketRegime({
+  benchmarkReturn,
+  breakout,
+  relativeReturn,
+  targetReturn,
+}) {
+  if (!Number.isFinite(benchmarkReturn) || benchmarkReturn > WEAK_MARKET_RETURN) {
+    return false;
+  }
+  return !(
+    breakout &&
+    relativeReturn >= WEAK_MARKET_OVERRIDE_RELATIVE_RETURN &&
+    targetReturn >= WEAK_MARKET_OVERRIDE_RETURN
+  );
 }
 
 function rollingBreakoutScore({

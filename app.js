@@ -778,9 +778,12 @@ function recommendationConditionText(payload, config = RECOMMENDATION_CONFIGS.do
     return [
       formatMarketFilter(payload?.condition?.marketFilter),
       formatMarketCapCondition(payload?.condition?.minimumMarketCapKrw),
-      "상대강도 +30%p 이상",
-      "MFI 70 이상",
-      "고점권·10일선 위",
+      "21일 상승 +60% 이상",
+      "상대강도 +40%p 이상",
+      "21일 거래량 1.2배 이상",
+      "5일 거래량 1.5배 이상",
+      "MFI 75 이상",
+      "고점 -5% 이내·10일선 위",
     ]
       .filter(Boolean)
       .join(" · ");
@@ -790,9 +793,12 @@ function recommendationConditionText(payload, config = RECOMMENDATION_CONFIGS.do
     formatMarketFilter(payload?.condition?.marketFilter),
     formatMarketCapCondition(payload?.condition?.minimumMarketCapKrw),
     `21일 거래량 ${formatConditionNumber(payload?.condition?.volumeRatio)}`,
+    `5일 거래량 ${formatConditionNumber(payload?.condition?.recentVolumeRatio)}`,
     `MFI ${formatConditionNumber(payload?.condition?.dailyMfi)}`,
-    formatDrawdownCondition(payload?.condition?.monthHighDrawdown),
-    config.baseMarket === "domestic" ? "실적·밸류 보조 검증" : "",
+    "확정은 고점 -10% 이내",
+    payload?.condition?.domesticConfirmationGuard ? "국내 확정 강화" : "",
+    "과열·시장약세 관찰 전환",
+    "실적·밸류 보조 검증",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -982,7 +988,8 @@ function recommendationForwardPerLabel(item, hasForwardPer = true) {
 function recommendationFundamentalText(item) {
   if (!item.fundamentalSummary) return "";
   if (item.qualityAdjusted) {
-    return `${item.fundamentalSummary} 그래서 국내 추천이 아니라 국내 관찰로 낮췄어.`;
+    const marketLabel = /^\d{6}$/.test(String(item.code || "").trim()) ? "국내" : "미국";
+    return `${item.fundamentalSummary} 그래서 ${marketLabel} 추천이 아니라 ${marketLabel} 관찰로 낮췄어.`;
   }
   return item.fundamentalSummary;
 }
@@ -1099,6 +1106,10 @@ function recommendationPriorityScore(item) {
   if (item.aboveTrailing3Average) score += 5;
   if (item.recommendationStage === "watch") score -= 4;
   if (item.qualityAdjusted) score -= 16;
+  if (item.weakMarketRegime) score -= 8;
+  if (item.technicalRecommendationStage === "confirmed" && item.recommendationStage !== "confirmed") {
+    score -= 10;
+  }
 
   if (mfi > 94) score -= scaleBetween(mfi, 94, 100, 4);
   if (monthlyReturn > 100) score -= scaleBetween(monthlyReturn, 100, 150, 4);
@@ -1159,6 +1170,8 @@ function buildRecommendationSetup(item, entryDecision = recommendationEntryDecis
       recentVolumeRatio,
       recommendationStage: item.recommendationStage,
       relativeReturn,
+      technicalCautionReasons: item.technicalCautionReasons,
+      technicalRecommendationStage: item.technicalRecommendationStage,
       volumeRatio,
     }),
     tags,
@@ -1173,14 +1186,29 @@ function recommendationSetupSummary({
   recentVolumeRatio,
   recommendationStage,
   relativeReturn,
+  technicalCautionReasons,
+  technicalRecommendationStage,
   volumeRatio,
 }) {
   const action = entryDecision.action;
+  if (technicalRecommendationStage === "confirmed" && recommendationStage !== "confirmed") {
+    const reasons = Array.isArray(technicalCautionReasons)
+      ? technicalCautionReasons
+      : String(technicalCautionReasons || "")
+          .split(",")
+          .map((reason) => reason.trim())
+          .filter(Boolean);
+    const reasonText = reasons.length ? reasons.join("·") : "확정 조건 보류 신호";
+    if (mfi >= 90) {
+      return `추천 조건은 통과했지만 MFI가 ${formatNumber(mfi, 1)}로 높고 ${reasonText}가 확인돼 관찰로 낮췄어. ${action}`;
+    }
+    return `추천 조건은 통과했지만 ${reasonText}가 확인돼 추천 대신 관찰로 낮췄어. ${action}`;
+  }
   if (monthHighDrawdown <= -10) {
     return `1개월 조건은 통과했지만 고점 대비 ${formatSignedNumber(monthHighDrawdown, 1)}% 밀려 있어 재돌파 확인이 필요해. ${action}`;
   }
   if (recommendationStage === "watch") {
-    return `21일 거래량은 확인 전이지만 최근 5일 거래량이 ${formatNumber(recentVolumeRatio, 2)}배로 먼저 붙어 초기 관찰 후보로 분류됐어. ${action}`;
+    return `21일 상승률 ${formatSignedNumber(monthlyReturn, 1)}%, 상대강도 ${formatSignedNumber(relativeReturn, 1)}%p에 최근 5일 거래량이 ${formatNumber(recentVolumeRatio, 2)}배로 붙어 고확신 관찰 후보로 분류됐어. ${action}`;
   }
   if (recommendationStage === "observe") {
     return `거래량 확정 전이지만 1개월 상승률 ${formatSignedNumber(monthlyReturn, 1)}%, 상대강도 ${formatSignedNumber(relativeReturn, 1)}%p로 시장보다 먼저 튀고 있어. ${action}`;
@@ -1326,6 +1354,7 @@ function recommendationRecentVolumeTag(value) {
   if (!Number.isFinite(value)) return "";
   if (value >= 3) return "5일 거래량 급증";
   if (value >= 1.8) return "5일 거래량 통과";
+  if (value >= 1.5) return "5일 거래량 확인";
   return "";
 }
 
@@ -1333,6 +1362,7 @@ function recommendationMfiTag(value) {
   if (!Number.isFinite(value)) return "";
   if (value >= 90) return "MFI 90+";
   if (value >= 80) return "MFI 80+";
+  if (value >= 75) return "MFI 75+";
   return "";
 }
 
