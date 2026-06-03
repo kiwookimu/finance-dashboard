@@ -999,10 +999,6 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
       const detailId = `${detailPrefix}-${index}`;
       recommendationDetailById.set(detailId, { item, setup });
       const marketCapText = formatKoreanMarketCap(item.marketCapKrw);
-      const detail = [
-        item.marketType || item.exchange,
-        ticker,
-      ].filter(Boolean);
       const relativeStrengthText = Number.isFinite(Number(item.relativeReturn))
         ? `${formatSignedNumber(Number(item.relativeReturn), 1)}%p`
         : "-";
@@ -1011,6 +1007,7 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
         : "-";
       const quote = recommendationQuoteInfo(item);
       const fundamentalMetrics = recommendationFundamentalMetricsMarkup(item);
+      const businessDescription = recommendationBusinessDescription(item);
       return `
         <article class="recommendation-card" role="button" tabindex="0" data-recommendation-detail-id="${escapeHtml(detailId)}" aria-label="${escapeHtml(item.name)} 상세 정보 보기">
           <span class="recommendation-rank">${index + 1}</span>
@@ -1024,9 +1021,12 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
                     : ""
                 }
               </div>
-              <span class="recommendation-signal">${escapeHtml(item.signal || "1개월 상승 후보")}</span>
             </div>
-            <small>${escapeHtml(detail.join(" · "))}</small>
+            ${
+              businessDescription
+                ? `<p class="recommendation-business">${escapeHtml(businessDescription)}</p>`
+                : ""
+            }
             <div class="recommendation-metrics" aria-label="${escapeHtml(item.name)} 핵심 지표">
               <span><b>${formatSignedNumber(Number(item.monthlyReturn), 1)}%</b><em>1개월</em></span>
               <span><b>${formatNumber(Number(item.volumeRatio), 2)}x</b><em>21일 거래량</em></span>
@@ -1135,13 +1135,12 @@ function buildRecommendationDetailMarkup(item, setup) {
   const externalUrl = recommendationExternalUrl(item);
   const externalLabel = recommendationExternalLabel(item);
   const marketCapText = formatKoreanMarketCap(item.marketCapKrw);
+  const businessDescription = recommendationBusinessDescription(item);
   const displayPrice = recommendationDisplayPrice(item);
   const previousDayClose = recommendationPreviousDayClose(item);
   const previousDayReturn = recommendationPreviousDayReturn(item);
   const detailRows = [
-    ["시장", [item.marketType || item.exchange, ticker].filter(Boolean).join(" · ")],
     ["시가총액", marketCapText],
-    ["추천 기준일", formatIsoDate(item.lastDate || "") || "-"],
     ["갱신 시점 가격", formatRecommendationPrice(displayPrice, item)],
     ["전일 종가", formatRecommendationPrice(previousDayClose, item)],
     ["전일 대비", formatRecommendationPercent(previousDayReturn)],
@@ -1157,11 +1156,9 @@ function buildRecommendationDetailMarkup(item, setup) {
       ? ["5일 거래량 배수", `${formatNumber(Number(item.recentVolumeRatio), 2)}x`]
       : null,
     ["MFI", formatNumber(Number(item.mfi), 1)],
-    ["실적 판단", item.fundamentalLabel || ""],
     Number.isFinite(finiteDisplayNumber(item.fundamentalScore))
       ? ["실적 점수", `${formatNumber(finiteDisplayNumber(item.fundamentalScore), 0)}점`]
       : null,
-    ["실적 기준", item.latestQuarterLabel || item.latestAnnualLabel || ""],
     Number.isFinite(finiteDisplayNumber(item.quarterRevenueGrowthYoy))
       ? ["매출 성장률", formatFundamentalPercent(item.quarterRevenueGrowthYoy)]
       : null,
@@ -1188,6 +1185,7 @@ function buildRecommendationDetailMarkup(item, setup) {
   return `
     <div class="recommendation-detail-summary">
       <strong>${escapeHtml(setup.label)}</strong>
+      ${businessDescription ? `<p class="recommendation-business">${escapeHtml(businessDescription)}</p>` : ""}
       <p>${escapeHtml(setup.summary)}</p>
       ${setup.fundamental ? `<p class="recommendation-fundamental">${escapeHtml(setup.fundamental)}</p>` : ""}
       ${setup.checkpoint ? `<p class="recommendation-checkpoint">${escapeHtml(setup.checkpoint)}</p>` : ""}
@@ -1213,6 +1211,12 @@ function buildRecommendationDetailMarkup(item, setup) {
         : ""
     }
   `;
+}
+
+function recommendationBusinessDescription(item) {
+  return String(item.businessDescription || item.companyDescription || item.description || "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function recommendationExternalUrl(item) {

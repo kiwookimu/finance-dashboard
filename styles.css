@@ -894,6 +894,13 @@ h1 {
   margin: 0;
 }
 
+.recommendation-business {
+  color: #53635b;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .recommendation-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -996,8 +1003,8 @@ body.modal-open {
   inset: 0;
   z-index: 50;
   display: grid;
-  place-items: end center;
-  padding: 18px;
+  place-items: center;
+  padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom));
 }
 
 .recommendation-modal-backdrop {
@@ -1012,7 +1019,7 @@ body.modal-open {
   display: grid;
   gap: 14px;
   width: min(100%, 440px);
-  max-height: min(82vh, 720px);
+  max-height: min(calc(100dvh - 36px), 720px);
   overflow: auto;
   padding: 16px;
   background: #ffffff;

@@ -106,6 +106,70 @@ const US_STOCK_KOREAN_ALIASES = new Map([
   ["TSM", ["TSMC", "티에스엠씨", "대만반도체", "대만 반도체"]],
   ["WDC", ["웨스턴디지털", "웨스턴 디지털"]],
 ]);
+const BUSINESS_DESCRIPTION_BY_KR_CODE = new Map([
+  ["000500", "전력·통신 케이블을 제조하는 전선 회사."],
+  ["001740", "렌터카·렌털·호텔·무역 사업을 하는 종합 서비스 회사."],
+  ["001820", "전력용 콘덴서와 전자부품을 제조하는 회사."],
+  ["006260", "전력 인프라와 전선·소재 사업을 하는 회사."],
+  ["009150", "MLCC, 카메라모듈, 반도체 패키지 기판을 만드는 전자부품 회사."],
+  ["010120", "전력기기와 자동화 설비를 만드는 전력 인프라 회사."],
+  ["011070", "카메라모듈, 기판소재, 전장부품을 만드는 전자부품 회사."],
+  ["011790", "반도체·배터리 소재와 필름 사업을 하는 소재 회사."],
+  ["012330", "자동차 모듈, 전장, A/S 부품을 공급하는 자동차 부품 회사."],
+  ["018260", "IT 서비스와 클라우드, 물류 IT를 제공하는 회사."],
+  ["064400", "클라우드, ERP, 스마트팩토리 등 기업 IT 서비스를 제공하는 회사."],
+  ["090360", "산업용 로봇과 자동화 설비를 만드는 회사."],
+  ["181710", "결제, 커머스, 클라우드, 게임 사업을 하는 인터넷 서비스 회사."],
+]);
+const BUSINESS_DESCRIPTION_BY_US_SYMBOL = new Map([
+  ["AAPL", "아이폰, 맥, 서비스 생태계를 운영하는 소비자 기술 회사."],
+  ["ADBE", "디자인·문서·마케팅 소프트웨어를 제공하는 회사."],
+  ["AMD", "CPU, GPU, AI 가속기 반도체를 설계하는 팹리스 회사."],
+  ["AMAT", "반도체 제조 장비와 디스플레이 장비를 공급하는 회사."],
+  ["AMZN", "전자상거래, 클라우드, 광고 사업을 하는 플랫폼 회사."],
+  ["ARM", "스마트폰과 서버용 반도체 설계 IP를 제공하는 회사."],
+  ["ASML", "EUV 노광 장비를 공급하는 반도체 장비 회사."],
+  ["AVGO", "네트워크·AI 반도체와 인프라 소프트웨어를 제공하는 회사."],
+  ["BRKR", "생명과학·소재 분석용 과학 장비를 만드는 회사."],
+  ["CSCO", "네트워크 장비와 보안 솔루션을 제공하는 회사."],
+  ["DELL", "서버, 스토리지, PC 등 기업 IT 하드웨어를 공급하는 회사."],
+  ["GOOG", "검색, 광고, 유튜브, 클라우드 사업을 하는 플랫폼 회사."],
+  ["GOOGL", "검색, 광고, 유튜브, 클라우드 사업을 하는 플랫폼 회사."],
+  ["HPE", "서버, 스토리지, 네트워킹 등 기업 IT 인프라를 공급하는 회사."],
+  ["INTC", "CPU와 데이터센터 반도체를 설계·제조하는 종합 반도체 회사."],
+  ["KLAC", "반도체 공정 검사·계측 장비를 공급하는 회사."],
+  ["LRCX", "반도체 식각·증착 장비를 공급하는 회사."],
+  ["META", "페이스북, 인스타그램, 메신저 광고 플랫폼을 운영하는 회사."],
+  ["MSFT", "윈도우, 오피스, 애저 클라우드와 AI 서비스를 제공하는 회사."],
+  ["MU", "DRAM과 NAND 메모리를 제조하는 반도체 회사."],
+  ["NFLX", "글로벌 영상 스트리밍 서비스를 운영하는 회사."],
+  ["NVDA", "GPU와 AI 가속기, 데이터센터 플랫폼을 제공하는 반도체 회사."],
+  ["ON", "전력반도체와 자동차·산업용 센서를 공급하는 회사."],
+  ["ORCL", "데이터베이스, ERP, 클라우드 인프라를 제공하는 소프트웨어 회사."],
+  ["PLTR", "기업·정부용 데이터 분석 플랫폼을 제공하는 소프트웨어 회사."],
+  ["QCOM", "모바일·자동차·IoT용 통신 반도체를 설계하는 회사."],
+  ["SMCI", "AI 서버와 고성능 컴퓨팅 서버를 제조하는 회사."],
+  ["SNDK", "NAND 플래시와 저장장치 솔루션을 만드는 메모리 회사."],
+  ["TSLA", "전기차, 에너지 저장장치, 자율주행 소프트웨어를 만드는 회사."],
+  ["TSM", "글로벌 반도체 위탁생산을 하는 파운드리 회사."],
+  ["WDC", "하드디스크와 플래시 저장장치를 만드는 스토리지 회사."],
+]);
+const BUSINESS_KEYWORD_DESCRIPTIONS = [
+  [/로봇|ROBOT/i, "산업용 로봇과 자동화 설비를 만드는 회사."],
+  [/전선|CABLE/i, "전력·통신 케이블을 제조하는 전선 회사."],
+  [/콘덴서|CAPACITOR/i, "콘덴서와 전력전자 부품을 제조하는 회사."],
+  [/전기|전자부품|일렉트로닉|ELECTRO/i, "전자부품과 전장 부품을 제조하는 회사."],
+  [/반도체|HBM|SEMICONDUCTOR|CHIP/i, "반도체와 관련 소재·장비·부품을 다루는 회사."],
+  [/모비스|자동차|AUTO|MOTOR/i, "자동차 부품과 전장 솔루션을 공급하는 회사."],
+  [/CNS|에스디에스|SDS|IT|소프트웨어|SOFTWARE|CLOUD/i, "기업 IT 서비스와 클라우드 솔루션을 제공하는 회사."],
+  [/NHN|인터넷|플랫폼|PLATFORM/i, "인터넷 플랫폼과 디지털 서비스를 운영하는 회사."],
+  [/바이오|제약|BIO|PHARMA/i, "바이오·헬스케어 제품과 서비스를 개발하는 회사."],
+  [/보안|SECURITY|CYBER/i, "사이버보안 제품과 서비스를 제공하는 회사."],
+  [/네트워크|NETWORK/i, "네트워크 장비와 인프라 솔루션을 제공하는 회사."],
+  [/게임|GAME/i, "게임과 디지털 콘텐츠 서비스를 운영하는 회사."],
+  [/금융|은행|BANK|FINANCIAL/i, "금융 서비스를 제공하는 회사."],
+  [/유통|리테일|RETAIL/i, "유통과 소비재 서비스를 운영하는 회사."],
+];
 
 const MARKET_SOURCES = [
   { id: "kospi", label: "KOSPI", symbol: "^KS11", decimals: 2 },
@@ -1289,6 +1353,7 @@ function stockFundamentalEvaluationChecks(item) {
   const checks = [];
   const revenueGrowth = optionalNumber(item.quarterRevenueGrowthYoy);
   const profitGrowth = optionalNumber(item.quarterOperatingProfitGrowthYoy);
+  const trailingPer = optionalNumber(item.trailingPer);
   const forwardPer = optionalNumber(item.forwardPer);
   if (Number.isFinite(revenueGrowth)) {
     checks.push(stockEvaluationCheck("실적 보조", "매출성장", revenueGrowth, 0, ">=", {
@@ -1299,6 +1364,15 @@ function stockFundamentalEvaluationChecks(item) {
     checks.push(stockEvaluationCheck("실적 보조", "이익성장", profitGrowth, 0, ">=", {
       display: "percent",
     }));
+  }
+  if (Number.isFinite(trailingPer)) {
+    checks.push({
+      group: "실적 보조",
+      label: "현재PER",
+      threshold: "낮을수록 부담 완화",
+      tone: trailingPer <= 45 ? "pass" : trailingPer >= 100 ? "fail" : "neutral",
+      value: `${formatNumber(trailingPer, 1)}배`,
+    });
   }
   if (Number.isFinite(forwardPer)) {
     checks.push({
@@ -2249,7 +2323,7 @@ async function normalizeDomesticStockRecommendationPayload(payload, flags = {}) 
 
 async function enrichUsRecommendationItem(item) {
   const symbol = String(item?.symbol || item?.rawSymbol || "").trim().toUpperCase();
-  if (!symbol) return item;
+  if (!symbol) return withBusinessDescription(item);
   try {
     const fundamentals = await fetchNasdaqUsFundamentals(symbol, item);
     return applyUsFundamentalQuality({
@@ -2266,7 +2340,7 @@ async function enrichUsRecommendationItem(item) {
 
 async function fetchNasdaqUsFundamentals(symbol, item = {}) {
   const encodedSymbol = encodeURIComponent(symbol);
-  const [summary, financials, forecast] = await Promise.all([
+  const [summary, financials, forecast, profile] = await Promise.all([
     fetchNasdaqJson(
       `https://api.nasdaq.com/api/quote/${encodedSymbol}/summary?assetclass=stocks`,
     ),
@@ -2276,8 +2350,12 @@ async function fetchNasdaqUsFundamentals(symbol, item = {}) {
     fetchNasdaqJson(
       `https://api.nasdaq.com/api/analyst/${encodedSymbol}/earnings-forecast`,
     ),
+    fetchNasdaqJson(
+      `https://api.nasdaq.com/api/company/${encodedSymbol}/company-profile`,
+    ).catch(() => null),
   ]);
   const summaryData = summary?.data?.summaryData || {};
+  const profileData = profile?.data || {};
   const currentPrice =
     parseNasdaqNumber(summaryData.PreviousClose?.value) ||
     optionalNumber(item.liveClose) ||
@@ -2310,6 +2388,11 @@ async function fetchNasdaqUsFundamentals(symbol, item = {}) {
     "Net Income",
     latestAnnualKey,
   );
+  const annualCommonNetIncome = nasdaqFinancialValue(
+    incomeStatement,
+    "Net Income Applicable to Common Shareholders",
+    latestAnnualKey,
+  );
   const previousAnnualNetIncome = nasdaqFinancialValue(
     incomeStatement,
     "Net Income",
@@ -2327,6 +2410,18 @@ async function fetchNasdaqUsFundamentals(symbol, item = {}) {
     Number.isFinite(forwardEps) &&
     forwardEps > 0
       ? currentPrice / forwardEps
+      : NaN;
+  const marketCapUsd =
+    parseNasdaqNumber(summaryData.MarketCap?.value) || optionalNumber(item.marketCapUsd);
+  const trailingIncomeBase =
+    Number.isFinite(annualCommonNetIncome) && annualCommonNetIncome > 0
+      ? annualCommonNetIncome
+      : annualNetIncome;
+  const trailingPer =
+    Number.isFinite(marketCapUsd) &&
+    Number.isFinite(trailingIncomeBase) &&
+    trailingIncomeBase > 0
+      ? marketCapUsd / (trailingIncomeBase * 1000)
       : NaN;
   const revenueGrowth = percentChangeWithSignedBase(
     annualRevenue,
@@ -2355,16 +2450,25 @@ async function fetchNasdaqUsFundamentals(symbol, item = {}) {
   });
 
   return {
+    annualCommonNetIncome,
     annualNetIncome,
     annualNetIncomeGrowth: roundFinite(netIncomeGrowth, 2),
     annualOperatingProfit,
     annualOperatingProfitGrowth: roundFinite(operatingProfitGrowth, 2),
     annualRevenue,
     annualRevenueGrowth: roundFinite(revenueGrowth, 2),
+    businessDescription: buildBusinessDescription({
+      ...item,
+      businessDescription: profileData.CompanyDescription?.value,
+      industry: profileData.Industry?.value || summaryData.Industry?.value || item.industry,
+      sector: profileData.Sector?.value || summaryData.Sector?.value || item.sector,
+      symbol,
+    }),
     estimatedEps: roundFinite(forwardEps, 4),
     estimatedEpsGrowth: roundFinite(epsGrowth, 2),
     forwardPer: roundFinite(forwardPer, 2),
     fundamentalSource: "Nasdaq financials and analyst forecast",
+    industry: normalizeText(profileData.Industry?.value || summaryData.Industry?.value || item.industry),
     latestAnnualLabel: incomeStatement.headers?.[latestAnnualKey] || "",
     nextAnnualConsensusLabel: yearlyForecastRows[0]?.fiscalEnd || "",
     quarterOperatingMargin: roundFinite(operatingMargin, 2),
@@ -2373,6 +2477,8 @@ async function fetchNasdaqUsFundamentals(symbol, item = {}) {
       2,
     ),
     quarterRevenueGrowthYoy: roundFinite(revenueGrowth, 2),
+    sector: normalizeText(profileData.Sector?.value || summaryData.Sector?.value || item.sector),
+    trailingPer: roundFinite(trailingPer, 2),
     ...quality,
   };
 }
@@ -2470,13 +2576,13 @@ function applyUsFundamentalQuality(item) {
   const shouldDowngrade =
     screenStage === "confirmed" &&
     (item.fundamentalStatus === "caution" || item.severeValuationRisk);
-  return {
+  return withBusinessDescription({
     ...item,
     qualityAdjusted: shouldDowngrade,
     recommendationStage: shouldDowngrade ? "observe" : screenStage,
     signal: shouldDowngrade ? "실적 확인 관찰 후보" : item.signal,
     technicalRecommendationStage: technicalStage,
-  };
+  });
 }
 
 async function fetchNasdaqJson(url) {
@@ -2521,7 +2627,7 @@ function parseNasdaqNumber(value) {
 }
 
 async function enrichDomesticRecommendationItem(item) {
-  if (!item?.code) return item;
+  if (!item?.code) return withBusinessDescription(item);
   const [priceResult, fundamentalResult] = await Promise.allSettled([
     fetchNaverRecentPriceRows(item.code),
     fetchNaverDomesticFundamentals(item.code),
@@ -2629,6 +2735,11 @@ async function fetchNaverDomesticFundamentals(code) {
     ...valuation,
     ...finance,
     ...flows,
+    businessDescription: buildBusinessDescription({
+      code,
+      businessDescription: integration.description,
+      name: integration.stockName,
+    }),
     estimatedEpsGrowth: roundFinite(estimatedEpsGrowth, 2),
     fundamentalSource: "Naver Finance mobile",
   };
@@ -2807,14 +2918,14 @@ function applyDomesticFundamentalQuality(item) {
   const shouldDowngrade =
     screenStage === "confirmed" &&
     (quality.fundamentalStatus === "caution" || quality.severeValuationRisk);
-  return {
+  return withBusinessDescription({
     ...item,
     ...quality,
     qualityAdjusted: shouldDowngrade,
     recommendationStage: shouldDowngrade ? "observe" : screenStage,
     signal: shouldDowngrade ? "실적 확인 관찰 후보" : item.signal,
     technicalRecommendationStage: technicalStage,
-  };
+  });
 }
 
 function evaluateDomesticFundamentalQuality(item) {
@@ -3915,6 +4026,119 @@ function cleanHtml(value) {
       .replace(/\s+/g, " ")
       .trim(),
   );
+}
+
+function withBusinessDescription(item = {}) {
+  const businessDescription = buildBusinessDescription(item);
+  return businessDescription ? { ...item, businessDescription } : item;
+}
+
+function buildBusinessDescription(item = {}) {
+  const directDescription = compactBusinessDescription(
+    item.businessDescription || item.companyDescription || item.description,
+  );
+  const code = String(item.code || "").replace(/\D/g, "").slice(0, 6);
+  if (BUSINESS_DESCRIPTION_BY_KR_CODE.has(code)) {
+    return BUSINESS_DESCRIPTION_BY_KR_CODE.get(code);
+  }
+
+  const symbol = normalizeUsTicker(item.symbol || item.rawSymbol || "");
+  if (BUSINESS_DESCRIPTION_BY_US_SYMBOL.has(symbol)) {
+    return BUSINESS_DESCRIPTION_BY_US_SYMBOL.get(symbol);
+  }
+  if (/[가-힣]/.test(directDescription)) return directDescription;
+
+  const name = normalizeCompanyName(item.name || item.stockName || item.companyName || symbol || code);
+  const keywordDescription = businessDescriptionFromKeywords(
+    [name, item.industry, item.sector].filter(Boolean).join(" "),
+  );
+  if (keywordDescription) return keywordDescription;
+
+  const industryDescription = businessDescriptionFromIndustry(item.industry);
+  if (industryDescription) return industryDescription;
+
+  const sectorDescription = businessDescriptionFromSector(item.sector);
+  if (sectorDescription) return sectorDescription;
+
+  if (directDescription) return directDescription;
+  if (name) return `${name}의 주요 사업을 추가 확인해야 하는 회사.`;
+  return "";
+}
+
+function compactBusinessDescription(value) {
+  const rawValue =
+    value && typeof value === "object"
+      ? value.description || value.value || value.text || ""
+      : value;
+  let text = cleanHtml(rawValue)
+    .replace(/\b(the company|company)\b/gi, "회사")
+    .replace(/\bcommon stock\b/gi, "")
+    .trim();
+  if (!text || /^N\/?A$/i.test(text) || text === "-") return "";
+  const firstSentence = text.match(/^(.+?[.!?。])(?:\s|$)/)?.[1];
+  text = firstSentence || text;
+  if (text.length > 92) text = `${text.slice(0, 91).trim()}…`;
+  return text;
+}
+
+function normalizeCompanyName(value) {
+  return normalizeText(value)
+    .replace(/\bCommon Stock\b/gi, "")
+    .replace(/\bOrdinary Shares?\b/gi, "")
+    .replace(/\bAmerican Depositary Shares?\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function businessDescriptionFromKeywords(text) {
+  const source = normalizeText(text);
+  if (!source) return "";
+  const match = BUSINESS_KEYWORD_DESCRIPTIONS.find(([pattern]) => pattern.test(source));
+  return match?.[1] || "";
+}
+
+function businessDescriptionFromIndustry(value) {
+  const text = normalizeText(value).toLowerCase();
+  if (!text) return "";
+  if (/laboratory|analytical|instrument|scientific/.test(text)) {
+    return "생명과학·소재 분석용 과학 장비를 만드는 회사.";
+  }
+  if (/semiconductor|chip|memory/.test(text)) {
+    return "반도체와 관련 장비·부품을 다루는 회사.";
+  }
+  if (/software|cloud|data|application/.test(text)) {
+    return "소프트웨어와 클라우드 서비스를 제공하는 회사.";
+  }
+  if (/computer|server|hardware|storage/.test(text)) {
+    return "서버, 컴퓨터, 스토리지 등 IT 하드웨어를 공급하는 회사.";
+  }
+  if (/auto|vehicle|car|truck/.test(text)) {
+    return "자동차와 관련 부품·서비스를 제공하는 회사.";
+  }
+  if (/biotech|pharma|medical|health/.test(text)) {
+    return "바이오·헬스케어 제품과 서비스를 개발하는 회사.";
+  }
+  if (/bank|financial|insurance|asset/.test(text)) {
+    return "금융 서비스를 제공하는 회사.";
+  }
+  if (/retail|consumer|commerce/.test(text)) {
+    return "소비재와 유통 서비스를 운영하는 회사.";
+  }
+  return "";
+}
+
+function businessDescriptionFromSector(value) {
+  const text = normalizeText(value).toLowerCase();
+  if (!text) return "";
+  if (/technology/.test(text)) return "기술 제품과 서비스를 제공하는 회사.";
+  if (/industrials/.test(text)) return "산업재 제품과 서비스를 제공하는 회사.";
+  if (/health/.test(text)) return "헬스케어 제품과 서비스를 제공하는 회사.";
+  if (/consumer/.test(text)) return "소비재와 유통 서비스를 운영하는 회사.";
+  if (/financial/.test(text)) return "금융 서비스를 제공하는 회사.";
+  if (/energy/.test(text)) return "에너지 관련 제품과 서비스를 제공하는 회사.";
+  if (/materials/.test(text)) return "소재와 원재료 제품을 공급하는 회사.";
+  if (/communication/.test(text)) return "통신과 미디어 서비스를 제공하는 회사.";
+  return "";
 }
 
 function parseKoreanNumber(value) {
