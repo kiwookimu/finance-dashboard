@@ -69,6 +69,16 @@
           >
             추천
           </button>
+          <button
+            class="dashboard-tab"
+            id="stockSearchTab"
+            type="button"
+            role="tab"
+            aria-controls="stockSearchPanel"
+            aria-selected="false"
+          >
+            검색
+          </button>
         </div>
 
         <section
@@ -242,6 +252,45 @@
             </div>
           </section>
         </section>
+        </section>
+
+        <section
+          class="tab-panel stock-search-panel"
+          id="stockSearchPanel"
+          role="tabpanel"
+          aria-labelledby="stockSearchTab"
+          data-tab-panel-group="main"
+          hidden
+        >
+          <section class="stock-search-card" aria-label="주식 검색 평가">
+            <div class="stock-search-heading">
+              <div>
+                <span>단일 종목 점검</span>
+                <strong>검색</strong>
+              </div>
+              <small>추천·관찰 기준으로 항목별 평가</small>
+            </div>
+            <form class="stock-search-form" id="stockSearchForm">
+              <label class="visually-hidden" for="stockSearchInput">주식 종목 검색</label>
+              <input
+                id="stockSearchInput"
+                name="q"
+                type="search"
+                autocomplete="off"
+              />
+              <button type="submit">검색</button>
+            </form>
+            <div class="stock-search-results" id="stockSearchResults" aria-live="polite">
+              <p class="stock-search-empty">종목명이나 티커를 입력해 주세요.</p>
+            </div>
+          </section>
+
+          <section
+            class="stock-evaluation-panel"
+            id="stockEvaluationPanel"
+            aria-live="polite"
+            hidden
+          ></section>
         </section>
 
         <section

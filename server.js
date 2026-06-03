@@ -13,6 +13,7 @@ const SENTIMENT_CACHE_MS = 15 * 60 * 1000;
 const PORTFOLIO_CACHE_MS = 5 * 60 * 1000;
 const STOCK_RECOMMENDATION_CACHE_MS = 30 * 60 * 1000;
 const STOCK_RECOMMENDATION_REFRESH_COOLDOWN_MS = 60 * 60 * 1000;
+const STOCK_SEARCH_CACHE_MS = 6 * 60 * 60 * 1000;
 const TREND_POINTS = 28;
 const ANALYSIS_POINTS = 260;
 const RECOMMENDATION_SCRIPT_START_PERCENT = 8;
@@ -23,9 +24,50 @@ const DOMESTIC_FUNDAMENTAL_SUPPORT_SCORE = 58;
 const DOMESTIC_FUNDAMENTAL_CAUTION_SCORE = 45;
 const DOMESTIC_STOCK_RECOMMENDATION_VERSION = "kr-rolling-21-v8";
 const US_STOCK_RECOMMENDATION_VERSION = "us-rolling-21-v7";
+const STOCK_EVALUATION_COMPARISON_COUNT = 5;
+const STOCK_EVALUATION_ROLLING_DAYS = 21;
+const STOCK_EVALUATION_RECENT_VOLUME_DAYS = 5;
+const STOCK_EVALUATION_MOVING_AVERAGE_DAYS = 10;
+const STOCK_EVALUATION_MIN_HISTORY_DAYS =
+  STOCK_EVALUATION_ROLLING_DAYS * (STOCK_EVALUATION_COMPARISON_COUNT + 1) + 1;
+const STOCK_EVALUATION_MIN_SETUP_SCORE = 70;
+const STOCK_EVALUATION_MIN_CONFIRMED_SETUP_SCORE = 75;
+const STOCK_EVALUATION_MIN_VOLUME_RATIO = 1.8;
+const STOCK_EVALUATION_MIN_RECENT_VOLUME_RATIO = 1.8;
+const STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_VOLUME_RATIO = 2;
+const STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_RELATIVE_RETURN = 30;
+const STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_MFI = 88;
+const STOCK_EVALUATION_MIN_WATCH_VOLUME_RATIO = 1.2;
+const STOCK_EVALUATION_MIN_ROLLING_RETURN = 15;
+const STOCK_EVALUATION_MIN_WATCH_RETURN = 60;
+const STOCK_EVALUATION_MIN_RELATIVE_RETURN = 8;
+const STOCK_EVALUATION_MIN_MFI = 80;
+const STOCK_EVALUATION_MIN_WATCH_MFI = 75;
+const STOCK_EVALUATION_MIN_OBSERVATION_VOLUME_RATIO = 1.2;
+const STOCK_EVALUATION_MIN_OBSERVATION_RECENT_VOLUME_RATIO = 1.5;
+const STOCK_EVALUATION_MIN_OBSERVATION_RETURN = 60;
+const STOCK_EVALUATION_MIN_OBSERVATION_RELATIVE_RETURN = 40;
+const STOCK_EVALUATION_MIN_OBSERVATION_MFI = 75;
+const STOCK_EVALUATION_MAX_OBSERVATION_HIGH_DRAWDOWN = 5;
+const STOCK_EVALUATION_MAX_ROLLING_HIGH_DRAWDOWN = 20;
+const STOCK_EVALUATION_MAX_CONFIRMED_HIGH_DRAWDOWN = 10;
+const STOCK_EVALUATION_OVERHEAT_MFI = 92;
+const STOCK_EVALUATION_OVERHEAT_RETURN = 70;
+const STOCK_EVALUATION_EXTREME_RETURN = 100;
+const STOCK_EVALUATION_EXTREME_VOLUME_RATIO = 12;
+const STOCK_EVALUATION_US_WEAK_MARKET_RETURN = -5;
+const STOCK_EVALUATION_KR_WEAK_MARKET_RETURN = 0;
+const STOCK_EVALUATION_WEAK_MARKET_OVERRIDE_RELATIVE_RETURN = 25;
+const STOCK_EVALUATION_WEAK_MARKET_OVERRIDE_RETURN = 30;
+const DOMESTIC_STOCK_MIN_MARKET_CAP_KRW = 1_000_000_000_000;
+const US_STOCK_MIN_MARKET_CAP_KRW = 10_000_000_000_000;
 const TRAFFIC_EVENT_LIMIT = 20000;
 const TRAFFIC_RETENTION_MS = 31 * 24 * 60 * 60 * 1000;
 const TRAFFIC_VISITOR_SALT = crypto.randomBytes(16).toString("hex");
+const KRX_CORP_LIST =
+  "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13";
+const NASDAQ_SCREENER =
+  "https://api.nasdaq.com/api/screener/stocks?tableonly=true&limit=8000&offset=0&download=true";
 const NASDAQ_API_HEADERS = {
   Accept: "application/json, text/plain, */*",
   Origin: "https://www.nasdaq.com",
@@ -136,6 +178,12 @@ let stockRecommendationRefreshPromise = null;
 let cachedUsStockRecommendations = null;
 let cachedUsStockRecommendationsAt = 0;
 let usStockRecommendationRefreshPromise = null;
+let cachedKrxSearchUniverse = null;
+let cachedKrxSearchUniverseAt = 0;
+let cachedUsSearchUniverse = null;
+let cachedUsSearchUniverseAt = 0;
+let cachedUsdKrw = null;
+let cachedUsdKrwAt = 0;
 const trafficEvents = [];
 const trafficStartedAt = new Date().toISOString();
 const recommendationRefreshProgress = {
@@ -170,6 +218,23 @@ const server = http.createServer(async (request, response) => {
 
     if (url.pathname === "/api/portfolio-metrics") {
       sendJson(response, await getPortfolioMetrics());
+      return;
+    }
+
+    if (url.pathname === "/api/stock-search") {
+      sendJson(response, await getStockSearchResults(url.searchParams.get("q")));
+      return;
+    }
+
+    if (url.pathname === "/api/stock-evaluation") {
+      sendJson(
+        response,
+        await getStockEvaluation({
+          code: url.searchParams.get("code"),
+          market: url.searchParams.get("market"),
+          symbol: url.searchParams.get("symbol"),
+        }),
+      );
       return;
     }
 
@@ -541,6 +606,967 @@ async function fetchPortfolioMetrics() {
       0,
     ),
   };
+}
+
+async function getStockSearchResults(query) {
+  const normalizedQuery = normalizeStockSearchQuery(query);
+  if (!normalizedQuery) {
+    return { generatedAt: new Date().toISOString(), query: "", results: [] };
+  }
+
+  const [domesticResults, usResults] = await Promise.all([
+    searchDomesticStocks(normalizedQuery).catch((error) => {
+      console.warn("Domestic stock search unavailable", error);
+      return [];
+    }),
+    searchUsStocks(normalizedQuery).catch((error) => {
+      console.warn("U.S. stock search unavailable", error);
+      return [];
+    }),
+  ]);
+
+  const results = [...domesticResults, ...usResults]
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+    .slice(0, 12)
+    .map(({ score, ...item }) => item);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    query: normalizedQuery.raw,
+    results,
+  };
+}
+
+function normalizeStockSearchQuery(value) {
+  const raw = normalizeText(value).slice(0, 80);
+  if (!raw) return null;
+  return {
+    compact: raw.replace(/\s+/g, "").toUpperCase(),
+    raw,
+    upper: raw.toUpperCase(),
+  };
+}
+
+async function searchDomesticStocks(query) {
+  const universe = await getCachedKrxSearchUniverse();
+  return universe
+    .map((stock) => {
+      const nameUpper = stock.name.toUpperCase();
+      const compactName = stock.name.replace(/\s+/g, "").toUpperCase();
+      let score = 0;
+      if (stock.code === query.compact) score = 120;
+      else if (compactName === query.compact) score = 110;
+      else if (compactName.startsWith(query.compact)) score = 92;
+      else if (nameUpper.includes(query.upper) || compactName.includes(query.compact)) score = 78;
+      else if (stock.code.includes(query.compact)) score = 62;
+      if (!score) return null;
+      return {
+        code: stock.code,
+        label: stock.name,
+        market: "kr",
+        marketType: stock.marketType,
+        name: stock.name,
+        score,
+        subLabel: `${stock.marketType} · ${stock.code}`,
+        symbol: stock.symbol,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+    .slice(0, 8);
+}
+
+async function searchUsStocks(query) {
+  const universe = await getCachedUsSearchUniverse();
+  return universe
+    .map((stock) => {
+      const symbol = stock.symbol.toUpperCase();
+      const nameUpper = stock.name.toUpperCase();
+      let score = 0;
+      if (symbol === query.upper) score = 120;
+      else if (symbol.startsWith(query.upper)) score = 94;
+      else if (nameUpper === query.upper) score = 88;
+      else if (nameUpper.includes(query.upper)) score = 72;
+      if (!score) return null;
+      return {
+        exchange: stock.exchange || "US",
+        label: `${stock.symbol} · ${stock.name}`,
+        market: "us",
+        marketCapUsd: stock.marketCapUsd,
+        name: stock.name || stock.symbol,
+        score,
+        subLabel: [stock.exchange || "US", stock.sector].filter(Boolean).join(" · "),
+        symbol: stock.symbol,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score || a.symbol.localeCompare(b.symbol))
+    .slice(0, 8);
+}
+
+async function getCachedKrxSearchUniverse() {
+  const now = Date.now();
+  if (cachedKrxSearchUniverse && now - cachedKrxSearchUniverseAt < STOCK_SEARCH_CACHE_MS) {
+    return cachedKrxSearchUniverse;
+  }
+
+  const html = new TextDecoder("euc-kr").decode(
+    await fetchBinary(KRX_CORP_LIST, "application/vnd.ms-excel,text/html,*/*"),
+  );
+  const rows = [...html.matchAll(/<tr>([\s\S]*?)<\/tr>/gi)].slice(1);
+  cachedKrxSearchUniverse = rows
+    .map((row) => {
+      const cells = [...row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map(
+        (cell) => cleanHtml(cell[1]),
+      );
+      const [name, market, code] = cells;
+      if (!name || !/^\d{6}$/.test(code || "")) return null;
+      const marketType = market.includes("코스닥")
+        ? "KOSDAQ"
+        : market.includes("유가")
+          ? "KOSPI"
+          : "";
+      const suffix = marketType === "KOSDAQ" ? "KQ" : marketType === "KOSPI" ? "KS" : "";
+      if (!suffix) return null;
+      return {
+        code,
+        market,
+        marketType,
+        name,
+        symbol: `${code}.${suffix}`,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  cachedKrxSearchUniverseAt = now;
+  return cachedKrxSearchUniverse;
+}
+
+async function getCachedUsSearchUniverse() {
+  const now = Date.now();
+  if (cachedUsSearchUniverse && now - cachedUsSearchUniverseAt < STOCK_SEARCH_CACHE_MS) {
+    return cachedUsSearchUniverse;
+  }
+
+  const json = await fetchNasdaqJson(NASDAQ_SCREENER);
+  const rows = json.data?.rows;
+  if (!Array.isArray(rows) || !rows.length) {
+    throw new Error("empty U.S. stock search universe");
+  }
+  cachedUsSearchUniverse = rows
+    .map((row) => ({
+      exchange: row.exchange || row.exchangeCode || "",
+      marketCapUsd: parseNasdaqNumber(row.marketCap),
+      name: normalizeText(row.name),
+      sector: normalizeText(row.sector),
+      symbol: normalizeUsTicker(row.symbol),
+    }))
+    .filter((stock) => stock.symbol && stock.name)
+    .sort((a, b) => a.symbol.localeCompare(b.symbol));
+  cachedUsSearchUniverseAt = now;
+  return cachedUsSearchUniverse;
+}
+
+async function getStockEvaluation({ code, market, symbol }) {
+  const normalizedMarket = String(market || "").toLowerCase();
+  if (normalizedMarket === "kr" || normalizedMarket === "domestic") {
+    return evaluateDomesticStock(code);
+  }
+  if (normalizedMarket === "us") {
+    return evaluateUsStock(symbol);
+  }
+  throw new Error("market must be kr or us");
+}
+
+async function evaluateDomesticStock(code) {
+  const normalizedCode = String(code || "").replace(/\D/g, "").slice(0, 6);
+  if (!/^\d{6}$/.test(normalizedCode)) {
+    throw new Error("valid Korean stock code is required");
+  }
+
+  const universe = await getCachedKrxSearchUniverse().catch(() => []);
+  const stock =
+    universe.find((item) => item.code === normalizedCode) || {
+      code: normalizedCode,
+      marketType: "KOSPI",
+      name: normalizedCode,
+      symbol: `${normalizedCode}.KS`,
+    };
+  const benchmarkSymbol = stock.marketType === "KOSDAQ" ? "^KQ11" : "^KS11";
+  const [rows, benchmarkRows, marketCapKrw, fundamentals] = await Promise.all([
+    fetchNaverDailyHistory(normalizedCode),
+    fetchYahooDailyRows(benchmarkSymbol, evaluationHistoryStartDate(), evaluationHistoryEndDate()),
+    fetchNaverMarketCapKrwForCode(normalizedCode).catch(() => NaN),
+    fetchNaverDomesticFundamentals(normalizedCode).catch((error) => ({
+      fundamentalStatusError: error.message,
+    })),
+  ]);
+
+  const technical = evaluateStockTechnicals({
+    benchmarkLabel: stock.marketType,
+    benchmarkRows,
+    isDomestic: true,
+    rows,
+    stock,
+    weakMarketReturn: STOCK_EVALUATION_KR_WEAK_MARKET_RETURN,
+  });
+  const item = applyDomesticFundamentalQuality({
+    ...technical,
+    ...fundamentals,
+    code: normalizedCode,
+    marketCapKrw: Number.isFinite(marketCapKrw) ? Math.round(marketCapKrw) : null,
+    marketType: stock.marketType,
+    name: stock.name,
+    symbol: stock.symbol,
+  });
+  return buildStockEvaluationPayload(item, {
+    condition: stockRecommendationCondition(DOMESTIC_STOCK_MIN_MARKET_CAP_KRW, {
+      domesticTightConfirmation: true,
+    }),
+    minimumMarketCapKrw: DOMESTIC_STOCK_MIN_MARKET_CAP_KRW,
+  });
+}
+
+async function evaluateUsStock(symbol) {
+  const normalizedSymbol = normalizeUsTicker(symbol);
+  if (!normalizedSymbol) throw new Error("valid U.S. stock symbol is required");
+
+  const universe = await getCachedUsSearchUniverse().catch(() => []);
+  const stock =
+    universe.find((item) => item.symbol.toUpperCase() === normalizedSymbol.toUpperCase()) || {
+      exchange: "US",
+      name: normalizedSymbol,
+      symbol: normalizedSymbol,
+    };
+  const [rows, benchmarkRows, usdKrw, marketCapUsd, fundamentals] = await Promise.all([
+    fetchYahooDailyRows(normalizedSymbol, evaluationHistoryStartDate(), evaluationHistoryEndDate()),
+    fetchYahooDailyRows("QQQ", evaluationHistoryStartDate(), evaluationHistoryEndDate()),
+    fetchUsdKrwRate(),
+    Number.isFinite(stock.marketCapUsd)
+      ? Promise.resolve(stock.marketCapUsd)
+      : fetchNasdaqMarketCapUsdForSymbol(normalizedSymbol).catch(() => NaN),
+    fetchNasdaqUsFundamentals(normalizedSymbol, stock).catch((error) => ({
+      fundamentalStatusError: error.message,
+    })),
+  ]);
+
+  const marketCapKrw =
+    Number.isFinite(marketCapUsd) && Number.isFinite(usdKrw)
+      ? Math.round(marketCapUsd * usdKrw)
+      : null;
+  const technical = evaluateStockTechnicals({
+    benchmarkLabel: "QQQ",
+    benchmarkRows,
+    isDomestic: false,
+    rows,
+    stock,
+    weakMarketReturn: STOCK_EVALUATION_US_WEAK_MARKET_RETURN,
+  });
+  const item = applyUsFundamentalQuality({
+    ...technical,
+    ...fundamentals,
+    exchange: stock.exchange || "US",
+    marketCapKrw,
+    marketCapUsd: Number.isFinite(marketCapUsd) ? Math.round(marketCapUsd) : null,
+    name: stock.name || normalizedSymbol,
+    rawSymbol: normalizedSymbol,
+    symbol: normalizedSymbol,
+  });
+  return buildStockEvaluationPayload(item, {
+    condition: stockRecommendationCondition(US_STOCK_MIN_MARKET_CAP_KRW, {
+      relativeBenchmark: "QQQ",
+    }),
+    minimumMarketCapKrw: US_STOCK_MIN_MARKET_CAP_KRW,
+  });
+}
+
+function evaluateStockTechnicals({
+  benchmarkLabel,
+  benchmarkRows,
+  isDomestic,
+  rows,
+  stock,
+  weakMarketReturn,
+}) {
+  const sortedRows = rows.slice().sort((a, b) => a.date.localeCompare(b.date));
+  const targetIndex = sortedRows.length - 1;
+  if (targetIndex + 1 < STOCK_EVALUATION_MIN_HISTORY_DAYS) {
+    throw new Error("price history is too short for recommendation evaluation");
+  }
+
+  const current = sortedRows[targetIndex];
+  const previousTradingDay = sortedRows[targetIndex - 1];
+  const rowsUntilTarget = sortedRows.slice(0, targetIndex + 1);
+  const volumeStats = stockEvaluationRollingVolumeStats(
+    sortedRows,
+    targetIndex,
+    STOCK_EVALUATION_ROLLING_DAYS,
+    STOCK_EVALUATION_COMPARISON_COUNT,
+  );
+  if (!volumeStats) throw new Error("volume history is too short for evaluation");
+
+  const recentVolumeRatio = stockEvaluationRecentAverageVolumeRatio(
+    sortedRows,
+    targetIndex,
+    STOCK_EVALUATION_RECENT_VOLUME_DAYS,
+    STOCK_EVALUATION_ROLLING_DAYS * STOCK_EVALUATION_COMPARISON_COUNT,
+  );
+  if (!Number.isFinite(recentVolumeRatio)) {
+    throw new Error("recent volume history is too short for evaluation");
+  }
+
+  const returnBase = sortedRows[targetIndex - STOCK_EVALUATION_ROLLING_DAYS];
+  const targetReturn = percentChange(current.close, returnBase?.close);
+  const benchmarkReturn = stockEvaluationBenchmarkReturn(
+    benchmarkRows,
+    current.date,
+    STOCK_EVALUATION_ROLLING_DAYS,
+  );
+  const relativeReturn = Number.isFinite(benchmarkReturn)
+    ? targetReturn - benchmarkReturn
+    : NaN;
+  const recentWindow = sortedRows.slice(
+    targetIndex - STOCK_EVALUATION_ROLLING_DAYS + 1,
+    targetIndex + 1,
+  );
+  const previousCloseHigh = Math.max(
+    ...sortedRows
+      .slice(targetIndex - STOCK_EVALUATION_ROLLING_DAYS, targetIndex)
+      .map((row) => row.close),
+  );
+  const rollingHigh = Math.max(...recentWindow.map((row) => row.high));
+  const monthHighDrawdown = percentChange(current.close, rollingHigh);
+  const recentWorstDailyReturn = stockEvaluationWorstRecentDailyReturn(rowsUntilTarget, 5);
+  const breakout = current.close >= previousCloseHigh;
+  const mfi = stockEvaluationMfi(rowsUntilTarget, 14);
+  const tenDayAverage = movingAverage(
+    rowsUntilTarget.map((row) => row.close),
+    STOCK_EVALUATION_MOVING_AVERAGE_DAYS,
+  );
+  const aboveTenDayAverage =
+    Number.isFinite(tenDayAverage) && current.close >= tenDayAverage;
+
+  const observationCandidate =
+    volumeStats.volumeRatio >= STOCK_EVALUATION_MIN_WATCH_VOLUME_RATIO &&
+    recentVolumeRatio >= STOCK_EVALUATION_MIN_OBSERVATION_RECENT_VOLUME_RATIO &&
+    mfi >= STOCK_EVALUATION_MIN_WATCH_MFI &&
+    targetReturn >= STOCK_EVALUATION_MIN_WATCH_RETURN &&
+    relativeReturn >= STOCK_EVALUATION_MIN_OBSERVATION_RELATIVE_RETURN &&
+    monthHighDrawdown >= -STOCK_EVALUATION_MAX_OBSERVATION_HIGH_DRAWDOWN &&
+    aboveTenDayAverage;
+  const earlyObservationCandidate =
+    volumeStats.volumeRatio >= STOCK_EVALUATION_MIN_OBSERVATION_VOLUME_RATIO &&
+    recentVolumeRatio >= STOCK_EVALUATION_MIN_OBSERVATION_RECENT_VOLUME_RATIO &&
+    targetReturn >= STOCK_EVALUATION_MIN_OBSERVATION_RETURN &&
+    relativeReturn >= STOCK_EVALUATION_MIN_OBSERVATION_RELATIVE_RETURN &&
+    mfi >= STOCK_EVALUATION_MIN_OBSERVATION_MFI &&
+    monthHighDrawdown >= -STOCK_EVALUATION_MAX_OBSERVATION_HIGH_DRAWDOWN &&
+    aboveTenDayAverage &&
+    (breakout || monthHighDrawdown >= -5);
+  const confirmedCandidate =
+    volumeStats.volumeRatio >= STOCK_EVALUATION_MIN_VOLUME_RATIO &&
+    recentVolumeRatio >= STOCK_EVALUATION_MIN_RECENT_VOLUME_RATIO &&
+    targetReturn >= STOCK_EVALUATION_MIN_ROLLING_RETURN &&
+    relativeReturn >= STOCK_EVALUATION_MIN_RELATIVE_RETURN &&
+    monthHighDrawdown >= -STOCK_EVALUATION_MAX_ROLLING_HIGH_DRAWDOWN &&
+    mfi >= STOCK_EVALUATION_MIN_MFI &&
+    aboveTenDayAverage;
+  const setupScore = stockEvaluationBreakoutScore({
+    aboveTenDayAverage,
+    breakout,
+    mfi,
+    recentVolumeRatio,
+    relativeReturn,
+    targetReturn,
+    volumeRatio: volumeStats.volumeRatio,
+  });
+  const overheatRisk = stockEvaluationOverheatRisk({
+    mfi,
+    monthHighDrawdown,
+    recentWorstDailyReturn,
+    targetReturn,
+    volumeRatio: volumeStats.volumeRatio,
+  });
+  const weakMarketRegime = stockEvaluationWeakMarketRegime({
+    benchmarkReturn,
+    breakout,
+    relativeReturn,
+    targetReturn,
+    weakMarketReturn,
+  });
+
+  const technicalCautionReasons = [
+    overheatRisk ? "과열 신호" : "",
+    monthHighDrawdown <= -STOCK_EVALUATION_MAX_CONFIRMED_HIGH_DRAWDOWN ? "고점 이탈" : "",
+    weakMarketRegime ? "시장 약세" : "",
+    setupScore < STOCK_EVALUATION_MIN_CONFIRMED_SETUP_SCORE ? "확신 점수 부족" : "",
+    isDomestic &&
+    volumeStats.volumeRatio < STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_VOLUME_RATIO
+      ? "국내 거래량 확신 부족"
+      : "",
+    isDomestic &&
+    relativeReturn < STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_RELATIVE_RETURN
+      ? "국내 상대강도 확신 부족"
+      : "",
+    isDomestic && mfi < STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_MFI
+      ? "국내 MFI 확신 부족"
+      : "",
+  ].filter(Boolean);
+
+  const domesticConfirmedExtras =
+    !isDomestic ||
+    (volumeStats.volumeRatio >= STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_VOLUME_RATIO &&
+      relativeReturn >= STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_RELATIVE_RETURN &&
+      mfi >= STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_MFI &&
+      benchmarkReturn >= STOCK_EVALUATION_KR_WEAK_MARKET_RETURN);
+  const confirmationReady =
+    confirmedCandidate &&
+    setupScore >= STOCK_EVALUATION_MIN_CONFIRMED_SETUP_SCORE &&
+    monthHighDrawdown > -STOCK_EVALUATION_MAX_CONFIRMED_HIGH_DRAWDOWN &&
+    domesticConfirmedExtras &&
+    !overheatRisk &&
+    !weakMarketRegime;
+  const hasAnyCandidate =
+    setupScore >= STOCK_EVALUATION_MIN_SETUP_SCORE &&
+    (confirmedCandidate || observationCandidate || earlyObservationCandidate);
+  const recommendationStage = confirmationReady
+    ? "confirmed"
+    : hasAnyCandidate
+      ? confirmedCandidate || observationCandidate
+        ? "watch"
+        : "observe"
+      : "none";
+  const signal =
+    recommendationStage === "confirmed"
+      ? setupScore >= 85
+        ? "강한 1개월 상승 후보"
+        : "1개월 상승 후보"
+      : recommendationStage === "watch"
+        ? "강한 관찰 후보"
+        : recommendationStage === "observe"
+          ? "관찰 후보"
+          : "기준 미충족";
+
+  return {
+    aboveTenDayAverage,
+    aboveTrailing3Average: aboveTenDayAverage,
+    benchmark: benchmarkLabel,
+    benchmarkReturn: roundFinite(benchmarkReturn, 2),
+    breakout,
+    dayReturn: roundFinite(percentChange(current.close, previousTradingDay?.close), 2),
+    firstToLastReturn: roundFinite(percentChange(current.close, recentWindow[0]?.close), 2),
+    lastClose: roundFinite(current.close, isDomestic ? 0 : 4),
+    lastDate: current.date,
+    mfi: roundFinite(mfi, 2),
+    monthHigh: roundFinite(rollingHigh, isDomestic ? 0 : 4),
+    monthHighDrawdown: roundFinite(monthHighDrawdown, 2),
+    monthlyReturn: roundFinite(targetReturn, 2),
+    name: stock.name,
+    previousAverageVolume: Math.round(volumeStats.previousAverageVolume),
+    previousCloseHigh: roundFinite(previousCloseHigh, isDomestic ? 0 : 4),
+    previousDayClose: roundFinite(previousTradingDay?.close, isDomestic ? 0 : 4),
+    previousMonthClose: roundFinite(returnBase?.close, isDomestic ? 0 : 4),
+    recentVolumeDays: STOCK_EVALUATION_RECENT_VOLUME_DAYS,
+    recentVolumeRatio: roundFinite(recentVolumeRatio, 2),
+    recentWorstDailyReturn: roundFinite(recentWorstDailyReturn, 2),
+    recommendationStage,
+    relativeReturn: roundFinite(relativeReturn, 2),
+    rollingReturn: roundFinite(targetReturn, 2),
+    rollingWindowDays: STOCK_EVALUATION_ROLLING_DAYS,
+    rollingWindowStartDate: recentWindow[0]?.date || "",
+    setupScore,
+    signal,
+    targetMonthVolume: Math.round(volumeStats.recentVolume),
+    technicalCautionReasons,
+    technicalRecommendationStage: confirmedCandidate ? "confirmed" : recommendationStage,
+    weakMarketRegime,
+    volumeRatio: roundFinite(volumeStats.volumeRatio, 2),
+  };
+}
+
+function buildStockEvaluationPayload(item, { condition, minimumMarketCapKrw }) {
+  const checks = buildStockEvaluationChecks(item, minimumMarketCapKrw);
+  return {
+    checks,
+    condition,
+    generatedAt: new Date().toISOString(),
+    item,
+    result: stockEvaluationResult(item, checks),
+  };
+}
+
+function stockEvaluationResult(item, checks) {
+  const failedRequired = checks.filter((check) => check.required && check.tone === "fail");
+  if (item.recommendationStage === "confirmed") {
+    return {
+      label: "추천 기준 통과",
+      summary: "현재 추천 확정 조건까지 통과했어. 다만 과열·고점 이탈 여부는 계속 확인해야 해.",
+      tone: "confirmed",
+    };
+  }
+  if (item.recommendationStage === "watch" || item.recommendationStage === "observe") {
+    const missingConfirmed = checks
+      .filter((check) => check.group === "추천 확정" && check.tone === "fail")
+      .slice(0, 3)
+      .map((check) => check.label)
+      .join(", ");
+    return {
+      label: "관찰 후보",
+      summary: missingConfirmed
+        ? `관찰 기준은 의미가 있지만 추천 확정에는 ${missingConfirmed} 보완이 필요해.`
+        : "관찰 후보 조건은 충족했지만 확정 추천으로 올리기 전 추가 확인이 필요해.",
+      tone: "watch",
+    };
+  }
+  const missing = failedRequired.slice(0, 4).map((check) => check.label).join(", ");
+  return {
+    label: "기준 미충족",
+    summary: missing
+      ? `현재는 ${missing} 조건이 부족해서 추천/관찰 기준에는 못 들어와.`
+      : "현재 추천/관찰 핵심 조건에는 못 들어와.",
+    tone: "none",
+  };
+}
+
+function buildStockEvaluationChecks(item, minimumMarketCapKrw) {
+  const marketCapKrw = Number(item.marketCapKrw);
+  const monthlyReturn = Number(item.monthlyReturn);
+  const relativeReturn = Number(item.relativeReturn);
+  const volumeRatio = Number(item.volumeRatio);
+  const recentVolumeRatio = Number(item.recentVolumeRatio);
+  const mfi = Number(item.mfi);
+  const monthHighDrawdown = Number(item.monthHighDrawdown);
+  const benchmarkReturn = Number(item.benchmarkReturn);
+  const setupScore = Number(item.setupScore);
+  const isDomestic = /^\d{6}$/.test(String(item.code || ""));
+  const checks = [
+    stockEvaluationCheck("기본", "시가총액", marketCapKrw, minimumMarketCapKrw, ">=", {
+      display: "marketCap",
+      required: true,
+    }),
+    stockEvaluationCheck("관찰 기준", "21일 상승률", monthlyReturn, 60, ">=", {
+      display: "percent",
+      required: true,
+    }),
+    stockEvaluationCheck("관찰 기준", "상대강도", relativeReturn, 40, ">=", {
+      display: "percentPoint",
+      required: true,
+    }),
+    stockEvaluationCheck("관찰 기준", "21일 거래량", volumeRatio, 1.2, ">=", {
+      display: "ratio",
+      required: true,
+    }),
+    stockEvaluationCheck("관찰 기준", "5일 거래량", recentVolumeRatio, 1.5, ">=", {
+      display: "ratio",
+      required: true,
+    }),
+    stockEvaluationCheck("관찰 기준", "MFI", mfi, 75, ">=", {
+      display: "number",
+      required: true,
+    }),
+    stockEvaluationCheck("관찰 기준", "고점낙폭", monthHighDrawdown, -5, ">=", {
+      display: "percent",
+      required: true,
+    }),
+    {
+      group: "관찰 기준",
+      label: "10일선",
+      required: true,
+      threshold: "종가 >= 10일선",
+      tone: item.aboveTenDayAverage ? "pass" : "fail",
+      value: item.aboveTenDayAverage ? "위" : "아래",
+    },
+    stockEvaluationCheck("추천 확정", "21일 거래량", volumeRatio, 1.8, ">=", {
+      display: "ratio",
+    }),
+    stockEvaluationCheck("추천 확정", "5일 거래량", recentVolumeRatio, 1.8, ">=", {
+      display: "ratio",
+    }),
+    stockEvaluationCheck("추천 확정", "MFI", mfi, 80, ">=", {
+      display: "number",
+    }),
+    stockEvaluationCheck("추천 확정", "상승률", monthlyReturn, 15, ">=", {
+      display: "percent",
+    }),
+    stockEvaluationCheck("추천 확정", "상대강도", relativeReturn, 8, ">=", {
+      display: "percentPoint",
+    }),
+    stockEvaluationCheck("추천 확정", "고점낙폭", monthHighDrawdown, -10, ">", {
+      display: "percent",
+    }),
+    stockEvaluationCheck("추천 확정", "확신 점수", setupScore, 75, ">=", {
+      display: "score",
+    }),
+    {
+      group: "추천 확정",
+      label: "과열 리스크",
+      threshold: "없음",
+      tone: item.technicalCautionReasons?.includes("과열 신호") ? "fail" : "pass",
+      value: item.technicalCautionReasons?.includes("과열 신호") ? "있음" : "없음",
+    },
+    {
+      group: "추천 확정",
+      label: "시장 약세",
+      threshold: "없음",
+      tone: item.weakMarketRegime ? "fail" : "pass",
+      value: item.weakMarketRegime ? "있음" : "없음",
+    },
+  ];
+
+  if (isDomestic) {
+    checks.push(
+      stockEvaluationCheck("국내 강화", "21일 거래량", volumeRatio, 2, ">=", {
+        display: "ratio",
+      }),
+      stockEvaluationCheck("국내 강화", "상대강도", relativeReturn, 30, ">=", {
+        display: "percentPoint",
+      }),
+      stockEvaluationCheck("국내 강화", "MFI", mfi, 88, ">=", {
+        display: "number",
+      }),
+      stockEvaluationCheck("국내 강화", "시장 수익률", benchmarkReturn, 0, ">=", {
+        display: "percent",
+      }),
+    );
+  }
+
+  checks.push(...stockFundamentalEvaluationChecks(item));
+  return checks;
+}
+
+function stockFundamentalEvaluationChecks(item) {
+  const checks = [];
+  const revenueGrowth = optionalNumber(item.quarterRevenueGrowthYoy);
+  const profitGrowth = optionalNumber(item.quarterOperatingProfitGrowthYoy);
+  const forwardPer = optionalNumber(item.forwardPer);
+  if (Number.isFinite(revenueGrowth)) {
+    checks.push(stockEvaluationCheck("실적 보조", "매출성장", revenueGrowth, 0, ">=", {
+      display: "percent",
+    }));
+  }
+  if (Number.isFinite(profitGrowth)) {
+    checks.push(stockEvaluationCheck("실적 보조", "이익성장", profitGrowth, 0, ">=", {
+      display: "percent",
+    }));
+  }
+  if (Number.isFinite(forwardPer)) {
+    checks.push({
+      group: "실적 보조",
+      label: /^\d{6}$/.test(String(item.code || "")) ? "추정PER" : "포워드PER",
+      threshold: "낮을수록 부담 완화",
+      tone: forwardPer <= 45 ? "pass" : forwardPer >= 100 ? "fail" : "neutral",
+      value: `${formatNumber(forwardPer, 1)}배`,
+    });
+  }
+  if (!checks.length) {
+    checks.push({
+      group: "실적 보조",
+      label: "실적 데이터",
+      threshold: "확인 가능",
+      tone: "neutral",
+      value: "부족",
+    });
+  }
+  return checks;
+}
+
+function stockEvaluationCheck(group, label, value, threshold, operator, options = {}) {
+  const number = Number(value);
+  const target = Number(threshold);
+  const passed =
+    Number.isFinite(number) &&
+    Number.isFinite(target) &&
+    (operator === ">" ? number > target : number >= target);
+  return {
+    group,
+    label,
+    required: Boolean(options.required),
+    threshold: stockEvaluationThresholdText(threshold, operator, options.display),
+    tone: passed ? "pass" : "fail",
+    value: stockEvaluationValueText(value, options.display),
+  };
+}
+
+function stockEvaluationThresholdText(threshold, operator, display) {
+  const prefix = operator === ">" ? "초과" : "이상";
+  if (display === "marketCap") return `${formatMarketCapKrw(threshold)} 이상`;
+  if (display === "ratio") return `${formatNumber(threshold, 2)}배 ${prefix}`;
+  if (display === "percent") return `${formatSigned(threshold, 1)}% ${prefix}`;
+  if (display === "percentPoint") return `${formatSigned(threshold, 1)}%p ${prefix}`;
+  if (display === "score") return `${Math.round(Number(threshold))}점 ${prefix}`;
+  return `${formatNumber(threshold, 1)} ${prefix}`;
+}
+
+function stockEvaluationValueText(value, display) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  if (display === "marketCap") return formatMarketCapKrw(number);
+  if (display === "ratio") return `${formatNumber(number, 2)}배`;
+  if (display === "percent") return `${formatSigned(number, 1)}%`;
+  if (display === "percentPoint") return `${formatSigned(number, 1)}%p`;
+  if (display === "score") return `${Math.round(number)}점`;
+  return formatNumber(number, 1);
+}
+
+function stockEvaluationRollingVolumeStats(rows, targetIndex, windowDays, comparisonCount) {
+  const recentStart = targetIndex - windowDays + 1;
+  const previousStart = recentStart - windowDays * comparisonCount;
+  if (previousStart < 0) return null;
+  const recentRows = rows.slice(recentStart, targetIndex + 1);
+  const previousRows = rows.slice(previousStart, recentStart);
+  if (recentRows.length < windowDays || previousRows.length < windowDays * comparisonCount) {
+    return null;
+  }
+  const recentVolume = sum(recentRows.map((row) => row.volume));
+  const previousVolumes = Array.from({ length: comparisonCount }, (_, index) => {
+    const start = index * windowDays;
+    return sum(previousRows.slice(start, start + windowDays).map((row) => row.volume));
+  });
+  const previousAverageVolume = average(previousVolumes);
+  if (!Number.isFinite(previousAverageVolume) || previousAverageVolume <= 0) return null;
+  return {
+    previousAverageVolume,
+    recentVolume,
+    volumeRatio: recentVolume / previousAverageVolume,
+  };
+}
+
+function stockEvaluationRecentAverageVolumeRatio(rows, targetIndex, recentDays, previousDays) {
+  const recentStart = targetIndex - recentDays + 1;
+  const previousStart = recentStart - previousDays;
+  if (previousStart < 0) return NaN;
+  const recentRows = rows.slice(recentStart, targetIndex + 1);
+  const previousRows = rows.slice(previousStart, recentStart);
+  if (recentRows.length < recentDays || previousRows.length < previousDays) return NaN;
+  const recentAverage = average(recentRows.map((row) => row.volume));
+  const previousAverage = average(previousRows.map((row) => row.volume));
+  return Number.isFinite(previousAverage) && previousAverage > 0
+    ? recentAverage / previousAverage
+    : NaN;
+}
+
+function stockEvaluationBenchmarkReturn(rows, targetDate, windowDays) {
+  const targetIndex = stockEvaluationLatestIndexAtOrBefore(rows || [], targetDate);
+  if (targetIndex < windowDays) return NaN;
+  return percentChange(rows[targetIndex].close, rows[targetIndex - windowDays].close);
+}
+
+function stockEvaluationLatestIndexAtOrBefore(rows, date) {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    if (rows[index].date <= date) return index;
+  }
+  return -1;
+}
+
+function stockEvaluationWorstRecentDailyReturn(rows, days) {
+  const recent = rows.slice(-(days + 1));
+  if (recent.length < 2) return NaN;
+  return Math.min(
+    ...recent.slice(1).map((row, index) => percentChange(row.close, recent[index].close)),
+  );
+}
+
+function stockEvaluationMfi(rows, period = 14) {
+  if (rows.length <= period) return NaN;
+  const flows = [];
+  for (let index = 1; index < rows.length; index += 1) {
+    const previousTypical = stockEvaluationTypicalPrice(rows[index - 1]);
+    const typical = stockEvaluationTypicalPrice(rows[index]);
+    const rawFlow = typical * rows[index].volume;
+    flows.push({
+      negative: typical < previousTypical ? rawFlow : 0,
+      positive: typical > previousTypical ? rawFlow : 0,
+    });
+  }
+  const recent = flows.slice(-period);
+  if (recent.length < period) return NaN;
+  const positive = sum(recent.map((flow) => flow.positive));
+  const negative = sum(recent.map((flow) => flow.negative));
+  if (negative === 0 && positive > 0) return 100;
+  if (negative === 0) return 50;
+  return 100 - 100 / (1 + positive / negative);
+}
+
+function stockEvaluationTypicalPrice(row) {
+  return (row.high + row.low + row.close) / 3;
+}
+
+function stockEvaluationBreakoutScore({
+  aboveTenDayAverage,
+  breakout,
+  mfi,
+  recentVolumeRatio,
+  relativeReturn,
+  targetReturn,
+  volumeRatio,
+}) {
+  let score = 0;
+  score += Math.min(22, (volumeRatio / STOCK_EVALUATION_MIN_VOLUME_RATIO) * 22);
+  score += Math.min(16, (recentVolumeRatio / STOCK_EVALUATION_MIN_RECENT_VOLUME_RATIO) * 16);
+  score += Math.min(18, (targetReturn / STOCK_EVALUATION_MIN_ROLLING_RETURN) * 18);
+  score += Math.min(12, (relativeReturn / STOCK_EVALUATION_MIN_RELATIVE_RETURN) * 12);
+  score += breakout ? 12 : 0;
+  score += aboveTenDayAverage ? 8 : 0;
+  score += Math.min(12, (mfi / STOCK_EVALUATION_MIN_MFI) * 12);
+  return Math.round(Math.max(0, Math.min(100, score)));
+}
+
+function stockEvaluationOverheatRisk({
+  mfi,
+  monthHighDrawdown,
+  recentWorstDailyReturn,
+  targetReturn,
+  volumeRatio,
+}) {
+  if (targetReturn >= STOCK_EVALUATION_EXTREME_RETURN) return true;
+  if (
+    mfi >= STOCK_EVALUATION_OVERHEAT_MFI &&
+    targetReturn >= STOCK_EVALUATION_OVERHEAT_RETURN &&
+    monthHighDrawdown > -3
+  ) {
+    return true;
+  }
+  return (
+    volumeRatio >= STOCK_EVALUATION_EXTREME_VOLUME_RATIO &&
+    mfi >= STOCK_EVALUATION_OVERHEAT_MFI &&
+    recentWorstDailyReturn <= -8
+  );
+}
+
+function stockEvaluationWeakMarketRegime({
+  benchmarkReturn,
+  breakout,
+  relativeReturn,
+  targetReturn,
+  weakMarketReturn,
+}) {
+  if (!Number.isFinite(benchmarkReturn) || benchmarkReturn > weakMarketReturn) return false;
+  return !(
+    breakout &&
+    relativeReturn >= STOCK_EVALUATION_WEAK_MARKET_OVERRIDE_RELATIVE_RETURN &&
+    targetReturn >= STOCK_EVALUATION_WEAK_MARKET_OVERRIDE_RETURN
+  );
+}
+
+async function fetchNaverMarketCapKrwForCode(code) {
+  const integration = await fetchNaverStockIntegration(code);
+  const totalInfo = naverTotalInfoMap(integration);
+  const marketCapKrw = parseKoreanMarketCapText(totalInfo.marketValue?.value);
+  if (!Number.isFinite(marketCapKrw) || marketCapKrw <= 0) {
+    throw new Error(`Naver market cap unavailable: ${code}`);
+  }
+  return marketCapKrw;
+}
+
+async function fetchNasdaqMarketCapUsdForSymbol(symbol) {
+  const json = await fetchNasdaqJson(
+    `https://api.nasdaq.com/api/quote/${encodeURIComponent(symbol)}/summary?assetclass=stocks`,
+  );
+  const marketCap = parseNasdaqNumber(json.data?.summaryData?.MarketCap?.value);
+  if (!Number.isFinite(marketCap) || marketCap <= 0) {
+    throw new Error(`Nasdaq market cap unavailable: ${symbol}`);
+  }
+  return marketCap;
+}
+
+async function fetchYahooDailyRows(symbol, startDate, endDate) {
+  const period1 = Math.floor(Date.parse(`${startDate}T00:00:00Z`) / 1000);
+  const period2 = Math.floor(Date.parse(`${endDate}T00:00:00Z`) / 1000);
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+    symbol,
+  )}?period1=${period1}&period2=${period2}&interval=1d`;
+  const json = JSON.parse(await fetchText(url, "application/json,text/plain,*/*"));
+  const result = json.chart?.result?.[0];
+  if (!result) throw new Error(`empty Yahoo chart: ${symbol}`);
+  const quote = result.indicators?.quote?.[0] || {};
+  return (result.timestamp || [])
+    .map((timestamp, index) => ({
+      close: finiteNumber(quote.close?.[index]),
+      date: new Date(timestamp * 1000).toISOString().slice(0, 10),
+      high: finiteNumber(quote.high?.[index]),
+      low: finiteNumber(quote.low?.[index]),
+      open: finiteNumber(quote.open?.[index]),
+      volume: finiteNumber(quote.volume?.[index]),
+    }))
+    .filter(validStockEvaluationDailyRow)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+async function fetchUsdKrwRate() {
+  const now = Date.now();
+  if (Number.isFinite(cachedUsdKrw) && now - cachedUsdKrwAt < 10 * 60 * 1000) {
+    return cachedUsdKrw;
+  }
+  const json = JSON.parse(
+    await fetchText(
+      "https://query1.finance.yahoo.com/v8/finance/chart/KRW=X?range=5d&interval=1d",
+      "application/json,text/plain,*/*",
+    ),
+  );
+  const result = json.chart?.result?.[0];
+  const metaPrice = finiteNumber(result?.meta?.regularMarketPrice);
+  const closes = result?.indicators?.quote?.[0]?.close || [];
+  const latestClose = [...closes].reverse().find((value) => Number(value) > 0);
+  cachedUsdKrw = Number.isFinite(metaPrice) && metaPrice > 0 ? metaPrice : finiteNumber(latestClose);
+  if (!Number.isFinite(cachedUsdKrw) || cachedUsdKrw <= 0) {
+    throw new Error("USD/KRW unavailable");
+  }
+  cachedUsdKrwAt = now;
+  return cachedUsdKrw;
+}
+
+function validStockEvaluationDailyRow(row) {
+  return (
+    row.date &&
+    Number.isFinite(row.high) &&
+    Number.isFinite(row.low) &&
+    Number.isFinite(row.close) &&
+    Number.isFinite(row.volume) &&
+    row.high > 0 &&
+    row.low > 0 &&
+    row.close > 0
+  );
+}
+
+function evaluationHistoryStartDate() {
+  const date = new Date();
+  date.setUTCMonth(date.getUTCMonth() - 20);
+  return date.toISOString().slice(0, 10);
+}
+
+function evaluationHistoryEndDate() {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + 2);
+  return date.toISOString().slice(0, 10);
+}
+
+function normalizeUsTicker(symbol) {
+  return String(symbol || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9.-]/g, "")
+    .slice(0, 12);
+}
+
+function parseKoreanMarketCapText(value) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  const joMatch = text.match(/([\d,]+(?:\.\d+)?)\s*조/);
+  const eokMatch = text.match(/([\d,]+(?:\.\d+)?)\s*억/);
+  const jo = joMatch ? Number(joMatch[1].replace(/,/g, "")) : 0;
+  const eok = eokMatch ? Number(eokMatch[1].replace(/,/g, "")) : 0;
+  if (!jo && !eok) return NaN;
+  return Math.round(jo * 1_000_000_000_000 + eok * 100_000_000);
+}
+
+function formatMarketCapKrw(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return "-";
+  const trillion = number / 1_000_000_000_000;
+  if (trillion >= 1) {
+    const decimals = trillion >= 10 ? 1 : 2;
+    return `${Number(trillion).toFixed(decimals).replace(/\.?0+$/, "")}조`;
+  }
+  return `${Math.round(number / 100_000_000).toLocaleString("ko-KR")}억`;
 }
 
 async function getStockRecommendations({
@@ -1400,7 +2426,7 @@ function parseNasdaqNumber(value) {
   if (!text || text === "N/A" || text === "-") return NaN;
   const isNegative = /^\(.*\)$/.test(text);
   text = text
-    .replace(/[,$%]/g, "")
+    .replace(/[$,%]/g, "")
     .replace(/[()]/g, "")
     .trim();
   const suffix = text.match(/([KMBT])$/i)?.[1]?.toUpperCase();
@@ -2735,6 +3761,7 @@ function topTrafficPaths(events) {
 
 function sendJson(response, data, status = 200) {
   response.writeHead(status, {
+    "Access-Control-Allow-Origin": "*",
     "Cache-Control": "no-store",
     "Content-Type": "application/json; charset=utf-8",
   });

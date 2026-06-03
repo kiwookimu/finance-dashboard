@@ -121,10 +121,14 @@ const recommendationGlobalRefreshActiveBases = new Set();
 let recommendationGlobalRefreshing = false;
 let recommendationRefreshToolbarTimer = null;
 let lastRecommendationDetailTrigger = null;
+let stockSearchAbortController = null;
+let stockEvaluationAbortController = null;
+let stockSearchTimer = null;
 
 initializeDashboardTabs();
 initializeRecommendationActions();
 initializeRecommendationDetailModal();
+initializeStockSearch();
 loadIndicators();
 
 function initializeDashboardTabs() {
@@ -205,6 +209,224 @@ function initializeRecommendationActions() {
   const refreshButton = document.querySelector("#recommendationGlobalRefresh");
   refreshButton?.addEventListener("click", () => refreshAllRecommendations());
   updateRecommendationGlobalToolbar();
+}
+
+function initializeStockSearch() {
+  const form = document.querySelector("#stockSearchForm");
+  const input = document.querySelector("#stockSearchInput");
+  if (!form || !input) return;
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    runStockSearch(input.value);
+  });
+
+  input.addEventListener("input", () => {
+    window.clearTimeout(stockSearchTimer);
+    stockSearchTimer = window.setTimeout(() => {
+      const query = input.value.trim();
+      if (query.length >= 2) runStockSearch(query);
+      else {
+        renderStockSearchResults([], "종목명이나 티커를 입력해 주세요.");
+        clearStockEvaluation();
+      }
+    }, 320);
+  });
+}
+
+function apiEndpoint(path) {
+  if (window.location.protocol !== "file:") return path;
+  return `http://127.0.0.1:5173${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+async function runStockSearch(query) {
+  const normalizedQuery = String(query || "").trim();
+  if (normalizedQuery.length < 2) {
+    renderStockSearchResults([], "두 글자 이상 입력해 주세요.");
+    return;
+  }
+
+  stockSearchAbortController?.abort();
+  stockSearchAbortController = new AbortController();
+  renderStockSearchResults([], "검색 중입니다.");
+  try {
+    const response = await fetch(
+      apiEndpoint(`/api/stock-search?q=${encodeURIComponent(normalizedQuery)}`),
+      {
+        cache: "no-store",
+        signal: stockSearchAbortController.signal,
+      },
+    );
+    if (!response.ok) throw new Error("Stock search request failed");
+    const payload = await response.json();
+    renderStockSearchResults(payload.results || []);
+  } catch (error) {
+    if (error.name === "AbortError") return;
+    console.warn("Stock search unavailable", error);
+    renderStockSearchResults([], "검색 데이터를 불러오지 못했습니다.");
+  }
+}
+
+function renderStockSearchResults(results, emptyText = "검색 결과가 없습니다.") {
+  const container = document.querySelector("#stockSearchResults");
+  if (!container) return;
+  if (!results.length) {
+    container.innerHTML = `<p class="stock-search-empty">${escapeHtml(emptyText)}</p>`;
+    return;
+  }
+  container.innerHTML = results
+    .map(
+      (item) => `
+        <button
+          class="stock-search-result"
+          type="button"
+          data-market="${escapeHtml(item.market || "")}"
+          data-code="${escapeHtml(item.code || "")}"
+          data-symbol="${escapeHtml(item.symbol || "")}"
+        >
+          <strong>${escapeHtml(item.label || item.name || item.symbol || item.code)}</strong>
+          <span>${escapeHtml(item.subLabel || "")}</span>
+        </button>
+      `,
+    )
+    .join("");
+  container.querySelectorAll(".stock-search-result").forEach((button) => {
+    button.addEventListener("click", () => {
+      container.querySelectorAll(".stock-search-result").forEach((item) => {
+        item.classList.toggle("is-selected", item === button);
+      });
+      evaluateSelectedStock({
+        code: button.dataset.code,
+        market: button.dataset.market,
+        symbol: button.dataset.symbol,
+      });
+    });
+  });
+}
+
+async function evaluateSelectedStock({ code, market, symbol }) {
+  stockEvaluationAbortController?.abort();
+  stockEvaluationAbortController = new AbortController();
+  renderStockEvaluationLoading();
+  try {
+    const params = new URLSearchParams({ market });
+    if (code) params.set("code", code);
+    if (symbol) params.set("symbol", symbol);
+    const response = await fetch(apiEndpoint(`/api/stock-evaluation?${params.toString()}`), {
+      cache: "no-store",
+      signal: stockEvaluationAbortController.signal,
+    });
+    if (!response.ok) throw new Error("Stock evaluation request failed");
+    renderStockEvaluation(await response.json());
+  } catch (error) {
+    if (error.name === "AbortError") return;
+    console.warn("Stock evaluation unavailable", error);
+    renderStockEvaluationError();
+  }
+}
+
+function clearStockEvaluation() {
+  const panel = document.querySelector("#stockEvaluationPanel");
+  if (!panel) return;
+  panel.hidden = true;
+  panel.innerHTML = "";
+}
+
+function renderStockEvaluationLoading() {
+  const panel = document.querySelector("#stockEvaluationPanel");
+  if (!panel) return;
+  panel.hidden = false;
+  panel.innerHTML = `
+    <section class="stock-evaluation-card">
+      <p class="stock-search-empty">추천·관찰 기준으로 평가 중입니다.</p>
+    </section>
+  `;
+}
+
+function renderStockEvaluationError() {
+  const panel = document.querySelector("#stockEvaluationPanel");
+  if (!panel) return;
+  panel.hidden = false;
+  panel.innerHTML = `
+    <section class="stock-evaluation-card">
+      <p class="stock-search-empty">평가 데이터를 불러오지 못했습니다.</p>
+    </section>
+  `;
+}
+
+function renderStockEvaluation(payload) {
+  const panel = document.querySelector("#stockEvaluationPanel");
+  if (!panel) return;
+  const item = payload?.item || {};
+  const result = payload?.result || {};
+  const quote = recommendationQuoteInfo(item);
+  const checks = Array.isArray(payload?.checks) ? payload.checks : [];
+  panel.hidden = false;
+  panel.innerHTML = `
+    <section class="stock-evaluation-card is-${escapeHtml(result.tone || "none")}">
+      <div class="stock-evaluation-head">
+        <div>
+          <span>${escapeHtml([item.marketType || item.exchange, item.code || item.symbol].filter(Boolean).join(" · "))}</span>
+          <strong>
+            ${escapeHtml(item.name || item.symbol || item.code || "종목")}
+            ${quote ? `<em class="recommendation-quote is-${escapeHtml(quote.tone)}">${escapeHtml(quote.text)}</em>` : ""}
+          </strong>
+          <small>${escapeHtml(formatIsoDate(item.lastDate || "") || "최근 거래일")} 기준</small>
+        </div>
+        <b>${escapeHtml(result.label || "평가 결과")}</b>
+      </div>
+      <div class="stock-evaluation-summary">
+        <span>의견</span>
+        <p>${escapeHtml(result.summary || "")}</p>
+      </div>
+      <div class="stock-evaluation-checks">
+        ${stockEvaluationChecksMarkup(checks)}
+      </div>
+    </section>
+  `;
+}
+
+function stockEvaluationChecksMarkup(checks) {
+  const groups = new Map();
+  for (const check of checks) {
+    if (!groups.has(check.group)) groups.set(check.group, []);
+    groups.get(check.group).push(check);
+  }
+  return [...groups.entries()]
+    .map(
+      ([group, items]) => `
+        <section class="stock-evaluation-check-group">
+          <strong>${escapeHtml(group)}</strong>
+          <div>
+            <span class="stock-evaluation-check stock-evaluation-check-header" aria-hidden="true">
+              <b>항목</b>
+              <em>현재 데이터</em>
+              <small>통과 기준</small>
+              <i>판정</i>
+            </span>
+            ${items
+              .map(
+                (check) => `
+                  <span class="stock-evaluation-check is-${escapeHtml(check.tone || "neutral")}">
+                    <b>${escapeHtml(check.label)}</b>
+                    <em>${escapeHtml(check.value || "-")}</em>
+                    <small>${escapeHtml(check.threshold || "")}</small>
+                    <i>${escapeHtml(stockEvaluationStatusText(check.tone))}</i>
+                  </span>
+                `,
+              )
+              .join("")}
+          </div>
+        </section>
+      `,
+    )
+    .join("");
+}
+
+function stockEvaluationStatusText(tone) {
+  if (tone === "pass") return "충족";
+  if (tone === "fail") return "미충족";
+  return "참고";
 }
 
 function recommendationMarketForPanel(panelId) {
