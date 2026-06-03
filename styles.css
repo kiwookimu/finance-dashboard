@@ -17,16 +17,24 @@
 }
 
 html {
+  width: 100%;
+  max-width: 100%;
   min-height: 100%;
   overflow-x: hidden;
+  overscroll-behavior-x: none;
+  scrollbar-gutter: stable;
   background: var(--bg);
 }
 
 body {
   position: relative;
+  width: 100%;
+  max-width: 100%;
   min-height: 100%;
   margin: 0;
   overflow-x: hidden;
+  overscroll-behavior-x: none;
+  touch-action: pan-y;
   color: var(--ink);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0) 220px),
@@ -991,7 +999,8 @@ h1 {
 }
 
 body.modal-open {
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: hidden;
 }
 
 .recommendation-modal[hidden] {
