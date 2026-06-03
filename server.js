@@ -761,7 +761,7 @@ async function getCachedUsSearchUniverse() {
       sector: normalizeText(row.sector),
       symbol: normalizeUsTicker(row.symbol),
     }))
-    .filter((stock) => stock.symbol && stock.name)
+    .filter((stock) => stock.symbol && stock.name && isSearchableUsCommonStock(stock))
     .sort((a, b) => a.symbol.localeCompare(b.symbol));
   cachedUsSearchUniverseAt = now;
   return cachedUsSearchUniverse;
@@ -1546,6 +1546,36 @@ function normalizeUsTicker(symbol) {
     .toUpperCase()
     .replace(/[^A-Z0-9.-]/g, "")
     .slice(0, 12);
+}
+
+function isSearchableUsCommonStock(stock) {
+  const name = String(stock?.name || "").toLowerCase();
+  const symbol = String(stock?.symbol || "").toUpperCase();
+  if (!name || !symbol) return false;
+  if (/[+=^]/.test(symbol)) return false;
+  const excludedPhrases = [
+    " preferred",
+    " preference",
+    " depositary share",
+    " depositary shares",
+    " warrant",
+    " warrants",
+    " right",
+    " rights",
+    " unit",
+    " units",
+    " note",
+    " notes",
+    " bond",
+    " debenture",
+    " fund",
+    " etf",
+    " etn",
+    " trust",
+    " capital securities",
+    " mandatory convertible",
+  ];
+  return !excludedPhrases.some((phrase) => name.includes(phrase));
 }
 
 function parseKoreanMarketCapText(value) {
