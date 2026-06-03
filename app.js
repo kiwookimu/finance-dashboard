@@ -42,6 +42,7 @@ const DEFAULT_PORTFOLIO_EXPOSURE_CONFIG = {
   strongTrim: 1,
   weakRed: 0.05,
 };
+const MARKET_AUTO_REFRESH_MS = 5 * 60 * 1000;
 const RECOMMENDATION_REFRESH_COOLDOWN_MS = 60 * 60 * 1000;
 const RECOMMENDATION_CONFIGS = {
   domestic: {
@@ -121,6 +122,9 @@ const recommendationGlobalRefreshActiveBases = new Set();
 let recommendationGlobalRefreshing = false;
 let recommendationRefreshToolbarTimer = null;
 let lastRecommendationDetailTrigger = null;
+let marketAutoRefreshTimer = null;
+let marketIndicatorRequest = null;
+let marketLastRefreshAttemptAt = 0;
 let stockSearchAbortController = null;
 let stockEvaluationAbortController = null;
 let stockSearchTimer = null;
@@ -130,14 +134,19 @@ initializeDashboardTabs();
 initializeRecommendationSwipeTabs();
 initializeRecommendationActions();
 initializeRecommendationDetailModal();
+initializeMarketAutoRefresh();
 initializeStockSearch();
 loadIndicators();
 
 function initializeDashboardTabs() {
   initializeTabGroup("main", {
     onActivate(panelId) {
-      if (panelId !== "recommendationRootPanel") return;
-      activateCurrentRecommendationPanel();
+      if (panelId === "marketIndicatorsPanel") {
+        refreshMarketIndicatorsIfStale();
+        scheduleMarketAutoRefresh();
+      } else if (panelId === "recommendationRootPanel") {
+        activateCurrentRecommendationPanel();
+      }
     },
   });
   initializeTabGroup("recommendations", {
@@ -203,6 +212,53 @@ function initializeTabGroup(groupName, { onActivate } = {}) {
   });
 
   activateTab(tabs.find((tab) => tab.classList.contains("is-active")) || tabs[0], false, false);
+}
+
+function initializeMarketAutoRefresh() {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      refreshMarketIndicatorsIfStale();
+      scheduleMarketAutoRefresh();
+    } else {
+      clearMarketAutoRefresh();
+    }
+  });
+  scheduleMarketAutoRefresh();
+}
+
+function scheduleMarketAutoRefresh() {
+  clearMarketAutoRefresh();
+  if (document.visibilityState !== "visible") return;
+
+  marketAutoRefreshTimer = window.setTimeout(async () => {
+    marketAutoRefreshTimer = null;
+    if (shouldRefreshMarketIndicators()) {
+      await loadIndicators();
+    }
+    scheduleMarketAutoRefresh();
+  }, MARKET_AUTO_REFRESH_MS);
+}
+
+function clearMarketAutoRefresh() {
+  if (!marketAutoRefreshTimer) return;
+  window.clearTimeout(marketAutoRefreshTimer);
+  marketAutoRefreshTimer = null;
+}
+
+function refreshMarketIndicatorsIfStale() {
+  if (!shouldRefreshMarketIndicators()) return;
+  if (Date.now() - marketLastRefreshAttemptAt < MARKET_AUTO_REFRESH_MS) return;
+  loadIndicators();
+}
+
+function shouldRefreshMarketIndicators() {
+  const marketPanel = document.querySelector("#marketIndicatorsPanel");
+  return (
+    document.visibilityState === "visible" &&
+    Boolean(marketPanel) &&
+    !marketPanel.hidden &&
+    marketPanel.classList.contains("is-active")
+  );
 }
 
 function initializeRecommendationSwipeTabs() {
@@ -1686,6 +1742,16 @@ function recommendationDrawdownTag(value) {
 }
 
 async function loadIndicators() {
+  if (marketIndicatorRequest) return marketIndicatorRequest;
+
+  marketLastRefreshAttemptAt = Date.now();
+  marketIndicatorRequest = loadIndicatorsNow().finally(() => {
+    marketIndicatorRequest = null;
+  });
+  return marketIndicatorRequest;
+}
+
+async function loadIndicatorsNow() {
   try {
     const [marketResponse, sentimentResponse] = await Promise.all([
       fetch("/api/market-overview", { cache: "no-store" }),
