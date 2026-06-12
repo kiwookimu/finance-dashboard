@@ -1,13 +1,13 @@
-const GOOD_WHEN_FALLING = new Set(["usdKrw", "wti", "us10y", "hySpread", "nfci"]);
+const GOOD_WHEN_FALLING = new Set(["usdKrw", "wti", "us10y", "hySpread"]);
 const NEXT_DAY_PREDICTION_TARGETS = [
   { id: "kospi", label: "KOSPI", market: "korea", profile: "broad" },
   { id: "nasdaq", label: "NASDAQ", market: "us", profile: "growth" },
   { id: "sp500", label: "S&P 500", market: "us", profile: "broad" },
 ];
 const NEXT_DAY_PREDICTION_BACKTEST_METRICS = {
-  kospi: { coverage: 75.2, hitRate: 74.7 },
-  nasdaq: { coverage: 86.4, hitRate: 70.8 },
-  sp500: { coverage: 86.4, hitRate: 69.4 },
+  kospi: { coverage: 65.0, hitRate: 76.6 },
+  nasdaq: { coverage: 86.5, hitRate: 71.0 },
+  sp500: { coverage: 86.5, hitRate: 69.6 },
 };
 const PORTFOLIO_HOLDINGS = [
   { amount: 30041571, benchmark: "kospi", code: "395270", id: "hanaroSemi", name: "HANARO Fn K-반도체", tags: ["semi", "korea"] },
@@ -1096,15 +1096,27 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
             ${fundamentalMetrics}
           </div>
           <div class="recommendation-insight">
-            <p>${escapeHtml(setup.summary)}</p>
-            ${setup.fundamental ? `<p class="recommendation-fundamental">${escapeHtml(setup.fundamental)}</p>` : ""}
-            ${setup.checkpoint ? `<p class="recommendation-checkpoint">${escapeHtml(setup.checkpoint)}</p>` : ""}
+            ${recommendationInsightBlockMarkup("왜 지금", setup.summary)}
+            ${recommendationInsightBlockMarkup("실적", setup.fundamental, "recommendation-fundamental")}
+            ${recommendationInsightBlockMarkup("주의", setup.risk, "recommendation-risk")}
+            ${recommendationInsightBlockMarkup("체크", setup.checkpoint, "recommendation-checkpoint")}
           </div>
         </article>
       `;
     })
     .join("");
   bindRecommendationDetailCards(list);
+}
+
+function recommendationInsightBlockMarkup(label, text, className = "") {
+  if (!text) return "";
+  const classNames = ["recommendation-insight-block", className].filter(Boolean).join(" ");
+  return `
+    <div class="${escapeHtml(classNames)}">
+      <b>${escapeHtml(label)}</b>
+      <p>${escapeHtml(text)}</p>
+    </div>
+  `;
 }
 
 function shouldShowRecommendationInView(item, view = "all") {
@@ -1242,12 +1254,10 @@ function buildRecommendationDetailMarkup(item, setup) {
     <div class="recommendation-detail-summary">
       <strong>${escapeHtml(setup.label)}</strong>
       ${businessDescription ? `<p class="recommendation-business">${escapeHtml(businessDescription)}</p>` : ""}
-      <p>${escapeHtml(setup.summary)}</p>
-      ${setup.fundamental ? `<p class="recommendation-fundamental">${escapeHtml(setup.fundamental)}</p>` : ""}
-      ${setup.checkpoint ? `<p class="recommendation-checkpoint">${escapeHtml(setup.checkpoint)}</p>` : ""}
-      <div class="recommendation-tags">
-        ${setup.tags.map((tag) => `<b>${escapeHtml(tag)}</b>`).join("")}
-      </div>
+      ${recommendationInsightBlockMarkup("왜 지금", setup.summary)}
+      ${recommendationInsightBlockMarkup("실적", setup.fundamental, "recommendation-fundamental")}
+      ${recommendationInsightBlockMarkup("주의", setup.risk, "recommendation-risk")}
+      ${recommendationInsightBlockMarkup("체크", setup.checkpoint, "recommendation-checkpoint")}
     </div>
     <dl class="recommendation-detail-grid">
       ${detailRows
@@ -1467,6 +1477,7 @@ function recommendationPriorityScore(item) {
 
 function recommendationEntryDecisionForItem(item) {
   return recommendationEntryDecision({
+    mfi: Number(item.mfi),
     monthHighDrawdown: Number(item.monthHighDrawdown),
     monthlyReturn: Number(item.monthlyReturn),
     recommendationStage: item.recommendationStage,
@@ -1507,6 +1518,19 @@ function buildRecommendationSetup(item, entryDecision = recommendationEntryDecis
     entry: entryDecision,
     fundamental: recommendationFundamentalText(item),
     label: `${formatIsoDate(item.lastDate || "") || "추천 시점"} 기준`,
+    risk: recommendationRiskText({
+      entryDecision,
+      mfi,
+      monthHighDrawdown,
+      monthlyReturn,
+      recommendationStage: item.recommendationStage,
+      recentWorstDailyReturn: Number(item.recentWorstDailyReturn),
+      technicalCautionReasons: item.technicalCautionReasons,
+      technicalRecommendationStage: item.technicalRecommendationStage,
+      volumeRatio,
+      weakMarketRegime: item.weakMarketRegime,
+      qualityAdjusted: item.qualityAdjusted,
+    }),
     summary: recommendationSetupSummary({
       entryDecision,
       mfi,
@@ -1573,6 +1597,56 @@ function recommendationSetupSummary({
   return `최근 1개월 가격, 거래량, MFI, 상대강도가 모두 기준을 넘은 추천 시점 신호야. ${action}`;
 }
 
+function recommendationRiskText({
+  mfi,
+  monthHighDrawdown,
+  monthlyReturn,
+  recommendationStage,
+  recentWorstDailyReturn,
+  technicalCautionReasons,
+  technicalRecommendationStage,
+  volumeRatio,
+  weakMarketRegime,
+  qualityAdjusted,
+}) {
+  const reasons = Array.isArray(technicalCautionReasons)
+    ? technicalCautionReasons
+    : String(technicalCautionReasons || "")
+        .split(",")
+        .map((reason) => reason.trim())
+        .filter(Boolean);
+
+  if (technicalRecommendationStage === "confirmed" && recommendationStage !== "confirmed") {
+    const reasonText = reasons.length ? reasons.join("·") : "확정 조건 보류 신호";
+    return `${reasonText}가 남아 있어 추천보다 관찰 관점으로 봐.`;
+  }
+  if (Number.isFinite(mfi) && mfi >= 90) {
+    return `MFI가 ${formatNumber(mfi, 1)}로 90을 넘어 과열권이야. 추격 매수는 조심해.`;
+  }
+  if (Number.isFinite(monthHighDrawdown) && monthHighDrawdown <= -10) {
+    return `고점 대비 ${formatSignedNumber(monthHighDrawdown, 1)}% 밀려 있어 재돌파 전 추격은 보류해.`;
+  }
+  if (qualityAdjusted) {
+    return "실적 보조 지표가 약해서 가격·수급 신호만으로 확정하기는 이르다고 봐.";
+  }
+  if (weakMarketRegime) {
+    return "시장 레짐이 약해 종목 신호가 좋아도 비중 확대는 천천히 판단해.";
+  }
+  if (Number.isFinite(recentWorstDailyReturn) && recentWorstDailyReturn <= -8) {
+    return `최근 일간 낙폭이 ${formatSignedNumber(recentWorstDailyReturn, 1)}%까지 커져 변동성 관리는 필요해.`;
+  }
+  if (Number.isFinite(monthlyReturn) && monthlyReturn >= 100) {
+    return "단기 상승폭이 이미 커서 눌림 없이 따라붙는 매수는 부담이 커.";
+  }
+  if (Number.isFinite(volumeRatio) && volumeRatio >= 12) {
+    return "거래량이 매우 커진 구간이라 장중 흔들림과 수급 소진 여부를 같이 봐.";
+  }
+  if (recommendationStage === "watch" || recommendationStage === "observe") {
+    return "아직 확정 추천 전 단계라 거래량과 고점 방어가 이어지는지 확인해.";
+  }
+  return "거래량이 식거나 고점을 지키지 못하면 신호가 약해질 수 있어.";
+}
+
 function recommendationCheckpointText(item) {
   const current = Number(item.liveClose ?? item.lastClose);
   const monthHigh = Number(item.liveMonthHigh ?? item.monthHigh);
@@ -1631,11 +1705,13 @@ function recommendationCheckpointText(item) {
 }
 
 function recommendationActionText({
+  mfi,
   monthHighDrawdown,
   monthlyReturn,
   recommendationStage,
 }) {
   return recommendationEntryDecision({
+    mfi,
     monthHighDrawdown,
     monthlyReturn,
     recommendationStage,
@@ -1643,6 +1719,7 @@ function recommendationActionText({
 }
 
 function recommendationEntryDecision({
+  mfi,
   monthHighDrawdown,
   monthlyReturn,
   recommendationStage,
@@ -1663,7 +1740,7 @@ function recommendationEntryDecision({
       tone: "hold",
     };
   }
-  if (monthlyReturn >= 100) {
+  if (mfi >= 90 || monthlyReturn >= 100) {
     return {
       action: "과열 상태니 추격 매수는 조심해.",
       label: "주의",
@@ -1780,12 +1857,12 @@ async function loadIndicatorsNow() {
     renderMarketIndicator("wti", market.quotes.wti);
     renderMarketIndicator("us10y", market.quotes.us10y);
     renderMarketIndicator("hySpread", market.quotes.hySpread);
-    renderMarketIndicator("nfci", market.quotes.nfci);
     renderFearGreed(sentiment.fearGreed);
     renderVix(sentiment.vix);
     renderMarketIndicator("vixTerm", buildVixTermQuote(market.quotes.vix3m, sentiment.vix));
     renderTradingSignal(market.quotes, sentiment);
     renderIndexPredictions(market.quotes, sentiment);
+    renderThemeRadar(market.quotes, sentiment);
     setText(
       "#marketSource",
       `Yahoo Finance · FRED · TrendForce · 공포·탐욕 ${formatIsoDate(sentiment.fearGreed.date)} · VIX ${formatIsoDate(sentiment.vix.date)} 기준 지연 데이터`,
@@ -1799,6 +1876,7 @@ async function loadIndicatorsNow() {
       summary: "데이터 갱신 실패",
     });
     renderIndexPredictionError();
+    renderThemeRadarError();
     setText("#marketSource", "시장 데이터 갱신 실패");
   }
 }
@@ -1904,6 +1982,147 @@ function renderIndexPredictionError() {
   const list = document.querySelector("#indexPredictionList");
   if (!list) return;
   list.innerHTML = `<p class="prediction-empty">예측 데이터 갱신 실패</p>`;
+}
+
+function renderThemeRadar(quotes = {}, sentiment = {}) {
+  const list = document.querySelector("#themeRadarList");
+  if (!list) return;
+
+  const rows = buildThemeRadarRows(quotes, sentiment).filter((row) =>
+    Number.isFinite(row.score),
+  );
+  if (!rows.length) {
+    list.innerHTML = `<p class="theme-radar-empty">테마 데이터 부족</p>`;
+    return;
+  }
+
+  list.innerHTML = rows
+    .map((row) => {
+      const tone = themeRadarTone(row.score);
+      const score = Math.round(row.score * 100);
+      const meterValue = clamp(Math.round(((row.score + 1) / 2) * 100), 0, 100);
+      return `
+        <article class="theme-radar-row is-${tone.className}">
+          <div class="theme-radar-copy">
+            <strong>${escapeHtml(row.title)}</strong>
+            <small>${escapeHtml(row.summary)}</small>
+          </div>
+          <div class="theme-radar-state" aria-label="${escapeHtml(row.title)} ${escapeHtml(tone.label)}">
+            <b>${escapeHtml(tone.label)}</b>
+            <em>${formatSignedScore(score)}점</em>
+            <span class="theme-radar-meter" aria-hidden="true">
+              <i style="width: ${meterValue}%"></i>
+            </span>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderThemeRadarError() {
+  const list = document.querySelector("#themeRadarList");
+  if (!list) return;
+  list.innerHTML = `<p class="theme-radar-empty">테마 데이터 갱신 실패</p>`;
+}
+
+function buildThemeRadarRows(quotes = {}, sentiment = {}) {
+  const vixTermQuote = buildVixTermQuote(quotes.vix3m, sentiment.vix);
+  return [
+    {
+      title: "반도체·AI",
+      score: scoreSemiconductorCycle(quotes),
+      summary: themeRadarSummary([
+        themeQuoteLabel("SOX", quotes.sox),
+        themeRelativeLabel("반도체/QQQ", quotes.semiLeadership),
+        themeValueLabel("리더 폭", quotes.semiBreadth, 0),
+      ]),
+    },
+    {
+      title: "미국 성장주",
+      score: average([
+        scoreRiskAsset(quotes.nasdaq),
+        scoreRelativeBreadth(quotes.nasdaqBreadth),
+        scoreVix(sentiment.vix),
+        scoreVixTermStructure(quotes.vix3m, sentiment.vix),
+      ]),
+      summary: themeRadarSummary([
+        themeQuoteLabel("NASDAQ", quotes.nasdaq),
+        themeRelativeLabel("시장 폭", quotes.nasdaqBreadth),
+        themeValueLabel("VIX", sentiment.vix, 1, "close"),
+      ]),
+    },
+    {
+      title: "한국 위험선호",
+      score: average([
+        scoreRiskAsset(quotes.kospi),
+        scoreRiskAsset(quotes.kosdaq),
+        scoreUsdKrw(quotes.usdKrw),
+        scoreOneDayMove(quotes.nikkei),
+        scoreFutureMove(quotes.nasdaqFutures?.changePercent),
+      ]),
+      summary: themeRadarSummary([
+        themeQuoteLabel("KOSPI", quotes.kospi),
+        themeQuoteLabel("Nikkei", quotes.nikkei),
+        themeQuoteLabel("USD/KRW", quotes.usdKrw),
+      ]),
+    },
+    {
+      title: "시장 폭",
+      score: scoreMarketBreadth(quotes),
+      summary: themeRadarSummary([
+        themeRelativeLabel("NASDAQ 폭", quotes.nasdaqBreadth),
+        themeRelativeLabel("S&P 폭", quotes.sp500Breadth),
+        themeValueLabel("반도체 리더", quotes.semiBreadth, 0),
+      ]),
+    },
+    {
+      title: "매크로 부담",
+      score: average([
+        scoreVix(sentiment.vix),
+        scoreVixTermStructure(quotes.vix3m, sentiment.vix),
+        scoreYield(quotes.us10y),
+        scoreHySpread(quotes.hySpread),
+        scoreWti(quotes.wti),
+      ]),
+      summary: themeRadarSummary([
+        themeValueLabel("VIX 구조", vixTermQuote, 2, "price", "p"),
+        themeValueLabel("10Y", quotes.us10y, 2, "price", "%"),
+        themeValueLabel("HY", quotes.hySpread, 2, "price", "%"),
+      ]),
+    },
+  ];
+}
+
+function themeRadarTone(score) {
+  if (score >= 0.45) return { className: "strong", label: "강함" };
+  if (score >= 0.15) return { className: "good", label: "양호" };
+  if (score > -0.15) return { className: "neutral", label: "중립" };
+  if (score > -0.45) return { className: "weak", label: "약함" };
+  return { className: "risk", label: "경계" };
+}
+
+function themeRadarSummary(parts) {
+  const text = parts.filter(Boolean).join(" · ");
+  return text || "가용 지표 부족";
+}
+
+function themeQuoteLabel(label, quote) {
+  const change = Number(quote?.changePercent);
+  if (!Number.isFinite(change)) return "";
+  return `${label} ${formatSignedNumber(change, 2)}%`;
+}
+
+function themeRelativeLabel(label, quote) {
+  const value = Number(quote?.price);
+  if (!Number.isFinite(value)) return "";
+  return `${label} ${formatSignedNumber(value, 1)}p`;
+}
+
+function themeValueLabel(label, data, decimals = 1, valueKey = "price", suffix = "") {
+  const value = Number(data?.[valueKey]);
+  if (!Number.isFinite(value)) return "";
+  return `${label} ${formatNumber(value, decimals)}${suffix}`;
 }
 
 function evaluateNextDayIndexPrediction(target, quotes, sentiment) {
@@ -2013,16 +2232,16 @@ function backtestedIndexDirection(indexId, components, score) {
     if (usMarket >= 0.45) {
       return { direction: "상승", summary: "고신뢰 검증 구간 · 미국장 강세" };
     }
-    if (spFuture <= -0.8) {
+    if (spFuture <= -0.8 && vixTerm < 0.2) {
       return { direction: "하락", summary: "고신뢰 검증 구간 · S&P선물 급락" };
     }
     if (rate <= -0.7) {
       return { direction: "하락", summary: "고신뢰 확장 구간 · 금리 급락 위험회피" };
     }
-    if (nikkei <= -0.8) {
+    if (nikkei <= -0.8 && vixTerm > -0.5) {
       return { direction: "상승", summary: "고신뢰 확장 구간 · 니케이 급락 후 되돌림" };
     }
-    if (score >= 0.3) {
+    if (score >= 0.35) {
       return { direction: "상승", summary: "고신뢰 확장 구간 · 코스피 종합점수 강세" };
     }
   }
@@ -2899,7 +3118,7 @@ function buildPortfolioChecks({
     portfolioCheck("장기상대", multiRelativeScore, "1/3/6/12개월"),
     portfolioCheck("50/200일선", movingAverageScore, "추세 확인"),
     portfolioCheck("외국인·기관", investorFlowScore, "수급 확인"),
-    portfolioCheck("시장레짐", regimeScore, "신용·금융상황"),
+    portfolioCheck("시장레짐", regimeScore, "신용 스프레드"),
     portfolioCheck("시장폭", marketBreadthScore, "동일가중 상대"),
     portfolioCheck("반도체", semiconductorCycleScore, "사이클 확인"),
     portfolioCheck("52주고점", highProximityScore, "고점 근접도"),
@@ -3322,7 +3541,6 @@ function scoreUsdKrw(quote) {
 function scoreMarketRegime(quotes) {
   return average([
     scoreHySpread(quotes?.hySpread),
-    scoreNfci(quotes?.nfci),
   ]);
 }
 
@@ -3515,23 +3733,6 @@ function scoreHySpread(quote) {
   const move = pointChange(quote.history);
   if (move <= -0.3) score += 0.15;
   if (move >= 0.4) score -= 0.2;
-  return clamp(score, -1, 1);
-}
-
-function scoreNfci(quote) {
-  const value = Number(quote?.price);
-  if (!Number.isFinite(value)) return NaN;
-
-  let score = 0;
-  if (value <= -0.4) score = 0.75;
-  else if (value <= -0.15) score = 0.35;
-  else if (value <= 0.15) score = -0.05;
-  else if (value <= 0.5) score = -0.5;
-  else score = -0.9;
-
-  const move = pointChange(quote.history);
-  if (move <= -0.05) score += 0.1;
-  if (move >= 0.08) score -= 0.15;
   return clamp(score, -1, 1);
 }
 

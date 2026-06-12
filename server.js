@@ -237,13 +237,6 @@ const FRED_SOURCES = [
     valueSuffix: "%",
     changeUnit: "p",
   },
-  {
-    id: "nfci",
-    label: "금융상황지수 NFCI",
-    seriesId: "NFCI",
-    decimals: 2,
-    changeUnit: "",
-  },
 ];
 const PORTFOLIO_HOLDINGS = [
   { amount: 30041571, benchmark: "kospi", code: "395270", id: "hanaroSemi", name: "HANARO Fn K-반도체", tags: ["semi", "korea"] },

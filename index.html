@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>시장 대시보드</title>
-    <link rel="stylesheet" href="./styles.css?v=search-focus-20260604" />
+    <link rel="stylesheet" href="./styles.css?v=theme-radar-20260613" />
   </head>
   <body>
     <main class="app-shell" aria-label="시장 주요 정보">
@@ -311,6 +311,16 @@
             </div>
           </section>
 
+          <section class="theme-radar-panel" aria-label="테마 레이더">
+            <div class="theme-radar-heading">
+              <span>시장</span>
+              <strong>테마 레이더</strong>
+            </div>
+            <div class="theme-radar-list" id="themeRadarList">
+              <p class="theme-radar-empty">테마 데이터 계산 중</p>
+            </div>
+          </section>
+
           <div class="indicator-list" aria-label="주요 시장 지표">
           <article class="indicator-row" data-indicator="kospi">
             <div class="indicator-copy">
@@ -447,15 +457,6 @@
             <svg class="sparkline" id="hySpreadSparkline" viewBox="0 0 132 52" role="img" aria-label="하이일드 스프레드 최근 추이"></svg>
           </article>
 
-          <article class="indicator-row" data-indicator="nfci">
-            <div class="indicator-copy">
-              <span class="indicator-label">금융상황지수 NFCI</span>
-              <strong id="nfciValue">불러오는 중</strong>
-              <small id="nfciChange">지연 데이터</small>
-            </div>
-            <svg class="sparkline" id="nfciSparkline" viewBox="0 0 132 52" role="img" aria-label="금융상황지수 NFCI 최근 추이"></svg>
-          </article>
-
           <article class="indicator-row" data-indicator="fearGreed">
             <div class="indicator-copy">
               <span class="indicator-label">공포·탐욕 지수</span>
@@ -503,6 +504,6 @@
       </section>
     </div>
 
-    <script src="./app.js?v=search-focus-20260604"></script>
+    <script src="./app.js?v=theme-radar-20260613"></script>
   </body>
 </html>
