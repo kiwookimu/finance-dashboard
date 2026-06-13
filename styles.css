@@ -4032,3 +4032,24 @@ h1,
   overflow-wrap: anywhere;
   word-break: keep-all;
 }
+
+.recommendation-quote,
+.recommendation-metrics b,
+.stock-evaluation-metrics b {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.recommendation-metrics b,
+.stock-evaluation-metrics b {
+  font-size: 14px;
+  line-height: 1.08;
+}
+
+.recommendation-metrics em,
+.stock-evaluation-metrics em {
+  font-size: 11px;
+  line-height: 1.12;
+  overflow-wrap: normal;
+}
