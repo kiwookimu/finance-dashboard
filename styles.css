@@ -4000,3 +4000,35 @@ h1,
   background: rgba(255, 107, 122, 0.1);
   border-color: rgba(255, 107, 122, 0.28);
 }
+
+/* Keep user-facing values readable. Bars, meters, and decorative masks still
+   use overflow clipping above, but text should wrap instead of truncating. */
+.signal-copy strong,
+.score-segment b,
+.score-segment em,
+.holding-copy strong,
+.holding-copy small,
+.recommendation-title strong,
+.recommendation-quote,
+.recommendation-metrics b,
+.recommendation-metrics em,
+.stock-search-result strong,
+.stock-evaluation-metrics b,
+.stock-evaluation-metrics em,
+.stock-evaluation-check b,
+.stock-evaluation-check em,
+.stock-evaluation-check small,
+.stock-evaluation-check i,
+.mirofish-agent-head strong,
+.mirofish-agent small,
+.mirofish-agent em,
+.prediction-label,
+.prediction-label-metrics,
+.traffic-path-row span,
+.traffic-history-table td:nth-child(4) {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
