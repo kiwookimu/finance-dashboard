@@ -60,7 +60,6 @@ const MARKET_SOURCES = [
 const SEMI_LEADER_IDS = ["nvda", "avgo", "amd", "mu", "tsm", "asml", "qcom"];
 const FRED_SOURCES = [
   { id: "hySpread", seriesId: "BAMLH0A0HYM2" },
-  { id: "nfci", seriesId: "NFCI" },
 ];
 const SENTIMENT_SOURCES = {
   fearGreed:
@@ -413,7 +412,6 @@ function buildQuotesAsOf(date, marketHistories, fredHistories) {
     wti: quote("wti"),
     us10y: quote("us10y"),
     hySpread: quote("hySpread", fredHistories),
-    nfci: quote("nfci", fredHistories),
     ddr5Spot: null,
     serverDdr5Contract: null,
   };
@@ -2058,7 +2056,7 @@ function scoreWti(quote) {
 }
 
 function scoreMarketRegime(quotes) {
-  return average([scoreHySpread(quotes?.hySpread), scoreNfci(quotes?.nfci)]);
+  return average([scoreHySpread(quotes?.hySpread)]);
 }
 
 function scoreShortTermEventImpulse(quotes, sentiment) {
@@ -2248,21 +2246,6 @@ function scoreHySpread(quote) {
   const move = pointChange(quote.history);
   if (move <= -0.3) score += 0.15;
   if (move >= 0.4) score -= 0.2;
-  return clamp(score, -1, 1);
-}
-
-function scoreNfci(quote) {
-  const value = Number(quote?.price);
-  if (!Number.isFinite(value)) return NaN;
-  let score = 0;
-  if (value <= -0.4) score = 0.75;
-  else if (value <= -0.15) score = 0.35;
-  else if (value <= 0.15) score = -0.05;
-  else if (value <= 0.5) score = -0.5;
-  else score = -0.9;
-  const move = pointChange(quote.history);
-  if (move <= -0.05) score += 0.1;
-  if (move >= 0.08) score -= 0.15;
   return clamp(score, -1, 1);
 }
 

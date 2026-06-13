@@ -1,10 +1,36 @@
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const {
+  buildStockRecommendationCondition,
+  criteriaMarketCap,
+  criteriaMinimumHistoryDays,
+  criteriaNumber,
+  criteriaString,
+  loadRecommendationCriteria,
+} = require("../lib/recommendationCriteria");
+const {
+  MIROFISH_MARKET_SYMBOLS,
+  applyMirofishSetupScore,
+  buildMirofishSimulationFromHistories,
+  scoreRecommendationWithMirofish,
+} = require("../lib/mirofishScreener");
+const RECOMMENDATION_CRITERIA = loadRecommendationCriteria();
 const MARKET_MONTH = process.argv[2] || "2025-09";
-const SCREEN_VERSION = "us-rolling-21-v7";
+const SCREEN_VERSION = criteriaString(
+  RECOMMENDATION_CRITERIA,
+  "screenVersion.us",
+  "us-rolling-21-v7",
+);
 const COMPARISON_MONTH_COUNT = Number(
-  process.env.COMPARE_MONTHS || process.argv[3] || 5,
+  process.env.COMPARE_MONTHS ||
+    process.argv[3] ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "comparisonMonthCount", 5),
 );
 const MIN_MARKET_CAP_KRW = Number(
-  process.env.MIN_MARKET_CAP_KRW || process.argv[4] || 10_000_000_000_000,
+  process.env.MIN_MARKET_CAP_KRW ||
+    process.argv[4] ||
+    criteriaMarketCap(RECOMMENDATION_CRITERIA, "us", 10_000_000_000_000),
 );
 const CONCURRENCY = Number(process.env.SCREEN_CONCURRENCY || 8);
 const LIMIT = Number(process.env.SCREEN_LIMIT || 0);
@@ -14,57 +40,134 @@ const SYMBOL_FILTER = new Set(
     .map((symbol) => symbol.trim().toUpperCase())
     .filter(Boolean),
 );
-const ROLLING_WINDOW_DAYS = Number(process.env.ROLLING_WINDOW_DAYS || 21);
-const RECENT_VOLUME_DAYS = Number(process.env.RECENT_VOLUME_DAYS || 5);
+const ROLLING_WINDOW_DAYS = Number(
+  process.env.ROLLING_WINDOW_DAYS ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "rollingWindowDays", 21),
+);
+const RECENT_VOLUME_DAYS = Number(
+  process.env.RECENT_VOLUME_DAYS ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "recentVolumeDays", 5),
+);
 const MIN_HISTORY_DAYS = Number(
   process.env.MIN_HISTORY_DAYS ||
-    ROLLING_WINDOW_DAYS * (COMPARISON_MONTH_COUNT + 1) + 1,
+    (ROLLING_WINDOW_DAYS === criteriaNumber(RECOMMENDATION_CRITERIA, "rollingWindowDays", 21) &&
+    COMPARISON_MONTH_COUNT === criteriaNumber(RECOMMENDATION_CRITERIA, "comparisonMonthCount", 5)
+      ? criteriaMinimumHistoryDays(RECOMMENDATION_CRITERIA)
+      : ROLLING_WINDOW_DAYS * (COMPARISON_MONTH_COUNT + 1) + 1),
 );
-const MIN_SETUP_SCORE = Number(process.env.MIN_SETUP_SCORE || 70);
-const MIN_CONFIRMED_SETUP_SCORE = Number(process.env.MIN_CONFIRMED_SETUP_SCORE || 75);
-const MIN_VOLUME_RATIO = Number(process.env.MIN_VOLUME_RATIO || 1.8);
-const MIN_RECENT_VOLUME_RATIO = Number(process.env.MIN_RECENT_VOLUME_RATIO || 1.8);
-const MIN_WATCH_VOLUME_RATIO = Number(process.env.MIN_WATCH_VOLUME_RATIO || 1.2);
+const MIN_SETUP_SCORE = Number(
+  process.env.MIN_SETUP_SCORE || criteriaNumber(RECOMMENDATION_CRITERIA, "setupScore", 70),
+);
+const MIN_CONFIRMED_SETUP_SCORE = Number(
+  process.env.MIN_CONFIRMED_SETUP_SCORE ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "confirmedSetupScore", 75),
+);
+const MIN_VOLUME_RATIO = Number(
+  process.env.MIN_VOLUME_RATIO || criteriaNumber(RECOMMENDATION_CRITERIA, "volumeRatio", 1.8),
+);
+const MIN_RECENT_VOLUME_RATIO = Number(
+  process.env.MIN_RECENT_VOLUME_RATIO ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "recentVolumeRatio", 1.8),
+);
+const MIN_WATCH_VOLUME_RATIO = Number(
+  process.env.MIN_WATCH_VOLUME_RATIO ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "watchVolumeRatio", 1.2),
+);
 const MIN_ROLLING_RETURN = Number(
-  process.env.MIN_ROLLING_RETURN || process.env.MIN_MONTHLY_RETURN || 15,
+  process.env.MIN_ROLLING_RETURN ||
+    process.env.MIN_MONTHLY_RETURN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "rollingReturn", 15),
 );
-const MIN_WATCH_RETURN = Number(process.env.MIN_WATCH_RETURN || 60);
-const MIN_RELATIVE_RETURN = Number(process.env.MIN_RELATIVE_RETURN || 8);
-const MIN_MFI = Number(process.env.MIN_MFI || 80);
-const MIN_WATCH_MFI = Number(process.env.MIN_WATCH_MFI || 75);
+const MAX_CONFIRMED_ROLLING_RETURN = Number(
+  process.env.MAX_CONFIRMED_ROLLING_RETURN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "maxConfirmedRollingReturn", 80),
+);
+const MIN_HIGH_CONFIDENCE_VOLUME_RATIO = Number(
+  process.env.MIN_HIGH_CONFIDENCE_VOLUME_RATIO ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "highConfidenceVolumeRatio", 2.2),
+);
+const MIN_HIGH_CONFIDENCE_RELATIVE_RETURN = Number(
+  process.env.MIN_HIGH_CONFIDENCE_RELATIVE_RETURN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "highConfidenceRelativeReturn", 40),
+);
+const MAX_HIGH_CONFIDENCE_DRAWDOWN = Number(
+  process.env.MAX_HIGH_CONFIDENCE_DRAWDOWN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "highConfidenceMaxHighDrawdown", 3),
+);
+const MIN_WATCH_RETURN = Number(
+  process.env.MIN_WATCH_RETURN || criteriaNumber(RECOMMENDATION_CRITERIA, "watchReturn", 60),
+);
+const MIN_RELATIVE_RETURN = Number(
+  process.env.MIN_RELATIVE_RETURN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "relativeReturn", 8),
+);
+const MIN_MFI = Number(process.env.MIN_MFI || criteriaNumber(RECOMMENDATION_CRITERIA, "mfi", 80));
+const MIN_WATCH_MFI = Number(
+  process.env.MIN_WATCH_MFI || criteriaNumber(RECOMMENDATION_CRITERIA, "watchMfi", 75),
+);
 const MIN_OBSERVATION_VOLUME_RATIO = Number(
-  process.env.MIN_OBSERVATION_VOLUME_RATIO || 1.2,
+  process.env.MIN_OBSERVATION_VOLUME_RATIO ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "observationVolumeRatio", 1.2),
 );
 const MIN_OBSERVATION_RECENT_VOLUME_RATIO = Number(
-  process.env.MIN_OBSERVATION_RECENT_VOLUME_RATIO || 1.5,
+  process.env.MIN_OBSERVATION_RECENT_VOLUME_RATIO ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "observationRecentVolumeRatio", 1.5),
 );
-const MIN_OBSERVATION_RETURN = Number(process.env.MIN_OBSERVATION_RETURN || 60);
+const MIN_OBSERVATION_RETURN = Number(
+  process.env.MIN_OBSERVATION_RETURN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "observationReturn", 60),
+);
 const MIN_OBSERVATION_RELATIVE_RETURN = Number(
-  process.env.MIN_OBSERVATION_RELATIVE_RETURN || 40,
+  process.env.MIN_OBSERVATION_RELATIVE_RETURN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "observationRelativeReturn", 40),
 );
-const MIN_OBSERVATION_MFI = Number(process.env.MIN_OBSERVATION_MFI || 75);
+const MIN_OBSERVATION_MFI = Number(
+  process.env.MIN_OBSERVATION_MFI ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "observationMfi", 75),
+);
 const MAX_OBSERVATION_HIGH_DRAWDOWN = Number(
-  process.env.MAX_OBSERVATION_HIGH_DRAWDOWN || 5,
+  process.env.MAX_OBSERVATION_HIGH_DRAWDOWN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "observationMaxHighDrawdown", 5),
 );
-const MOVING_AVERAGE_DAYS = Number(process.env.MOVING_AVERAGE_DAYS || 10);
+const MOVING_AVERAGE_DAYS = Number(
+  process.env.MOVING_AVERAGE_DAYS ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "movingAverageDays", 10),
+);
 const MAX_ROLLING_HIGH_DRAWDOWN = Number(
   process.env.MAX_ROLLING_HIGH_DRAWDOWN ||
     process.env.MAX_MONTH_HIGH_DRAWDOWN ||
-    20,
+    criteriaNumber(RECOMMENDATION_CRITERIA, "maxRollingHighDrawdown", 20),
 );
 const MAX_CONFIRMED_HIGH_DRAWDOWN = Number(
-  process.env.MAX_CONFIRMED_HIGH_DRAWDOWN || 10,
+  process.env.MAX_CONFIRMED_HIGH_DRAWDOWN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "maxConfirmedHighDrawdown", 10),
 );
-const OVERHEAT_MFI = Number(process.env.OVERHEAT_MFI || 92);
-const OVERHEAT_RETURN = Number(process.env.OVERHEAT_RETURN || 70);
-const EXTREME_RETURN = Number(process.env.EXTREME_RETURN || 100);
-const EXTREME_VOLUME_RATIO = Number(process.env.EXTREME_VOLUME_RATIO || 12);
-const WEAK_MARKET_RETURN = Number(process.env.WEAK_MARKET_RETURN || -5);
+const OVERHEAT_MFI = Number(
+  process.env.OVERHEAT_MFI || criteriaNumber(RECOMMENDATION_CRITERIA, "overheatMfi", 92),
+);
+const OVERHEAT_RETURN = Number(
+  process.env.OVERHEAT_RETURN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "overheatReturn", 70),
+);
+const EXTREME_RETURN = Number(
+  process.env.EXTREME_RETURN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "extremeReturn", 100),
+);
+const EXTREME_VOLUME_RATIO = Number(
+  process.env.EXTREME_VOLUME_RATIO ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "extremeVolumeRatio", 12),
+);
+const WEAK_MARKET_RETURN = Number(
+  process.env.WEAK_MARKET_RETURN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "weakMarketReturn.us", -5),
+);
 const WEAK_MARKET_OVERRIDE_RELATIVE_RETURN = Number(
-  process.env.WEAK_MARKET_OVERRIDE_RELATIVE_RETURN || 25,
+  process.env.WEAK_MARKET_OVERRIDE_RELATIVE_RETURN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "weakMarketOverrideRelativeReturn", 25),
 );
 const WEAK_MARKET_OVERRIDE_RETURN = Number(
-  process.env.WEAK_MARKET_OVERRIDE_RETURN || 30,
+  process.env.WEAK_MARKET_OVERRIDE_RETURN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "weakMarketOverrideReturn", 30),
 );
 const BENCHMARK_SYMBOL = process.env.BENCHMARK_SYMBOL || "QQQ";
 const MARKET_CAP_PREFILTER = process.env.MARKET_CAP_PREFILTER !== "0";
@@ -88,6 +191,10 @@ const benchmarkRows = await fetchYahooDaily(
   historyStartDate(),
   historyEndDate(),
 );
+const mirofishMarketHistories = await fetchMirofishMarketHistories(
+  BENCHMARK_SYMBOL === "QQQ" ? { qqq: benchmarkRows } : {},
+);
+const mirofishSimulationByDate = new Map();
 const EFFECTIVE_MARKET_MONTH = effectiveMarketMonth(MARKET_MONTH, benchmarkRows);
 if (EFFECTIVE_MARKET_MONTH !== MARKET_MONTH) {
   console.error(
@@ -141,6 +248,8 @@ await runPool(universe, CONCURRENCY, async (stock) => {
 
 results.sort(
   (a, b) =>
+    (b.confidenceRank || 0) - (a.confidenceRank || 0) ||
+    (b.mirofishAdjustedScore ?? b.setupScore) - (a.mirofishAdjustedScore ?? a.setupScore) ||
     b.setupScore - a.setupScore ||
     b.relativeReturn - a.relativeReturn ||
     b.volumeRatio - a.volumeRatio,
@@ -150,38 +259,14 @@ const payload = {
   generatedAt: new Date().toISOString(),
   benchmark: BENCHMARK_SYMBOL,
   comparisonMonthCount: COMPARISON_MONTH_COUNT,
-  condition: {
-    breakout: `latest close reaches recent ${ROLLING_WINDOW_DAYS}-trading-day closing high`,
-    dailyMfi: `>= ${MIN_MFI}`,
-    earlyWatch:
-      `21-day return >= ${MIN_WATCH_RETURN}%, ` +
-      `relative return >= ${MIN_OBSERVATION_RELATIVE_RETURN}%p, ` +
-      `MFI >= ${MIN_WATCH_MFI}, ` +
-      `21-day volume >= ${MIN_WATCH_VOLUME_RATIO}x, ` +
-      `${RECENT_VOLUME_DAYS}-day volume >= ${MIN_RECENT_VOLUME_RATIO}x, ` +
-      `within -${MAX_OBSERVATION_HIGH_DRAWDOWN}% from the 21-day high, and above the ${MOVING_AVERAGE_DAYS}-day average`,
-    observation:
-      `21-day return >= ${MIN_OBSERVATION_RETURN}%, ` +
-      `relative return >= ${MIN_OBSERVATION_RELATIVE_RETURN}%p, ` +
-      `MFI >= ${MIN_OBSERVATION_MFI}, within -${MAX_OBSERVATION_HIGH_DRAWDOWN}% from the ${ROLLING_WINDOW_DAYS}-day high, ` +
-      `21-day volume >= ${MIN_OBSERVATION_VOLUME_RATIO}x, and ` +
-      `${RECENT_VOLUME_DAYS}-day volume >= ${MIN_OBSERVATION_RECENT_VOLUME_RATIO}x`,
-    confirmationGuard:
-      `confirmed picks require ${RECENT_VOLUME_DAYS}-day volume >= ${MIN_RECENT_VOLUME_RATIO}x, ` +
-      `setup score >= ${MIN_CONFIRMED_SETUP_SCORE}, high drawdown within -${MAX_CONFIRMED_HIGH_DRAWDOWN}%, ` +
-      `and no overheat or weak-market downgrade`,
-    minimumHistoryDays: MIN_HISTORY_DAYS,
-    minimumMarketCapKrw: MIN_MARKET_CAP_KRW,
-    minimumMarketCapUsd: Math.round(minimumMarketCapUsd),
-    monthHighDrawdown: `>= -${MAX_ROLLING_HIGH_DRAWDOWN}% from recent ${ROLLING_WINDOW_DAYS}-trading-day high`,
-    monthlyReturn: `>= ${MIN_ROLLING_RETURN}% over recent ${ROLLING_WINDOW_DAYS} trading days`,
-    recentVolumeRatio:
-      `>= ${MIN_RECENT_VOLUME_RATIO}x vs previous ${ROLLING_WINDOW_DAYS * COMPARISON_MONTH_COUNT}-trading-day daily average`,
-    relativeReturn: `>= ${MIN_RELATIVE_RETURN}% vs ${BENCHMARK_SYMBOL}`,
-    setupScore: `>= ${MIN_SETUP_SCORE}`,
-    tenDayTrend: `close >= ${MOVING_AVERAGE_DAYS}-day average for confirmed candidates`,
-    volumeRatio: `>= ${MIN_VOLUME_RATIO}x vs previous ${COMPARISON_MONTH_COUNT} rolling ${ROLLING_WINDOW_DAYS}-trading-day averages`,
-  },
+  condition: buildStockRecommendationCondition(
+    RECOMMENDATION_CRITERIA,
+    MIN_MARKET_CAP_KRW,
+    {
+      minimumMarketCapUsd,
+      relativeBenchmark: BENCHMARK_SYMBOL,
+    },
+  ),
   exchangeRate: {
     pair: "USD/KRW",
     value: round(usdKrw, 4),
@@ -193,6 +278,11 @@ const payload = {
     ? { requestedMonth: MARKET_MONTH }
     : {}),
   screenVersion: SCREEN_VERSION,
+  mirofish: {
+    enabled: true,
+    adjustment: "setupScore is adjusted by market/theme fit before final sorting",
+    availableMarketSeries: Object.keys(mirofishMarketHistories),
+  },
   universe:
     SYMBOL_FILTER.size > 0
       ? `Manual symbols: ${[...SYMBOL_FILTER].join(", ")}`
@@ -305,6 +395,17 @@ function screenStock(stock, rows, benchmarkRows) {
     targetReturn,
     volumeRatio: volumeStats.volumeRatio,
   });
+  const mirofishSimulation = mirofishSimulationForDate(current.date);
+  const mirofishFit = scoreRecommendationWithMirofish(
+    {
+      ...stock,
+      industry: stock.industry,
+      name: stock.name,
+      sector: stock.sector,
+    },
+    { baseMarket: "us", simulation: mirofishSimulation },
+  );
+  const mirofishAdjustedScore = applyMirofishSetupScore(setupScore, mirofishFit);
   const overheatRisk = recommendationOverheatRisk({
     mfi,
     monthHighDrawdown,
@@ -320,13 +421,15 @@ function screenStock(stock, rows, benchmarkRows) {
   });
   const technicalCautionReasons = [
     overheatRisk ? "과열 신호" : "",
+    targetReturn > MAX_CONFIRMED_ROLLING_RETURN ? "단기 과열 상승" : "",
     monthHighDrawdown <= -MAX_CONFIRMED_HIGH_DRAWDOWN ? "고점 이탈" : "",
     weakMarketRegime ? "시장 약세" : "",
-    setupScore < MIN_CONFIRMED_SETUP_SCORE ? "확신 점수 부족" : "",
+    mirofishAdjustedScore < MIN_CONFIRMED_SETUP_SCORE ? "확신 점수 부족" : "",
+    mirofishFit?.score <= -0.25 ? `MiroFish ${mirofishFit.label}` : "",
   ].filter(Boolean);
 
   if (
-    setupScore < MIN_SETUP_SCORE ||
+    mirofishAdjustedScore < MIN_SETUP_SCORE ||
     (!confirmedCandidate && !observationCandidate && !earlyObservationCandidate)
   ) {
     return null;
@@ -334,10 +437,17 @@ function screenStock(stock, rows, benchmarkRows) {
 
   const confirmationReady =
     confirmedCandidate &&
-    setupScore >= MIN_CONFIRMED_SETUP_SCORE &&
+    targetReturn <= MAX_CONFIRMED_ROLLING_RETURN &&
+    mirofishAdjustedScore >= MIN_CONFIRMED_SETUP_SCORE &&
     monthHighDrawdown > -MAX_CONFIRMED_HIGH_DRAWDOWN &&
     !overheatRisk &&
-    !weakMarketRegime;
+    !weakMarketRegime &&
+    (!mirofishFit || mirofishFit.score > -0.35);
+  const highConfidenceCandidate =
+    confirmationReady &&
+    ((volumeStats.volumeRatio >= MIN_HIGH_CONFIDENCE_VOLUME_RATIO &&
+      relativeReturn >= MIN_HIGH_CONFIDENCE_RELATIVE_RETURN) ||
+      monthHighDrawdown >= -MAX_HIGH_CONFIDENCE_DRAWDOWN);
   const recommendationStage = confirmationReady
     ? "confirmed"
     : confirmedCandidate || observationCandidate
@@ -345,7 +455,9 @@ function screenStock(stock, rows, benchmarkRows) {
       : "observe";
   const signal =
     recommendationStage === "confirmed"
-      ? setupScore >= 85
+      ? highConfidenceCandidate
+        ? "고확신 1개월 상승 후보"
+        : setupScore >= 85
         ? "강한 1개월 상승 후보"
         : "1개월 상승 후보"
       : recommendationStage === "watch"
@@ -357,12 +469,21 @@ function screenStock(stock, rows, benchmarkRows) {
     aboveTrailing3Average: aboveTenDayAverage,
     benchmarkReturn: round(benchmarkReturn, 2),
     breakout,
+    confidenceRank: highConfidenceCandidate ? 2 : confirmationReady ? 1 : 0,
+    confidenceTier: highConfidenceCandidate ? "high" : confirmationReady ? "standard" : "",
     exchange: stock.exchange,
     firstToLastReturn: round(percentChange(current.close, recentWindow[0]?.close), 2),
     dayReturn: round(percentChange(current.close, previousTradingDay?.close), 2),
     lastClose: round(current.close, 4),
     lastDate: current.date,
     mfi: round(mfi, 2),
+    mirofishAdjustedScore,
+    mirofishBonus: mirofishFit?.bonus ?? 0,
+    mirofishDrivers: mirofishFit?.drivers || [],
+    mirofishLabel: mirofishFit?.label || "",
+    mirofishMarketScore: mirofishSimulation?.score ?? null,
+    mirofishScore: round(Number(mirofishFit?.score), 4),
+    mirofishTone: mirofishFit?.tone || "",
     monthHigh: round(rollingHigh, 4),
     monthHighDrawdown: round(monthHighDrawdown, 2),
     monthlyReturn: round(targetReturn, 2),
@@ -754,6 +875,37 @@ async function fetchYahooDaily(symbol, startDate, endDate) {
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
+async function fetchMirofishMarketHistories(seed = {}) {
+  const histories = { ...seed };
+  const entries = Object.entries(MIROFISH_MARKET_SYMBOLS).filter(([id]) => !histories[id]);
+  const settled = await Promise.allSettled(
+    entries.map(async ([id, symbol]) => [
+      id,
+      await fetchYahooDaily(symbol, historyStartDate(), historyEndDate()),
+    ]),
+  );
+  for (const result of settled) {
+    if (result.status === "fulfilled") {
+      const [id, rows] = result.value;
+      histories[id] = rows;
+    } else {
+      console.error(`mirofish market series unavailable: ${result.reason.message}`);
+    }
+  }
+  return histories;
+}
+
+function mirofishSimulationForDate(date) {
+  if (!date) return null;
+  if (!mirofishSimulationByDate.has(date)) {
+    mirofishSimulationByDate.set(
+      date,
+      buildMirofishSimulationFromHistories(mirofishMarketHistories, date),
+    );
+  }
+  return mirofishSimulationByDate.get(date);
+}
+
 async function fetchNasdaqMarketCapUsd(stock) {
   const url = `https://api.nasdaq.com/api/quote/${encodeURIComponent(
     stock.symbol,
@@ -878,7 +1030,16 @@ function toCsv(rows) {
     "name",
     "exchange",
     "signal",
+    "confidenceTier",
+    "confidenceRank",
     "setupScore",
+    "mirofishAdjustedScore",
+    "mirofishBonus",
+    "mirofishScore",
+    "mirofishLabel",
+    "mirofishTone",
+    "mirofishDrivers",
+    "mirofishMarketScore",
     "lastDate",
     "lastClose",
     "previousDayClose",

@@ -8,6 +8,17 @@ const { readFile } = require("node:fs/promises");
 const PORT = Number(process.env.PORT || 5173);
 const HOST = process.env.HOST || "0.0.0.0";
 const ROOT = __dirname;
+const {
+  buildStockRecommendationCondition,
+  criteriaMarketCap,
+  criteriaMinimumHistoryDays,
+  criteriaNumber,
+  criteriaString,
+  loadRecommendationCriteria,
+} = require("./lib/recommendationCriteria");
+const { getBacktestSummary } = require("./lib/backtestSummary");
+const { createTrafficStore } = require("./lib/trafficStore");
+const RECOMMENDATION_CRITERIA = loadRecommendationCriteria();
 const MARKET_CACHE_MS = 60 * 1000;
 const SENTIMENT_CACHE_MS = 15 * 60 * 1000;
 const PORTFOLIO_CACHE_MS = 5 * 60 * 1000;
@@ -22,48 +33,225 @@ const RECOMMENDATION_STOP_LOSS_PERCENT = -8;
 const RECOMMENDATION_MAX_MONTH_HIGH_DRAWDOWN = -20;
 const DOMESTIC_FUNDAMENTAL_SUPPORT_SCORE = 58;
 const DOMESTIC_FUNDAMENTAL_CAUTION_SCORE = 45;
-const DOMESTIC_STOCK_RECOMMENDATION_VERSION = "kr-rolling-21-v8";
-const US_STOCK_RECOMMENDATION_VERSION = "us-rolling-21-v7";
-const STOCK_EVALUATION_COMPARISON_COUNT = 5;
-const STOCK_EVALUATION_ROLLING_DAYS = 21;
-const STOCK_EVALUATION_RECENT_VOLUME_DAYS = 5;
-const STOCK_EVALUATION_MOVING_AVERAGE_DAYS = 10;
+const DOMESTIC_STOCK_RECOMMENDATION_VERSION = criteriaString(
+  RECOMMENDATION_CRITERIA,
+  "screenVersion.domestic",
+  "kr-rolling-21-v8",
+);
+const US_STOCK_RECOMMENDATION_VERSION = criteriaString(
+  RECOMMENDATION_CRITERIA,
+  "screenVersion.us",
+  "us-rolling-21-v7",
+);
+const STOCK_EVALUATION_COMPARISON_COUNT = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "comparisonMonthCount",
+  5,
+);
+const STOCK_EVALUATION_ROLLING_DAYS = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "rollingWindowDays",
+  21,
+);
+const STOCK_EVALUATION_RECENT_VOLUME_DAYS = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "recentVolumeDays",
+  5,
+);
+const STOCK_EVALUATION_MOVING_AVERAGE_DAYS = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "movingAverageDays",
+  10,
+);
 const STOCK_EVALUATION_MIN_HISTORY_DAYS =
-  STOCK_EVALUATION_ROLLING_DAYS * (STOCK_EVALUATION_COMPARISON_COUNT + 1) + 1;
-const STOCK_EVALUATION_MIN_SETUP_SCORE = 70;
-const STOCK_EVALUATION_MIN_CONFIRMED_SETUP_SCORE = 75;
-const STOCK_EVALUATION_MIN_VOLUME_RATIO = 1.8;
-const STOCK_EVALUATION_MIN_RECENT_VOLUME_RATIO = 1.8;
-const STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_VOLUME_RATIO = 2;
-const STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_RELATIVE_RETURN = 30;
-const STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_MFI = 88;
-const STOCK_EVALUATION_MIN_WATCH_VOLUME_RATIO = 1.2;
-const STOCK_EVALUATION_MIN_ROLLING_RETURN = 15;
-const STOCK_EVALUATION_MIN_WATCH_RETURN = 60;
-const STOCK_EVALUATION_MIN_RELATIVE_RETURN = 8;
-const STOCK_EVALUATION_MIN_MFI = 80;
-const STOCK_EVALUATION_MIN_WATCH_MFI = 75;
-const STOCK_EVALUATION_MIN_OBSERVATION_VOLUME_RATIO = 1.2;
-const STOCK_EVALUATION_MIN_OBSERVATION_RECENT_VOLUME_RATIO = 1.5;
-const STOCK_EVALUATION_MIN_OBSERVATION_RETURN = 60;
-const STOCK_EVALUATION_MIN_OBSERVATION_RELATIVE_RETURN = 40;
-const STOCK_EVALUATION_MIN_OBSERVATION_MFI = 75;
-const STOCK_EVALUATION_MAX_OBSERVATION_HIGH_DRAWDOWN = 5;
-const STOCK_EVALUATION_MAX_ROLLING_HIGH_DRAWDOWN = 20;
-const STOCK_EVALUATION_MAX_CONFIRMED_HIGH_DRAWDOWN = 10;
-const STOCK_EVALUATION_OVERHEAT_MFI = 92;
-const STOCK_EVALUATION_OVERHEAT_RETURN = 70;
-const STOCK_EVALUATION_EXTREME_RETURN = 100;
-const STOCK_EVALUATION_EXTREME_VOLUME_RATIO = 12;
-const STOCK_EVALUATION_US_WEAK_MARKET_RETURN = -5;
-const STOCK_EVALUATION_KR_WEAK_MARKET_RETURN = 0;
-const STOCK_EVALUATION_WEAK_MARKET_OVERRIDE_RELATIVE_RETURN = 25;
-const STOCK_EVALUATION_WEAK_MARKET_OVERRIDE_RETURN = 30;
-const DOMESTIC_STOCK_MIN_MARKET_CAP_KRW = 1_000_000_000_000;
-const US_STOCK_MIN_MARKET_CAP_KRW = 10_000_000_000_000;
+  criteriaMinimumHistoryDays(RECOMMENDATION_CRITERIA);
+const STOCK_EVALUATION_MIN_SETUP_SCORE = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "setupScore",
+  70,
+);
+const STOCK_EVALUATION_MIN_CONFIRMED_SETUP_SCORE = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "confirmedSetupScore",
+  75,
+);
+const STOCK_EVALUATION_MIN_VOLUME_RATIO = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "volumeRatio",
+  1.8,
+);
+const STOCK_EVALUATION_MIN_RECENT_VOLUME_RATIO = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "recentVolumeRatio",
+  1.8,
+);
+const STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_VOLUME_RATIO = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "domesticConfirmedVolumeRatio",
+  2,
+);
+const STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_RELATIVE_RETURN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "domesticConfirmedRelativeReturn",
+  30,
+);
+const STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_MFI = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "domesticConfirmedMfi",
+  88,
+);
+const STOCK_EVALUATION_MIN_DOMESTIC_KOSPI_CONFIRMED_VOLUME_RATIO = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "domesticKospiConfirmedVolumeRatio",
+  2.2,
+);
+const STOCK_EVALUATION_MIN_DOMESTIC_KOSPI_CONFIRMED_RELATIVE_RETURN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "domesticKospiConfirmedRelativeReturn",
+  40,
+);
+const STOCK_EVALUATION_MIN_HIGH_CONFIDENCE_VOLUME_RATIO = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "highConfidenceVolumeRatio",
+  2.2,
+);
+const STOCK_EVALUATION_MIN_HIGH_CONFIDENCE_RELATIVE_RETURN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "highConfidenceRelativeReturn",
+  40,
+);
+const STOCK_EVALUATION_MAX_HIGH_CONFIDENCE_DRAWDOWN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "highConfidenceMaxHighDrawdown",
+  3,
+);
+const STOCK_EVALUATION_MIN_WATCH_VOLUME_RATIO = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "watchVolumeRatio",
+  1.2,
+);
+const STOCK_EVALUATION_MIN_ROLLING_RETURN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "rollingReturn",
+  15,
+);
+const STOCK_EVALUATION_MAX_CONFIRMED_ROLLING_RETURN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "maxConfirmedRollingReturn",
+  80,
+);
+const STOCK_EVALUATION_MIN_WATCH_RETURN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "watchReturn",
+  60,
+);
+const STOCK_EVALUATION_MIN_RELATIVE_RETURN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "relativeReturn",
+  8,
+);
+const STOCK_EVALUATION_MIN_MFI = criteriaNumber(RECOMMENDATION_CRITERIA, "mfi", 80);
+const STOCK_EVALUATION_MIN_WATCH_MFI = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "watchMfi",
+  75,
+);
+const STOCK_EVALUATION_MIN_OBSERVATION_VOLUME_RATIO = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "observationVolumeRatio",
+  1.2,
+);
+const STOCK_EVALUATION_MIN_OBSERVATION_RECENT_VOLUME_RATIO = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "observationRecentVolumeRatio",
+  1.5,
+);
+const STOCK_EVALUATION_MIN_OBSERVATION_RETURN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "observationReturn",
+  60,
+);
+const STOCK_EVALUATION_MIN_OBSERVATION_RELATIVE_RETURN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "observationRelativeReturn",
+  40,
+);
+const STOCK_EVALUATION_MIN_OBSERVATION_MFI = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "observationMfi",
+  75,
+);
+const STOCK_EVALUATION_MAX_OBSERVATION_HIGH_DRAWDOWN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "observationMaxHighDrawdown",
+  5,
+);
+const STOCK_EVALUATION_MAX_ROLLING_HIGH_DRAWDOWN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "maxRollingHighDrawdown",
+  20,
+);
+const STOCK_EVALUATION_MAX_CONFIRMED_HIGH_DRAWDOWN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "maxConfirmedHighDrawdown",
+  10,
+);
+const STOCK_EVALUATION_OVERHEAT_MFI = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "overheatMfi",
+  92,
+);
+const STOCK_EVALUATION_OVERHEAT_RETURN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "overheatReturn",
+  70,
+);
+const STOCK_EVALUATION_EXTREME_RETURN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "extremeReturn",
+  100,
+);
+const STOCK_EVALUATION_EXTREME_VOLUME_RATIO = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "extremeVolumeRatio",
+  12,
+);
+const STOCK_EVALUATION_US_WEAK_MARKET_RETURN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "weakMarketReturn.us",
+  -5,
+);
+const STOCK_EVALUATION_KR_WEAK_MARKET_RETURN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "weakMarketReturn.domestic",
+  0,
+);
+const STOCK_EVALUATION_WEAK_MARKET_OVERRIDE_RELATIVE_RETURN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "weakMarketOverrideRelativeReturn",
+  25,
+);
+const STOCK_EVALUATION_WEAK_MARKET_OVERRIDE_RETURN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "weakMarketOverrideReturn",
+  30,
+);
+const DOMESTIC_STOCK_MIN_MARKET_CAP_KRW = criteriaMarketCap(
+  RECOMMENDATION_CRITERIA,
+  "domestic",
+  1_000_000_000_000,
+);
+const US_STOCK_MIN_MARKET_CAP_KRW = criteriaMarketCap(
+  RECOMMENDATION_CRITERIA,
+  "us",
+  10_000_000_000_000,
+);
 const TRAFFIC_EVENT_LIMIT = 20000;
 const TRAFFIC_RETENTION_MS = 31 * 24 * 60 * 60 * 1000;
-const TRAFFIC_VISITOR_SALT = crypto.randomBytes(16).toString("hex");
+const DATA_DIR = process.env.FINANCE_DATA_DIR || path.join(ROOT, ".data");
+const TRAFFIC_EVENTS_PATH = path.join(DATA_DIR, "traffic-events.json");
+const TRAFFIC_VISITOR_SALT =
+  process.env.TRAFFIC_VISITOR_SALT || "finance-dashboard-traffic-v1";
 const KRX_CORP_LIST =
   "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13";
 const NASDAQ_SCREENER =
@@ -273,8 +461,13 @@ let cachedUsSearchUniverse = null;
 let cachedUsSearchUniverseAt = 0;
 let cachedUsdKrw = null;
 let cachedUsdKrwAt = 0;
-const trafficEvents = [];
-const trafficStartedAt = new Date().toISOString();
+const trafficStore = createTrafficStore({
+  filePath: TRAFFIC_EVENTS_PATH,
+  limit: TRAFFIC_EVENT_LIMIT,
+  retentionMs: TRAFFIC_RETENTION_MS,
+});
+const trafficEvents = trafficStore.events;
+const trafficStartedAt = trafficStore.startedAt;
 const recommendationRefreshProgress = {
   domestic: createRecommendationRefreshProgress("domestic"),
   us: createRecommendationRefreshProgress("us"),
@@ -292,6 +485,11 @@ const server = http.createServer(async (request, response) => {
 
     if (url.pathname === "/api/traffic") {
       sendJson(response, getTrafficSummary());
+      return;
+    }
+
+    if (url.pathname === "/api/backtest-summary") {
+      sendJson(response, await getBacktestSummary({ root: ROOT }));
       return;
     }
 
@@ -1105,6 +1303,7 @@ function evaluateStockTechnicals({
 
   const technicalCautionReasons = [
     overheatRisk ? "과열 신호" : "",
+    targetReturn > STOCK_EVALUATION_MAX_CONFIRMED_ROLLING_RETURN ? "단기 과열 상승" : "",
     monthHighDrawdown <= -STOCK_EVALUATION_MAX_CONFIRMED_HIGH_DRAWDOWN ? "고점 이탈" : "",
     weakMarketRegime ? "시장 약세" : "",
     setupScore < STOCK_EVALUATION_MIN_CONFIRMED_SETUP_SCORE ? "확신 점수 부족" : "",
@@ -1119,6 +1318,16 @@ function evaluateStockTechnicals({
     isDomestic && mfi < STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_MFI
       ? "국내 MFI 확신 부족"
       : "",
+    isDomestic &&
+    stock.marketType === "KOSPI" &&
+    volumeStats.volumeRatio < STOCK_EVALUATION_MIN_DOMESTIC_KOSPI_CONFIRMED_VOLUME_RATIO
+      ? "KOSPI 거래량 강화 기준 부족"
+      : "",
+    isDomestic &&
+    stock.marketType === "KOSPI" &&
+    relativeReturn < STOCK_EVALUATION_MIN_DOMESTIC_KOSPI_CONFIRMED_RELATIVE_RETURN
+      ? "KOSPI 상대강도 강화 기준 부족"
+      : "",
   ].filter(Boolean);
 
   const domesticConfirmedExtras =
@@ -1126,14 +1335,25 @@ function evaluateStockTechnicals({
     (volumeStats.volumeRatio >= STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_VOLUME_RATIO &&
       relativeReturn >= STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_RELATIVE_RETURN &&
       mfi >= STOCK_EVALUATION_MIN_DOMESTIC_CONFIRMED_MFI &&
+      (stock.marketType !== "KOSPI" ||
+        (volumeStats.volumeRatio >=
+          STOCK_EVALUATION_MIN_DOMESTIC_KOSPI_CONFIRMED_VOLUME_RATIO &&
+          relativeReturn >=
+            STOCK_EVALUATION_MIN_DOMESTIC_KOSPI_CONFIRMED_RELATIVE_RETURN)) &&
       benchmarkReturn >= STOCK_EVALUATION_KR_WEAK_MARKET_RETURN);
   const confirmationReady =
     confirmedCandidate &&
+    targetReturn <= STOCK_EVALUATION_MAX_CONFIRMED_ROLLING_RETURN &&
     setupScore >= STOCK_EVALUATION_MIN_CONFIRMED_SETUP_SCORE &&
     monthHighDrawdown > -STOCK_EVALUATION_MAX_CONFIRMED_HIGH_DRAWDOWN &&
     domesticConfirmedExtras &&
     !overheatRisk &&
     !weakMarketRegime;
+  const highConfidenceCandidate =
+    confirmationReady &&
+    ((volumeStats.volumeRatio >= STOCK_EVALUATION_MIN_HIGH_CONFIDENCE_VOLUME_RATIO &&
+      relativeReturn >= STOCK_EVALUATION_MIN_HIGH_CONFIDENCE_RELATIVE_RETURN) ||
+      monthHighDrawdown >= -STOCK_EVALUATION_MAX_HIGH_CONFIDENCE_DRAWDOWN);
   const hasAnyCandidate =
     setupScore >= STOCK_EVALUATION_MIN_SETUP_SCORE &&
     (confirmedCandidate || observationCandidate || earlyObservationCandidate);
@@ -1146,7 +1366,9 @@ function evaluateStockTechnicals({
       : "none";
   const signal =
     recommendationStage === "confirmed"
-      ? setupScore >= 85
+      ? highConfidenceCandidate
+        ? "고확신 1개월 상승 후보"
+        : setupScore >= 85
         ? "강한 1개월 상승 후보"
         : "1개월 상승 후보"
       : recommendationStage === "watch"
@@ -1161,6 +1383,8 @@ function evaluateStockTechnicals({
     benchmark: benchmarkLabel,
     benchmarkReturn: roundFinite(benchmarkReturn, 2),
     breakout,
+    confidenceRank: highConfidenceCandidate ? 2 : confirmationReady ? 1 : 0,
+    confidenceTier: highConfidenceCandidate ? "high" : confirmationReady ? "standard" : "",
     dayReturn: roundFinite(percentChange(current.close, previousTradingDay?.close), 2),
     firstToLastReturn: roundFinite(percentChange(current.close, recentWindow[0]?.close), 2),
     lastClose: roundFinite(current.close, isDomestic ? 0 : 4),
@@ -1296,6 +1520,16 @@ function buildStockEvaluationChecks(item, minimumMarketCapKrw) {
     stockEvaluationCheck("추천 확정", "상승률", monthlyReturn, 15, ">=", {
       display: "percent",
     }),
+    stockEvaluationCheck(
+      "추천 확정",
+      "상승률 상한",
+      monthlyReturn,
+      STOCK_EVALUATION_MAX_CONFIRMED_ROLLING_RETURN,
+      "<=",
+      {
+        display: "percent",
+      },
+    ),
     stockEvaluationCheck("추천 확정", "상대강도", relativeReturn, 8, ">=", {
       display: "percentPoint",
     }),
@@ -1336,7 +1570,55 @@ function buildStockEvaluationChecks(item, minimumMarketCapKrw) {
         display: "percent",
       }),
     );
+    if (item.marketType === "KOSPI") {
+      checks.push(
+        stockEvaluationCheck(
+          "KOSPI 강화",
+          "21일 거래량",
+          volumeRatio,
+          STOCK_EVALUATION_MIN_DOMESTIC_KOSPI_CONFIRMED_VOLUME_RATIO,
+          ">=",
+          {
+            display: "ratio",
+          },
+        ),
+        stockEvaluationCheck(
+          "KOSPI 강화",
+          "상대강도",
+          relativeReturn,
+          STOCK_EVALUATION_MIN_DOMESTIC_KOSPI_CONFIRMED_RELATIVE_RETURN,
+          ">=",
+          {
+            display: "percentPoint",
+          },
+        ),
+      );
+    }
   }
+
+  checks.push(
+    {
+      group: "고확신",
+      label: "거래량+상대강도",
+      threshold: `${formatNumber(STOCK_EVALUATION_MIN_HIGH_CONFIDENCE_VOLUME_RATIO, 2)}배 이상 · ${formatSigned(STOCK_EVALUATION_MIN_HIGH_CONFIDENCE_RELATIVE_RETURN, 1)}%p 이상`,
+      tone:
+        volumeRatio >= STOCK_EVALUATION_MIN_HIGH_CONFIDENCE_VOLUME_RATIO &&
+        relativeReturn >= STOCK_EVALUATION_MIN_HIGH_CONFIDENCE_RELATIVE_RETURN
+          ? "pass"
+          : "fail",
+      value: `${formatNumber(volumeRatio, 2)}배 · ${formatSigned(relativeReturn, 1)}%p`,
+    },
+    stockEvaluationCheck(
+      "고확신",
+      "고점근접",
+      monthHighDrawdown,
+      -STOCK_EVALUATION_MAX_HIGH_CONFIDENCE_DRAWDOWN,
+      ">=",
+      {
+        display: "percent",
+      },
+    ),
+  );
 
   checks.push(...stockFundamentalEvaluationChecks(item));
   return checks;
@@ -1394,7 +1676,13 @@ function stockEvaluationCheck(group, label, value, threshold, operator, options 
   const passed =
     Number.isFinite(number) &&
     Number.isFinite(target) &&
-    (operator === ">" ? number > target : number >= target);
+    (operator === "<="
+      ? number <= target
+      : operator === "<"
+        ? number < target
+        : operator === ">"
+          ? number > target
+          : number >= target);
   return {
     group,
     label,
@@ -1406,8 +1694,9 @@ function stockEvaluationCheck(group, label, value, threshold, operator, options 
 }
 
 function stockEvaluationThresholdText(threshold, operator, display) {
-  const prefix = operator === ">" ? "초과" : "이상";
-  if (display === "marketCap") return `${formatMarketCapKrw(threshold)} 이상`;
+  const prefix =
+    operator === "<=" ? "이하" : operator === "<" ? "미만" : operator === ">" ? "초과" : "이상";
+  if (display === "marketCap") return `${formatMarketCapKrw(threshold)} ${prefix}`;
   if (display === "ratio") return `${formatNumber(threshold, 2)}배 ${prefix}`;
   if (display === "percent") return `${formatSigned(threshold, 1)}% ${prefix}`;
   if (display === "percentPoint") return `${formatSigned(threshold, 1)}%p ${prefix}`;
@@ -2165,12 +2454,29 @@ function resetRecommendationRefreshProgress(market, { detail, message }) {
 function updateRecommendationRefreshProgress(market, patch) {
   const current =
     recommendationRefreshProgress[market] || createRecommendationRefreshProgress(market);
+  const nextState = patch.state || current.state || "running";
+  const rawPercent =
+    patch.percent === undefined
+      ? Number(current.percent) || 0
+      : clampRecommendationProgressPercent(patch.percent);
+  const percent =
+    current.state === "running" && nextState === "running"
+      ? Math.max(Number(current.percent) || 0, rawPercent)
+      : rawPercent;
   recommendationRefreshProgress[market] = {
     ...current,
     ...patch,
     market,
+    percent,
+    state: nextState,
     updatedAt: new Date().toISOString(),
   };
+}
+
+function clampRecommendationProgressPercent(value) {
+  const number = Math.round(Number(value));
+  if (!Number.isFinite(number)) return 0;
+  return Math.max(0, Math.min(100, number));
 }
 
 function updateRecommendationCheckedProgress(market, text) {
@@ -3140,37 +3446,14 @@ function stockRecommendationCondition(
     relativeBenchmark = "own market benchmark",
   } = {},
 ) {
-  const hasMarketCap =
-    Number.isFinite(Number(minimumMarketCapKrw)) && Number(minimumMarketCapKrw) > 0;
-  return {
-    breakout: "latest close reaches recent 21-trading-day closing high",
-    dailyMfi: ">= 80",
-    earlyWatch:
-      "21-day return >= 60%, relative return >= 40%p, 21-day volume >= 1.2x, 5-day average volume >= 1.5x, MFI >= 75, within -5% from the 21-day high, and above the 10-day average",
-    observation:
-      "21-day return >= 60%, relative return >= 40%p, MFI >= 75, within -5% from the 21-day high, 21-day volume >= 1.2x, 5-day volume >= 1.5x, and above the 10-day average",
-    invalidation:
-      "exclude active picks if latest price is <= -8% from signal, below 10-day average, or <= -20% from recent 21-trading-day high",
-    confirmationGuard:
-      "confirmed picks require 5-day volume >= 1.8x, setup score >= 75, high drawdown within -10%, and no overheat or weak-market downgrade",
-    ...(domesticTightConfirmation
-      ? {
-          domesticConfirmationGuard:
-            "Korean confirmed picks additionally require 21-day volume >= 2x, relative return >= 30%p, MFI >= 88, and benchmark 21-day return >= 0%",
-        }
-      : {}),
-    fundamentalValidation:
-      "enrich picks with revenue growth, profit growth, and forward PER when available; confirmed picks can be downgraded when support is weak",
-    minimumHistoryDays: 127,
-    ...(hasMarketCap ? { minimumMarketCapKrw } : {}),
-    monthHighDrawdown: `>= ${RECOMMENDATION_MAX_MONTH_HIGH_DRAWDOWN}% from recent 21-trading-day high`,
-    monthlyReturn: ">= 15% over recent 21 trading days",
-    recentVolumeRatio: ">= 1.8x vs previous 105-trading-day daily average",
-    relativeReturn: `>= 8% vs ${relativeBenchmark}`,
-    setupScore: ">= 70 overall, >= 75 for confirmed picks",
-    tenDayTrend: "close >= 10-day average for confirmed candidates",
-    volumeRatio: ">= 1.8x vs previous 5 rolling 21-trading-day averages",
-  };
+  return buildStockRecommendationCondition(
+    RECOMMENDATION_CRITERIA,
+    minimumMarketCapKrw,
+    {
+      domesticTightConfirmation,
+      relativeBenchmark,
+    },
+  );
 }
 
 function stockRecommendationResultPath(month, markets) {
@@ -3776,12 +4059,11 @@ function trackTraffic(request, response, url) {
   };
 
   response.on("finish", () => {
-    trafficEvents.push({
+    trafficStore.add({
       ...eventBase,
       durationMs: Date.now() - startedAt,
       status: response.statusCode,
     });
-    pruneTrafficEvents();
   });
 }
 
@@ -3841,13 +4123,7 @@ function maskedTrafficIp(ip) {
 }
 
 function pruneTrafficEvents() {
-  const cutoff = Date.now() - TRAFFIC_RETENTION_MS;
-  while (
-    trafficEvents.length > TRAFFIC_EVENT_LIMIT ||
-    (trafficEvents.length && Date.parse(trafficEvents[0].at) < cutoff)
-  ) {
-    trafficEvents.shift();
-  }
+  trafficStore.prune();
 }
 
 function getTrafficSummary() {
@@ -3861,6 +4137,10 @@ function getTrafficSummary() {
   return {
     generatedAt: new Date(now).toISOString(),
     kpi: buildTrafficKpis(pageEvents, now),
+    persistence: {
+      enabled: true,
+      path: path.relative(ROOT, TRAFFIC_EVENTS_PATH),
+    },
     retentionDays: 31,
     startedAt: trafficStartedAt,
     recent: trafficEvents

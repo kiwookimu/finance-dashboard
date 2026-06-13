@@ -3,3 +3,4 @@
 .tools/
 node_modules/
 npm-debug.log*
+.data/

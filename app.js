@@ -120,8 +120,10 @@ const recommendationProgressByBaseMarket = {
 const recommendationDetailById = new Map();
 const recommendationGlobalRefreshActiveBases = new Set();
 let recommendationGlobalRefreshing = false;
+let recommendationGlobalProgressLastPercent = 0;
 let recommendationRefreshToolbarTimer = null;
 let lastRecommendationDetailTrigger = null;
+let latestMirofishSimulation = null;
 let marketAutoRefreshTimer = null;
 let marketIndicatorRequest = null;
 let marketLastRefreshAttemptAt = 0;
@@ -831,14 +833,21 @@ function createRecommendationClientProgress(baseMarket) {
 function normalizeRecommendationProgress(baseMarket, progress = {}) {
   const completed = Number(progress.completed);
   const total = Number(progress.total);
+  const previous = recommendationProgressByBaseMarket[baseMarket];
+  const state = progress.state || "running";
+  const rawPercent = clamp(Math.round(Number(progress.percent) || 0), 0, 100);
+  const percent =
+    previous?.state === "running" && state === "running"
+      ? Math.max(previous.percent || 0, rawPercent)
+      : rawPercent;
   return {
     baseMarket,
     completed: Number.isFinite(completed) ? completed : 0,
     detail: progress.detail || "",
     elapsedSeconds: Number(progress.elapsedSeconds) || 0,
     message: progress.message || "",
-    percent: clamp(Math.round(Number(progress.percent) || 0), 0, 100),
-    state: progress.state || "running",
+    percent,
+    state,
     total: Number.isFinite(total) ? total : 0,
   };
 }
@@ -862,7 +871,12 @@ function renderRecommendationGlobalProgress() {
     : runningProgress.length
       ? "running"
       : "succeeded";
-  const percent = combinedRecommendationProgressPercent(activeProgress);
+  const rawPercent = combinedRecommendationProgressPercent(activeProgress);
+  const percent =
+    state === "running"
+      ? Math.max(recommendationGlobalProgressLastPercent, rawPercent)
+      : rawPercent;
+  recommendationGlobalProgressLastPercent = percent;
   const detail = activeProgress
     .map((progress) => recommendationProgressSummary(progress))
     .filter(Boolean)
@@ -891,24 +905,15 @@ function hideRecommendationGlobalProgress() {
   element.hidden = true;
   element.dataset.state = "idle";
   element.style.setProperty("--recommendation-progress", "0%");
+  recommendationGlobalProgressLastPercent = 0;
 }
 
 function combinedRecommendationProgressPercent(progressItems) {
-  const itemsWithTotal = progressItems.filter((progress) => progress.total > 0);
-  if (itemsWithTotal.length) {
-    const completed = itemsWithTotal.reduce(
-      (sum, progress) =>
-        sum +
-        (progress.state === "succeeded"
-          ? progress.total
-          : Math.min(progress.completed || 0, progress.total)),
-      0,
-    );
-    const total = itemsWithTotal.reduce((sum, progress) => sum + progress.total, 0);
-    if (total > 0) return clamp(Math.round((completed / total) * 100), 0, 100);
-  }
   const average =
-    progressItems.reduce((sum, progress) => sum + (progress.percent || 0), 0) /
+    progressItems.reduce((sum, progress) => {
+      const percent = progress.state === "succeeded" ? 100 : progress.percent || 0;
+      return sum + percent;
+    }, 0) /
     progressItems.length;
   return clamp(Math.round(average), 0, 100);
 }
@@ -1002,10 +1007,12 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
   const results = rawResults
     .map((item) => {
       const entryDecision = recommendationEntryDecisionForItem(item);
+      const mirofishFit = recommendationMirofishFit(item, config);
       return {
         item,
         entryDecision,
-        priorityScore: recommendationPriorityScore(item),
+        mirofishFit,
+        priorityScore: recommendationPriorityScore(item, mirofishFit),
       };
     })
     .sort(
@@ -1049,9 +1056,9 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
   }
 
   list.innerHTML = results
-    .map(({ item, entryDecision }, index) => {
+    .map(({ item, entryDecision, mirofishFit }, index) => {
       const ticker = item.code || item.symbol || item.rawSymbol;
-      const setup = buildRecommendationSetup(item, entryDecision);
+      const setup = buildRecommendationSetup(item, entryDecision, mirofishFit);
       const detailId = `${detailPrefix}-${index}`;
       recommendationDetailById.set(detailId, { item, setup });
       const marketCapText = formatKoreanMarketCap(item.marketCapKrw);
@@ -1137,6 +1144,7 @@ function recommendationConditionText(payload, config = RECOMMENDATION_CONFIGS.do
       "5일 거래량 1.5배 이상",
       "MFI 75 이상",
       "고점 -5% 이내·10일선 위",
+      payload?.condition?.mirofishAdjustment ? "MiroFish 테마·시장 보정" : "",
     ]
       .filter(Boolean)
       .join(" · ");
@@ -1152,6 +1160,7 @@ function recommendationConditionText(payload, config = RECOMMENDATION_CONFIGS.do
     payload?.condition?.domesticConfirmationGuard ? "국내 확정 강화" : "",
     "과열·시장약세 관찰 전환",
     "실적·밸류 보조 검증",
+    payload?.condition?.mirofishAdjustment ? "MiroFish 테마·시장 보정" : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -1420,7 +1429,7 @@ function formatInteger(value) {
   return Math.round(number).toLocaleString("ko-KR");
 }
 
-function recommendationPriorityScore(item) {
+function recommendationPriorityScore(item, mirofishFit = null) {
   const volumeRatio = Number(item.volumeRatio);
   const recentVolumeRatio = Number(item.recentVolumeRatio);
   const mfi = Number(item.mfi);
@@ -1431,6 +1440,7 @@ function recommendationPriorityScore(item) {
   const fundamentalScore = finiteDisplayNumber(item.fundamentalScore);
   let score = 0;
 
+  if (item.recommendationStage === "confirmed" && item.confidenceTier === "high") score += 14;
   if (Number.isFinite(volumeRatio)) {
     score += 8 + scaleBetween(Math.log(volumeRatio), Math.log(1.8), Math.log(8), 16);
   }
@@ -1465,6 +1475,7 @@ function recommendationPriorityScore(item) {
   if (item.technicalRecommendationStage === "confirmed" && item.recommendationStage !== "confirmed") {
     score -= 10;
   }
+  score += recommendationMirofishPriorityBonus(mirofishFit);
 
   if (mfi > 94) score -= scaleBetween(mfi, 94, 100, 4);
   if (monthlyReturn > 100) score -= scaleBetween(monthlyReturn, 100, 150, 4);
@@ -1473,6 +1484,149 @@ function recommendationPriorityScore(item) {
     score -= scaleBetween(Math.abs(monthHighDrawdown), 10, 20, 10);
   }
   return clamp(Math.round(score), 0, 99);
+}
+
+function recommendationMirofishPriorityBonus(fit) {
+  const score = Number(fit?.score);
+  if (!Number.isFinite(score)) return 0;
+  if (score >= 0.45) return 10;
+  if (score >= 0.25) return 6;
+  if (score >= 0.1) return 3;
+  if (score <= -0.45) return -12;
+  if (score <= -0.25) return -8;
+  if (score <= -0.1) return -4;
+  return 0;
+}
+
+function recommendationMirofishFit(
+  item,
+  config = RECOMMENDATION_CONFIGS.domestic,
+  simulation = latestMirofishSimulation,
+) {
+  const storedScore = Number(item?.mirofishScore);
+  if (Number.isFinite(storedScore)) {
+    const storedDrivers = Array.isArray(item?.mirofishDrivers)
+      ? item.mirofishDrivers
+      : String(item?.mirofishDrivers || "")
+          .split(",")
+          .map((driver) => driver.trim())
+          .filter(Boolean);
+    const tone =
+      item?.mirofishTone ||
+      (storedScore >= 0.35 ? "tailwind" : storedScore <= -0.25 ? "headwind" : "neutral");
+    return {
+      bonus: Number.isFinite(Number(item?.mirofishBonus))
+        ? Number(item.mirofishBonus)
+        : recommendationMirofishPriorityBonus({ score: storedScore }),
+      drivers: storedDrivers,
+      label:
+        item?.mirofishLabel ||
+        (tone === "tailwind" ? "순풍" : tone === "headwind" ? "역풍" : "중립"),
+      score: storedScore,
+      tone,
+    };
+  }
+  if (!simulation?.agents?.length) return null;
+  const agentById = new Map(simulation.agents.map((agent) => [agent.id, agent]));
+  const exposures = [];
+  const addAgent = (id, weight, label) => {
+    const agent = agentById.get(id);
+    const cleanWeight = Number(weight);
+    if (!agent || !Number.isFinite(agent.rawScore) || !Number.isFinite(cleanWeight)) return;
+    exposures.push({
+      id,
+      label: label || agent.name,
+      score: clamp(agent.rawScore, -1, 1),
+      weight: cleanWeight,
+    });
+  };
+
+  const text = [
+    item?.name,
+    item?.businessDescription,
+    item?.companyDescription,
+    item?.description,
+    item?.sector,
+    item?.industry,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  const isDomestic =
+    config.baseMarket === "domestic" || /^\d{6}$/.test(String(item?.code || "").trim());
+
+  addAgent(isDomestic ? "korea" : "growth", 0.9, isDomestic ? "한국 위험선호" : "미국 성장주");
+  addAgent("risk", 0.35, "리스크");
+
+  if (/(반도체|hbm|ddr|dram|nand|메모리|semiconductor|chip|memory|micron|마이크론|sandisk|샌디스크|nvidia|엔비디아)/i.test(text)) {
+    addAgent("semiconductor", 1.15, "반도체");
+    addAgent("growth", 0.45, "성장주");
+  }
+  if (/(ai|인공지능|전력|전력인프라|데이터센터|전자|전기|전자부품|mlcc|콘덴서|capacitor|component|electronics|cloud|software|cyber|quantum|network|통신|광통신|로봇|robot)/i.test(text)) {
+    addAgent("growth", 0.85, "성장주");
+  }
+  if (/(자동차|전기차|battery|배터리|2차전지|ev|mobility)/i.test(text)) {
+    addAgent("korea", isDomestic ? 0.55 : 0.25, "국내 순환매");
+    addAgent("growth", 0.35, "성장주");
+  }
+  if (/(금융|은행|보험|증권|카드|캐피탈|financial|bank|insurance|capital)/i.test(text)) {
+    addAgent("macro", 0.75, "매크로");
+    addAgent("risk", 0.45, "리스크");
+  }
+  if (/(에너지|정유|석유|가스|oil|gas|energy|화학|chemical)/i.test(text)) {
+    addAgent("macro", 0.65, "매크로");
+  }
+
+  const consensusScore = scoreMirofishConsensus(simulation);
+  if (Number.isFinite(consensusScore)) {
+    exposures.push({
+      id: "consensus",
+      label: "전체 합의",
+      score: consensusScore,
+      weight: 0.45,
+    });
+  }
+
+  const totalWeight = exposures.reduce((sum, exposure) => sum + exposure.weight, 0);
+  if (!totalWeight) return null;
+  const score =
+    exposures.reduce((sum, exposure) => sum + exposure.score * exposure.weight, 0) /
+    totalWeight;
+  const sortedDrivers = exposures
+    .filter((exposure) => Math.abs(exposure.score) >= 0.1)
+    .sort((a, b) => Math.abs(b.score) * b.weight - Math.abs(a.score) * a.weight)
+    .slice(0, 2)
+    .map((exposure) => exposure.label);
+  const tone =
+    score >= 0.35 ? "tailwind" : score <= -0.25 ? "headwind" : "neutral";
+  const label =
+    tone === "tailwind" ? "순풍" : tone === "headwind" ? "역풍" : "중립";
+  return {
+    bonus: recommendationMirofishPriorityBonus({ score }),
+    drivers: sortedDrivers,
+    label,
+    score,
+    tone,
+  };
+}
+
+function recommendationMirofishSummary(fit) {
+  const score = Number(fit?.score);
+  if (!Number.isFinite(score)) return "";
+  const drivers = fit.drivers?.length ? fit.drivers.join("·") : "시장 합의";
+  if (score >= 0.35) {
+    return `MiroFish는 ${drivers} 순풍을 반영해 이 후보의 우선순위를 올렸어.`;
+  }
+  if (score >= 0.1) {
+    return `MiroFish는 ${drivers} 약한 순풍을 반영해 우선순위를 소폭 올렸어.`;
+  }
+  if (score <= -0.25) {
+    return `MiroFish는 ${drivers} 역풍을 반영해 이 후보의 우선순위를 낮췄어.`;
+  }
+  if (score <= -0.1) {
+    return `MiroFish는 ${drivers} 약한 역풍을 반영해 우선순위를 소폭 낮췄어.`;
+  }
+  return "";
 }
 
 function recommendationEntryDecisionForItem(item) {
@@ -1489,7 +1643,11 @@ function scaleBetween(value, min, max, points) {
   return clamp((value - min) / (max - min), 0, 1) * points;
 }
 
-function buildRecommendationSetup(item, entryDecision = recommendationEntryDecisionForItem(item)) {
+function buildRecommendationSetup(
+  item,
+  entryDecision = recommendationEntryDecisionForItem(item),
+  mirofishFit = null,
+) {
   const volumeRatio = Number(item.volumeRatio);
   const recentVolumeRatio = Number(item.recentVolumeRatio);
   const mfi = Number(item.mfi);
@@ -1531,18 +1689,23 @@ function buildRecommendationSetup(item, entryDecision = recommendationEntryDecis
       weakMarketRegime: item.weakMarketRegime,
       qualityAdjusted: item.qualityAdjusted,
     }),
-    summary: recommendationSetupSummary({
-      entryDecision,
-      mfi,
-      monthHighDrawdown,
-      monthlyReturn,
-      recentVolumeRatio,
-      recommendationStage: item.recommendationStage,
-      relativeReturn,
-      technicalCautionReasons: item.technicalCautionReasons,
-      technicalRecommendationStage: item.technicalRecommendationStage,
-      volumeRatio,
-    }),
+    summary: [
+      recommendationMirofishSummary(mirofishFit),
+      recommendationSetupSummary({
+        entryDecision,
+        mfi,
+        monthHighDrawdown,
+        monthlyReturn,
+        recentVolumeRatio,
+        recommendationStage: item.recommendationStage,
+        relativeReturn,
+        technicalCautionReasons: item.technicalCautionReasons,
+        technicalRecommendationStage: item.technicalRecommendationStage,
+        volumeRatio,
+      }),
+    ]
+      .filter(Boolean)
+      .join(" "),
     tags,
   };
 }
@@ -1568,10 +1731,17 @@ function recommendationSetupSummary({
           .map((reason) => reason.trim())
           .filter(Boolean);
     const reasonText = reasons.length ? reasons.join("·") : "확정 조건 보류 신호";
+    const reasonSubject = recommendationReasonSubject(reasonText);
     if (mfi >= 90) {
-      return `추천 조건은 통과했지만 MFI가 ${formatNumber(mfi, 1)}로 높고 ${reasonText}가 확인돼 관찰로 낮췄어. ${action}`;
+      return `추천 조건은 통과했지만 MFI가 ${formatNumber(mfi, 1)}로 높고 ${reasonSubject}가 확인돼 관찰로 낮췄어. ${action}`;
     }
-    return `추천 조건은 통과했지만 ${reasonText}가 확인돼 추천 대신 관찰로 낮췄어. ${action}`;
+    return `추천 조건은 통과했지만 ${reasonSubject}가 확인돼 추천 대신 관찰로 낮췄어. ${action}`;
+  }
+  if (recommendationStage === "confirmed" && volumeRatio >= 2.2 && relativeReturn >= 40) {
+    return `21일 거래량이 ${formatNumber(volumeRatio, 2)}배, 상대강도 ${formatSignedNumber(relativeReturn, 1)}%p로 고확신 기준을 통과했어. ${action}`;
+  }
+  if (recommendationStage === "confirmed" && monthHighDrawdown >= -3) {
+    return `최근 고점 대비 ${formatSignedNumber(monthHighDrawdown, 1)}% 안쪽에서 버티며 고확신 기준을 통과했어. ${action}`;
   }
   if (monthHighDrawdown <= -10) {
     return `1개월 조건은 통과했지만 고점 대비 ${formatSignedNumber(monthHighDrawdown, 1)}% 밀려 있어 재돌파 확인이 필요해. ${action}`;
@@ -1597,6 +1767,14 @@ function recommendationSetupSummary({
   return `최근 1개월 가격, 거래량, MFI, 상대강도가 모두 기준을 넘은 추천 시점 신호야. ${action}`;
 }
 
+function recommendationReasonSubject(text) {
+  const reason = String(text || "").trim();
+  if (!reason) return "확정 조건 보류 신호";
+  if (reason.includes("·")) return `${reason} 등`;
+  if (reason.endsWith("신호") || reason.endsWith("요인")) return reason;
+  return `${reason} 신호`;
+}
+
 function recommendationRiskText({
   mfi,
   monthHighDrawdown,
@@ -1618,7 +1796,7 @@ function recommendationRiskText({
 
   if (technicalRecommendationStage === "confirmed" && recommendationStage !== "confirmed") {
     const reasonText = reasons.length ? reasons.join("·") : "확정 조건 보류 신호";
-    return `${reasonText}가 남아 있어 추천보다 관찰 관점으로 봐.`;
+    return `${recommendationReasonSubject(reasonText)}가 남아 있어 추천보다 관찰 관점으로 봐.`;
   }
   if (Number.isFinite(mfi) && mfi >= 90) {
     return `MFI가 ${formatNumber(mfi, 1)}로 90을 넘어 과열권이야. 추격 매수는 조심해.`;
@@ -1860,6 +2038,7 @@ async function loadIndicatorsNow() {
     renderFearGreed(sentiment.fearGreed);
     renderVix(sentiment.vix);
     renderMarketIndicator("vixTerm", buildVixTermQuote(market.quotes.vix3m, sentiment.vix));
+    renderMirofishSimulation(market.quotes, sentiment);
     renderTradingSignal(market.quotes, sentiment);
     renderIndexPredictions(market.quotes, sentiment);
     renderThemeRadar(market.quotes, sentiment);
@@ -1877,6 +2056,7 @@ async function loadIndicatorsNow() {
     });
     renderIndexPredictionError();
     renderThemeRadarError();
+    renderMirofishSimulationError();
     setText("#marketSource", "시장 데이터 갱신 실패");
   }
 }
@@ -1933,8 +2113,12 @@ function renderIndexPredictions(quotes = {}, sentiment = {}) {
   const list = document.querySelector("#indexPredictionList");
   if (!list) return;
 
+  const mirofishSimulation =
+    latestMirofishSimulation?.agents?.length
+      ? latestMirofishSimulation
+      : buildMirofishSimulation(quotes, sentiment);
   const predictions = NEXT_DAY_PREDICTION_TARGETS.map((target) =>
-    evaluateNextDayIndexPrediction(target, quotes, sentiment),
+    evaluateNextDayIndexPrediction(target, quotes, sentiment, mirofishSimulation),
   ).filter(Boolean);
 
   if (!predictions.length) {
@@ -2024,6 +2208,308 @@ function renderThemeRadarError() {
   const list = document.querySelector("#themeRadarList");
   if (!list) return;
   list.innerHTML = `<p class="theme-radar-empty">테마 데이터 갱신 실패</p>`;
+}
+
+function renderMirofishSimulation(quotes = {}, sentiment = {}) {
+  const summaryElement = document.querySelector("#mirofishSummary");
+  const agentsElement = document.querySelector("#mirofishAgents");
+  if (!summaryElement || !agentsElement) return;
+
+  const simulation = buildMirofishSimulation(quotes, sentiment);
+  latestMirofishSimulation = simulation;
+  if (!simulation.agents.length) {
+    summaryElement.innerHTML = `<p class="mirofish-empty">시뮬레이션 데이터 부족</p>`;
+    agentsElement.innerHTML = "";
+    rerenderRecommendationsWithMirofish();
+    return;
+  }
+
+  summaryElement.innerHTML = `
+    <div class="mirofish-consensus is-${escapeHtml(simulation.tone)}">
+      <span>합의</span>
+      <strong>${escapeHtml(simulation.direction)}</strong>
+      <em>${formatSignedScore(simulation.score)}점</em>
+    </div>
+    <p>${escapeHtml(simulation.summary)}</p>
+  `;
+  agentsElement.innerHTML = simulation.agents
+    .map(
+      (agent) => `
+        <article class="mirofish-agent is-${escapeHtml(agent.tone)}">
+          <div class="mirofish-agent-head">
+            <strong>${escapeHtml(agent.name)}</strong>
+            <b>${escapeHtml(agent.vote)}</b>
+          </div>
+          <small>${escapeHtml(agent.role)}</small>
+          <span class="mirofish-agent-meter" aria-hidden="true">
+            <i style="width: ${agent.meter}%"></i>
+          </span>
+          <em>${escapeHtml(agent.evidence)}</em>
+        </article>
+      `,
+    )
+    .join("");
+  rerenderRecommendationsWithMirofish();
+}
+
+function renderMirofishSimulationError() {
+  const summaryElement = document.querySelector("#mirofishSummary");
+  const agentsElement = document.querySelector("#mirofishAgents");
+  if (summaryElement) {
+    summaryElement.innerHTML = `<p class="mirofish-empty">시뮬레이션 갱신 실패</p>`;
+  }
+  if (agentsElement) agentsElement.innerHTML = "";
+  latestMirofishSimulation = null;
+  rerenderRecommendationsWithMirofish();
+}
+
+function rerenderRecommendationsWithMirofish() {
+  for (const [market, config] of Object.entries(RECOMMENDATION_CONFIGS)) {
+    if (!recommendationStates[market]?.loaded) continue;
+    const payload = recommendationPayloadByBaseMarket[config.baseMarket];
+    if (payload) renderRecommendations(payload, config);
+  }
+}
+
+function buildMirofishSimulation(quotes = {}, sentiment = {}) {
+  const vixTermQuote = buildVixTermQuote(quotes.vix3m, sentiment.vix);
+  const agentSpecs = [
+    {
+      id: "macro",
+      name: "매크로",
+      role: "금리·환율·유가·신용 스프레드",
+      weight: 1,
+      components: [
+        { label: "10Y", score: scoreYield(quotes.us10y), weight: 0.9 },
+        { label: "USD/KRW", score: scoreUsdKrw(quotes.usdKrw), weight: 0.7 },
+        { label: "WTI", score: scoreWti(quotes.wti), weight: 0.45 },
+        { label: "HY", score: scoreHySpread(quotes.hySpread), weight: 0.85 },
+        { label: "VIX구조", score: scoreVixTermStructure(quotes.vix3m, sentiment.vix), weight: 0.75 },
+      ],
+      evidence: [
+        themeValueLabel("10Y", quotes.us10y, 2, "price", "%"),
+        themeQuoteLabel("USD/KRW", quotes.usdKrw),
+        themeValueLabel("HY", quotes.hySpread, 2, "price", "%"),
+      ],
+    },
+    {
+      id: "growth",
+      name: "성장주",
+      role: "NASDAQ·S&P·선물·시장 폭",
+      weight: 1.15,
+      components: [
+        { label: "NASDAQ", score: scoreRiskAsset(quotes.nasdaq), weight: 0.95 },
+        { label: "S&P", score: scoreRiskAsset(quotes.sp500), weight: 0.65 },
+        { label: "나스닥선물", score: scoreFutureMove(quotes.nasdaqFutures?.changePercent), weight: 0.75 },
+        { label: "나스닥폭", score: scoreRelativeBreadth(quotes.nasdaqBreadth), weight: 0.85 },
+        { label: "VIX", score: scoreVix(sentiment.vix), weight: 0.7 },
+      ],
+      evidence: [
+        themeQuoteLabel("NASDAQ", quotes.nasdaq),
+        themeRelativeLabel("시장 폭", quotes.nasdaqBreadth),
+        themeValueLabel("VIX", sentiment.vix, 1, "close"),
+      ],
+    },
+    {
+      id: "semiconductor",
+      name: "반도체",
+      role: "SOX·DDR5·리더 폭·상대강도",
+      weight: 1.2,
+      components: [
+        { label: "SOX", score: scoreRiskAsset(quotes.sox), weight: 0.95 },
+        { label: "반도체사이클", score: scoreSemiconductorCycle(quotes), weight: 1 },
+        { label: "DDR5", score: scoreMemoryPrice(quotes.ddr5Spot), weight: 0.55 },
+        { label: "리더폭", score: scoreRelativeBreadth(quotes.semiBreadth), weight: 0.65 },
+        { label: "상대강도", score: scoreRelativeBreadth(quotes.semiLeadership), weight: 0.65 },
+      ],
+      evidence: [
+        themeQuoteLabel("SOX", quotes.sox),
+        themeValueLabel("리더 폭", quotes.semiBreadth, 0),
+        themeRelativeLabel("반도체/QQQ", quotes.semiLeadership),
+      ],
+    },
+    {
+      id: "korea",
+      name: "한국 위험선호",
+      role: "KOSPI·KOSDAQ·Nikkei·달러원",
+      weight: 0.95,
+      components: [
+        { label: "KOSPI", score: scoreRiskAsset(quotes.kospi), weight: 0.9 },
+        { label: "KOSDAQ", score: scoreRiskAsset(quotes.kosdaq), weight: 0.65 },
+        { label: "Nikkei", score: scoreOneDayMove(quotes.nikkei), weight: 0.55 },
+        { label: "달러원", score: scoreUsdKrw(quotes.usdKrw), weight: 0.55 },
+        { label: "미국장", score: average([scoreOneDayMove(quotes.nasdaq), scoreOneDayMove(quotes.sp500)]), weight: 0.5 },
+      ],
+      evidence: [
+        themeQuoteLabel("KOSPI", quotes.kospi),
+        themeQuoteLabel("KOSDAQ", quotes.kosdaq),
+        themeQuoteLabel("Nikkei", quotes.nikkei),
+      ],
+    },
+    {
+      id: "risk",
+      name: "리스크",
+      role: "VIX·공포탐욕·레짐·시장 폭",
+      weight: 1.05,
+      components: [
+        { label: "VIX", score: scoreVix(sentiment.vix), weight: 0.95 },
+        { label: "공포탐욕", score: scoreFearGreed(sentiment.fearGreed), weight: 0.75 },
+        { label: "시장레짐", score: scoreMarketRegime(quotes), weight: 0.9 },
+        { label: "시장폭", score: scoreMarketBreadth(quotes), weight: 0.8 },
+        { label: "VIX구조", score: scoreVixTermStructure(quotes.vix3m, sentiment.vix), weight: 0.6 },
+      ],
+      evidence: [
+        themeValueLabel("VIX", sentiment.vix, 1, "close"),
+        sentiment.fearGreed?.rating
+          ? `공포탐욕 ${localizedFearGreedRating(sentiment.fearGreed.rating)}`
+          : "",
+        themeValueLabel("VIX 구조", vixTermQuote, 2, "price", "p"),
+      ],
+    },
+  ];
+
+  const agents = agentSpecs.map(buildMirofishAgent).filter(Boolean);
+  const weightedScore = agents.reduce((sum, agent) => sum + agent.rawScore * agent.weight, 0);
+  const totalWeight = agents.reduce((sum, agent) => sum + agent.weight, 0);
+  const score = totalWeight ? Math.round((weightedScore / totalWeight) * 100) : 0;
+  const direction =
+    score >= 30
+      ? "상승 시나리오 우세"
+      : score <= -30
+        ? "하락 시나리오 우세"
+        : "혼조 시나리오";
+  const tone = score >= 30 ? "up" : score <= -30 ? "down" : "neutral";
+  const leaders = agents
+    .filter((agent) => (tone === "down" ? agent.rawScore < -0.1 : agent.rawScore > 0.1))
+    .sort((a, b) =>
+      tone === "down" ? a.rawScore - b.rawScore : b.rawScore - a.rawScore,
+    )
+    .slice(0, 2)
+    .map((agent) => `${agent.name} ${agent.vote}`);
+  const dissenters = agents
+    .filter((agent) => tone !== "neutral" && Math.sign(agent.rawScore) !== Math.sign(score))
+    .slice(0, 1)
+    .map((agent) => `${agent.name} ${agent.vote}`);
+  const summary = [
+    leaders.length ? `${leaders.join(" · ")} 신호가 합의를 이끌고 있어` : "에이전트 합의가 뚜렷하지 않아",
+    dissenters.length ? `${dissenters.join(" · ")}는 반대 신호야` : "",
+    "실제 매매 판단 전 지표 원천과 뉴스 변수를 함께 확인해",
+  ]
+    .filter(Boolean)
+    .join(". ");
+
+  return { agents, direction, score, summary, tone };
+}
+
+function localizedFearGreedRating(value) {
+  const rating = String(value || "").trim().toLowerCase();
+  const labels = {
+    "extreme fear": "극단적 공포",
+    fear: "공포",
+    neutral: "중립",
+    greed: "탐욕",
+    "extreme greed": "극단적 탐욕",
+  };
+  return labels[rating] || value;
+}
+
+function scoreMirofishConsensus(simulation) {
+  const score = Number(simulation?.score);
+  if (!Number.isFinite(score)) return NaN;
+  return clamp(score / 100, -1, 1);
+}
+
+function scoreMirofishAgent(simulation, id) {
+  const agent = simulation?.agents?.find((item) => item.id === id);
+  const score = Number(agent?.rawScore);
+  return Number.isFinite(score) ? clamp(score, -1, 1) : NaN;
+}
+
+function weightedMirofishScore(items) {
+  const validItems = items
+    .map((item) => ({
+      score: Number(item.score),
+      weight: Number(item.weight),
+    }))
+    .filter((item) => Number.isFinite(item.score) && Number.isFinite(item.weight));
+  const totalWeight = validItems.reduce((sum, item) => sum + item.weight, 0);
+  if (!totalWeight) return NaN;
+  return clamp(
+    validItems.reduce((sum, item) => sum + clamp(item.score, -1, 1) * item.weight, 0) /
+      totalWeight,
+    -1,
+    1,
+  );
+}
+
+function scoreMirofishIndexTarget(target, simulation) {
+  const consensus = scoreMirofishConsensus(simulation);
+  if (target?.id === "kospi") {
+    return weightedMirofishScore([
+      { score: scoreMirofishAgent(simulation, "korea"), weight: 1.05 },
+      { score: scoreMirofishAgent(simulation, "risk"), weight: 0.55 },
+      { score: scoreMirofishAgent(simulation, "growth"), weight: 0.35 },
+      { score: scoreMirofishAgent(simulation, "semiconductor"), weight: 0.35 },
+      { score: consensus, weight: 0.45 },
+    ]);
+  }
+  if (target?.id === "nasdaq") {
+    return weightedMirofishScore([
+      { score: scoreMirofishAgent(simulation, "growth"), weight: 1.1 },
+      { score: scoreMirofishAgent(simulation, "risk"), weight: 0.7 },
+      { score: scoreMirofishAgent(simulation, "semiconductor"), weight: 0.5 },
+      { score: scoreMirofishAgent(simulation, "macro"), weight: 0.25 },
+      { score: consensus, weight: 0.45 },
+    ]);
+  }
+  return weightedMirofishScore([
+    { score: scoreMirofishAgent(simulation, "growth"), weight: 0.75 },
+    { score: scoreMirofishAgent(simulation, "risk"), weight: 0.8 },
+    { score: scoreMirofishAgent(simulation, "macro"), weight: 0.45 },
+    { score: consensus, weight: 0.45 },
+  ]);
+}
+
+function scoreMirofishPortfolioFit(simulation) {
+  return weightedMirofishScore([
+    { score: scoreMirofishAgent(simulation, "semiconductor"), weight: 1.15 },
+    { score: scoreMirofishAgent(simulation, "growth"), weight: 0.85 },
+    { score: scoreMirofishAgent(simulation, "korea"), weight: 0.55 },
+    { score: scoreMirofishAgent(simulation, "risk"), weight: 0.55 },
+    { score: scoreMirofishConsensus(simulation), weight: 0.45 },
+  ]);
+}
+
+function buildMirofishAgent(spec) {
+  const components = spec.components
+    .map((component) => ({
+      ...component,
+      score: Number(component.score),
+      weight: Number(component.weight),
+    }))
+    .filter((component) => Number.isFinite(component.score) && Number.isFinite(component.weight));
+  const totalWeight = components.reduce((sum, component) => sum + component.weight, 0);
+  if (!totalWeight) return null;
+  const rawScore =
+    components.reduce(
+      (sum, component) => sum + clamp(component.score, -1, 1) * component.weight,
+      0,
+    ) / totalWeight;
+  const vote =
+    rawScore >= 0.35 ? "상승" : rawScore <= -0.35 ? "하락" : "중립";
+  const tone = rawScore >= 0.35 ? "up" : rawScore <= -0.35 ? "down" : "neutral";
+  const evidence = spec.evidence.filter(Boolean).slice(0, 3).join(" · ") || "가용 지표 혼조";
+  return {
+    evidence,
+    id: spec.id,
+    meter: clamp(Math.round(((rawScore + 1) / 2) * 100), 0, 100),
+    name: spec.name,
+    rawScore,
+    role: spec.role,
+    tone,
+    vote,
+    weight: spec.weight,
+  };
 }
 
 function buildThemeRadarRows(quotes = {}, sentiment = {}) {
@@ -2125,7 +2611,7 @@ function themeValueLabel(label, data, decimals = 1, valueKey = "price", suffix =
   return `${label} ${formatNumber(value, decimals)}${suffix}`;
 }
 
-function evaluateNextDayIndexPrediction(target, quotes, sentiment) {
+function evaluateNextDayIndexPrediction(target, quotes, sentiment, mirofishSimulation = null) {
   const quote = quotes?.[target.id];
   if (!quote || !Number.isFinite(Number(quote.price))) return null;
 
@@ -2144,6 +2630,11 @@ function evaluateNextDayIndexPrediction(target, quotes, sentiment) {
   add("VIX구조", scoreVixTermStructure(quotes?.vix3m, sentiment?.vix), 0.45);
   add("공포탐욕", scoreFearGreed(sentiment?.fearGreed), 0.35);
   add("금리", scoreYield(quotes?.us10y), target.profile === "growth" ? 0.7 : 0.45);
+  add(
+    "MiroFish",
+    scoreMirofishIndexTarget(target, mirofishSimulation),
+    target.market === "korea" ? 0.75 : 0.85,
+  );
 
   if (target.market === "korea") {
     add("나스닥선물", scoreFutureMove(quotes?.nasdaqFutures?.changePercent), 0.9);
@@ -2227,6 +2718,7 @@ function backtestedIndexDirection(indexId, components, score) {
   const rate = Number(components["금리"]);
   const spFuture = Number(components["S&P선물"]);
   const vixTerm = Number(components["VIX구조"]);
+  const mirofish = Number(components["MiroFish"]);
 
   if (indexId === "kospi") {
     if (usMarket >= 0.45) {
@@ -2244,14 +2736,26 @@ function backtestedIndexDirection(indexId, components, score) {
     if (score >= 0.35) {
       return { direction: "상승", summary: "고신뢰 확장 구간 · 코스피 종합점수 강세" };
     }
+    if (mirofish >= 0.45 && score >= 0.25 && usMarket > -0.2) {
+      return { direction: "상승", summary: "MiroFish 확장 구간 · 관점별 합의 상승" };
+    }
+    if (mirofish <= -0.45 && score <= -0.2) {
+      return { direction: "하락", summary: "MiroFish 확장 구간 · 관점별 합의 하락" };
+    }
   }
 
   if (indexId === "nasdaq" || indexId === "sp500") {
     if (vixTerm >= 0.35) {
       return { direction: "상승", summary: "고신뢰 검증 구간 · VIX 구조 양호" };
     }
+    if (mirofish >= 0.5 && score >= 0.25) {
+      return { direction: "상승", summary: "MiroFish 확장 구간 · 성장/리스크 합의 상승" };
+    }
     if (vixTerm <= 0) {
       return { direction: "하락", summary: "고신뢰 검증 구간 · VIX 구조 경계" };
+    }
+    if (mirofish <= -0.45 && score <= -0.2) {
+      return { direction: "하락", summary: "MiroFish 확장 구간 · 성장/리스크 합의 하락" };
     }
   }
 
@@ -2484,8 +2988,13 @@ function evaluateTradingSignal(quotes, sentiment) {
   const crisisMode = detectPortfolioCrisisMode(quotes, sentiment);
   const geopoliticalReliefScore = scoreGeopoliticalRelief(quotes, sentiment);
   const shortTermEventScore = scoreShortTermEventImpulse(quotes, sentiment);
+  const mirofishSimulation =
+    latestMirofishSimulation?.agents?.length
+      ? latestMirofishSimulation
+      : buildMirofishSimulation(quotes, sentiment);
   add("주가지수", broadScore, 2.1);
   add("반도체", scoreRiskAsset(quotes.sox), 1.3);
+  add("MiroFish 합의", scoreMirofishConsensus(mirofishSimulation), 0.85);
   add("지정학 완화", geopoliticalReliefScore, 0.65);
   add("시장 폭", marketBreadthScore, 1.15);
   add("VIX 구조", vixTermScore, 0.8);
@@ -2584,10 +3093,15 @@ function evaluatePortfolioSignal(quotes, sentiment, portfolioMetrics) {
   const crisisMode = detectPortfolioCrisisMode(quotes, sentiment);
   const geopoliticalReliefScore = scoreGeopoliticalRelief(quotes, sentiment);
   const shortTermEventScore = scoreShortTermEventImpulse(quotes, sentiment);
+  const mirofishSimulation =
+    latestMirofishSimulation?.agents?.length
+      ? latestMirofishSimulation
+      : buildMirofishSimulation(quotes, sentiment);
 
   add("SOX", semiScore, 2.4);
   add("NASDAQ", nasdaqScore, 1.25);
   add("KOSPI", kospiScore, 0.75);
+  add("MiroFish 합의", scoreMirofishPortfolioFit(mirofishSimulation), 0.75);
   add("지정학 완화", geopoliticalReliefScore, 0.5);
   add("상대강도", relativeScore, 1.35);
   add("장기 상대강도", multiRelativeScore, 1.1);

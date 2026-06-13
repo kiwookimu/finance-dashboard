@@ -43,7 +43,6 @@ const MARKET_SOURCES = [
 const SEMI_LEADER_IDS = ["nvda", "avgo", "amd", "mu", "tsm", "asml", "qcom"];
 const FRED_SOURCES = [
   { id: "hySpread", seriesId: "BAMLH0A0HYM2" },
-  { id: "nfci", seriesId: "NFCI" },
 ];
 const SENTIMENT_SOURCES = {
   fearGreed:
@@ -232,7 +231,6 @@ function buildQuotesAsOf(date, marketHistories, fredHistories) {
     nasdaq: quote("nasdaq"),
     nasdaqBreadth: buildRelativeStrengthQuoteFromQuotes(qqqe, qqq),
     nasdaqFutures: quote("nasdaqFutures"),
-    nfci: quote("nfci", fredHistories),
     nikkei: quote("nikkei"),
     semiBreadth: buildMovingAverageBreadthQuoteFromHistories(semiLeaderHistories, 50),
     semiLeadership: buildRelativeStrengthQuoteFromQuotes(smh, qqq),
@@ -501,7 +499,7 @@ function summarizeHighConfidenceRules(rows) {
     },
     byIndex: Object.fromEntries(ruleRows.map((row) => [row.indexId, row])),
     rules: [
-      "KOSPI: 미국장 점수 >= 0.45 상승, S&P선물 점수 <= -0.8 하락, 금리 점수 <= -0.7 하락, 니케이 점수 <= -0.8 상승, 종합점수 >= 0.30 상승",
+      "KOSPI: 미국장 점수 >= 0.45 상승, S&P선물 점수 <= -0.8 and VIX구조 < 0.2 하락, 금리 점수 <= -0.7 하락, 니케이 점수 <= -0.8 and VIX구조 > -0.5 상승, 종합점수 >= 0.35 상승",
       "NASDAQ/S&P 500: VIX 기간구조 점수 >= 0.35 상승, <= 0 하락",
     ],
   };
@@ -518,10 +516,10 @@ function highConfidenceDirection(row) {
 
   if (row.indexId === "kospi") {
     if (usMarket >= 0.45) return "상승";
-    if (spFuture <= -0.8) return "하락";
+    if (spFuture <= -0.8 && vixTerm < 0.2) return "하락";
     if (rate <= -0.7) return "하락";
-    if (nikkei <= -0.8) return "상승";
-    if (score >= 0.3) return "상승";
+    if (nikkei <= -0.8 && vixTerm > -0.5) return "상승";
+    if (score >= 0.35) return "상승";
   }
   if (row.indexId === "nasdaq" || row.indexId === "sp500") {
     if (vixTerm >= 0.35) return "상승";
@@ -818,7 +816,6 @@ function scoreWti(quote) {
 function scoreMarketRegime(quotes) {
   return average([
     scoreHySpread(quotes?.hySpread),
-    scoreNfci(quotes?.nfci),
   ]);
 }
 
@@ -834,21 +831,6 @@ function scoreHySpread(quote) {
   const move = pointChange(quote.history);
   if (move <= -0.3) score += 0.15;
   if (move >= 0.4) score -= 0.2;
-  return clamp(score, -1, 1);
-}
-
-function scoreNfci(quote) {
-  const value = Number(quote?.price);
-  if (!Number.isFinite(value)) return NaN;
-  let score = 0;
-  if (value <= -0.4) score = 0.75;
-  else if (value <= -0.15) score = 0.35;
-  else if (value <= 0.15) score = -0.05;
-  else if (value <= 0.5) score = -0.5;
-  else score = -0.9;
-  const move = pointChange(quote.history);
-  if (move <= -0.05) score += 0.1;
-  if (move >= 0.08) score -= 0.15;
   return clamp(score, -1, 1);
 }
 

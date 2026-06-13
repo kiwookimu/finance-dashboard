@@ -1787,6 +1787,230 @@ body.modal-open {
   gap: 4px;
 }
 
+.mirofish-panel {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 10px;
+  padding: 11px 10px;
+  background: var(--surface);
+  border: 1px solid #dfe6ef;
+  border-radius: 8px;
+}
+
+.mirofish-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+
+.mirofish-heading > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mirofish-heading span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.mirofish-heading strong {
+  color: var(--ink);
+  font-size: 21px;
+  font-weight: 900;
+  line-height: 1.05;
+}
+
+.mirofish-heading small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.mirofish-summary {
+  display: grid;
+  grid-template-columns: 102px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  background: #ffffff;
+  border: 1px solid #dfe6ef;
+  border-radius: 7px;
+}
+
+.mirofish-consensus {
+  display: grid;
+  place-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 6px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid #e5ebf2;
+  border-radius: 7px;
+  text-align: center;
+}
+
+.mirofish-consensus span {
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.mirofish-consensus strong {
+  font-size: 14px;
+  font-weight: 950;
+  line-height: 1.1;
+}
+
+.mirofish-consensus em {
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.mirofish-consensus.is-up {
+  color: var(--green);
+  border-color: rgba(21, 132, 95, 0.28);
+}
+
+.mirofish-consensus.is-down {
+  color: var(--red);
+  border-color: rgba(223, 70, 70, 0.28);
+}
+
+.mirofish-consensus.is-neutral {
+  color: var(--yellow);
+  border-color: rgba(245, 159, 0, 0.28);
+}
+
+.mirofish-summary p,
+.mirofish-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.42;
+}
+
+.mirofish-empty {
+  grid-column: 1 / -1;
+  padding: 4px 0;
+  text-align: center;
+}
+
+.mirofish-agents {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  min-width: 0;
+}
+
+.mirofish-agent {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 9px;
+  background: #ffffff;
+  border: 1px solid #dfe6ef;
+  border-radius: 7px;
+}
+
+.mirofish-agent-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mirofish-agent-head strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mirofish-agent-head b {
+  padding: 5px 7px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid #e5ebf2;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.mirofish-agent small,
+.mirofish-agent em {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+}
+
+.mirofish-agent small {
+  white-space: nowrap;
+}
+
+.mirofish-agent-meter {
+  display: block;
+  overflow: hidden;
+  height: 5px;
+  background: var(--surface);
+  border-radius: 999px;
+}
+
+.mirofish-agent-meter i {
+  display: block;
+  height: 100%;
+  width: 50%;
+  background: var(--yellow);
+  border-radius: inherit;
+}
+
+.mirofish-agent.is-up .mirofish-agent-head b {
+  color: var(--green);
+  background: rgba(0, 166, 97, 0.1);
+  border-color: rgba(0, 166, 97, 0.25);
+}
+
+.mirofish-agent.is-up .mirofish-agent-meter i {
+  background: var(--green);
+}
+
+.mirofish-agent.is-down .mirofish-agent-head b {
+  color: var(--red);
+  background: rgba(240, 68, 82, 0.1);
+  border-color: rgba(240, 68, 82, 0.25);
+}
+
+.mirofish-agent.is-down .mirofish-agent-meter i {
+  background: var(--red);
+}
+
+.mirofish-agent.is-neutral .mirofish-agent-head b {
+  color: var(--yellow);
+  background: rgba(245, 159, 0, 0.1);
+  border-color: rgba(245, 159, 0, 0.25);
+}
+
+.mirofish-agent.is-neutral .mirofish-agent-meter i {
+  background: var(--yellow);
+}
+
 .theme-radar-copy strong {
   color: var(--ink);
   font-size: 14px;
@@ -3119,7 +3343,8 @@ h1 {
 .portfolio-heading strong,
 .stock-search-heading strong,
 .prediction-heading strong,
-.theme-radar-heading strong {
+.theme-radar-heading strong,
+.mirofish-heading strong {
   font-size: 26px;
   line-height: 1.25;
 }
@@ -3130,7 +3355,8 @@ h1 {
 }
 
 .recommendation-title strong,
-.theme-radar-copy strong {
+.theme-radar-copy strong,
+.mirofish-agent-head strong {
   font-size: 17px;
   line-height: 1.3;
 }
@@ -3143,7 +3369,10 @@ h1 {
 .stock-evaluation-summary p,
 .recommendation-detail-summary p,
 .prediction-copy small,
-.theme-radar-copy small {
+.theme-radar-copy small,
+.mirofish-summary p,
+.mirofish-agent small,
+.mirofish-agent em {
   font-size: 14px;
   line-height: 1.48;
 }
@@ -3154,6 +3383,7 @@ h1 {
 .recommendation-empty,
 .prediction-empty,
 .theme-radar-empty,
+.mirofish-empty,
 .stock-search-empty {
   font-size: 14px;
   line-height: 1.45;
@@ -3164,6 +3394,8 @@ h1 {
 .portfolio-label,
 .prediction-heading span,
 .theme-radar-heading span,
+.mirofish-heading span,
+.mirofish-heading small,
 .stock-search-heading span,
 .stock-search-heading small,
 .stock-evaluation-head span,
@@ -3244,12 +3476,14 @@ h1,
 .stock-search-heading strong,
 .prediction-heading strong,
 .theme-radar-heading strong,
+.mirofish-heading strong,
 .indicator-copy strong,
 .recommendation-title strong,
 .stock-search-result strong,
 .stock-evaluation-head strong,
 .prediction-label-main,
 .theme-radar-copy strong,
+.mirofish-agent-head strong,
 .stock-evaluation-check b,
 .recommendation-modal-head strong,
 .recommendation-detail-grid dd,
@@ -3273,9 +3507,12 @@ h1,
 .stock-evaluation-card,
 .prediction-panel,
 .theme-radar-panel,
+.mirofish-panel,
 .traffic-panel,
 .recommendation-card,
 .stock-search-result,
+.mirofish-summary,
+.mirofish-agent,
 .traffic-kpi-card,
 .traffic-sub-kpis div,
 .traffic-window-card,
@@ -3295,6 +3532,7 @@ h1,
 .stock-evaluation-card,
 .prediction-panel,
 .theme-radar-panel,
+.mirofish-panel,
 .traffic-panel {
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.24);
 }
@@ -3308,12 +3546,16 @@ h1,
 .recommendation-empty,
 .prediction-empty,
 .theme-radar-empty,
+.mirofish-empty,
 .stock-search-empty,
 .recommendation-metrics span,
 .stock-evaluation-metrics span,
 .recommendation-detail-grid div,
 .prediction-result,
 .theme-radar-state,
+.mirofish-consensus,
+.mirofish-agent-head b,
+.mirofish-agent-meter,
 .stock-evaluation-check-group,
 .stock-search-form input {
   color: var(--muted);
@@ -3327,6 +3569,8 @@ h1,
 .portfolio-label,
 .prediction-heading span,
 .theme-radar-heading span,
+.mirofish-heading span,
+.mirofish-heading small,
 .stock-search-heading span,
 .stock-search-heading small,
 .stock-evaluation-head span,
@@ -3342,6 +3586,9 @@ h1,
 .prediction-label-metrics,
 .prediction-copy small,
 .theme-radar-copy small,
+.mirofish-summary p,
+.mirofish-agent small,
+.mirofish-agent em,
 .indicator-copy small,
 .data-note,
 .traffic-note,
@@ -3413,7 +3660,7 @@ h1,
 .recommendation-modal-close,
 .recommendation-detail-link {
   color: #ffffff;
-  background: var(--blue);
+  background: #1463c2;
 }
 
 .recommendation-refresh:disabled {
@@ -3449,15 +3696,38 @@ h1,
 }
 
 .score-segment-down {
-  background: #c93c4b;
+  background: #b83142;
 }
 
 .score-segment-neutral {
-  background: #b97917;
+  background: #8f5f10;
 }
 
 .score-segment-up {
-  background: #0d8f5a;
+  background: #087247;
+}
+
+.score-segment,
+.score-segment b,
+.score-segment em {
+  color: #ffffff;
+}
+
+.recommendation-rank {
+  color: #ffffff;
+  background: #087247;
+}
+
+.recommendation-quote.is-up {
+  color: #ff8b98;
+}
+
+.recommendation-quote.is-down {
+  color: #8bc2ff;
+}
+
+.recommendation-quote.is-flat {
+  color: var(--muted);
 }
 
 .signal-lamps,
@@ -3492,8 +3762,38 @@ h1,
   color: #d7dce4;
 }
 
+.recommendation-detail-summary .recommendation-insight-block {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+.recommendation-detail-summary .recommendation-insight-block.recommendation-fundamental {
+  background: rgba(90, 167, 255, 0.1);
+  border-color: rgba(90, 167, 255, 0.22);
+}
+
+.recommendation-detail-summary .recommendation-insight-block.recommendation-risk {
+  background: rgba(255, 184, 77, 0.1);
+  border-color: rgba(255, 184, 77, 0.22);
+}
+
+.recommendation-detail-summary .recommendation-insight-block.recommendation-checkpoint {
+  background: rgba(32, 214, 139, 0.1);
+  border-color: rgba(32, 214, 139, 0.22);
+}
+
 .recommendation-modal-backdrop {
   background: rgba(0, 0, 0, 0.66);
+}
+
+.stock-evaluation-check-group > strong,
+.stock-evaluation-check em {
+  color: var(--ink);
+}
+
+.stock-evaluation-check.is-pass em,
+.stock-evaluation-check.is-pass i {
+  color: var(--green);
 }
 
 .stock-search-form input {

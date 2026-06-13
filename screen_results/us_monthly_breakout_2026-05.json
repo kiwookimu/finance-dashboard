@@ -1,33 +1,38 @@
 {
-  "generatedAt": "2026-05-28T04:30:25.529Z",
+  "generatedAt": "2026-05-30T00:05:52.487Z",
   "benchmark": "QQQ",
   "comparisonMonthCount": 5,
   "condition": {
-    "breakout": "target month close exceeds previous comparison-month closing high",
-    "dailyMfi": ">= 70",
-    "minimumHistoryMonths": 4,
+    "breakout": "latest close reaches recent 21-trading-day closing high",
+    "dailyMfi": ">= 80",
+    "earlyWatch": "21-day volume >= 1.2x, 5-day volume >= 1.8x, MFI >= 85, and 21-day return >= 30% or 21-day high breakout",
+    "observation": "21-day return >= 50%, relative return >= 30%p, MFI >= 70, near 21-day high, 21-day volume >= 1x, and 5-day volume >= 0.9x",
+    "minimumHistoryDays": 127,
     "minimumMarketCapKrw": 10000000000000,
-    "minimumMarketCapUsd": 6632091364,
-    "monthHighDrawdown": ">= -20% from target-month high",
-    "monthlyReturn": ">= 15% vs previous month close",
+    "minimumMarketCapUsd": 6635127693,
+    "monthHighDrawdown": ">= -20% from recent 21-trading-day high",
+    "monthlyReturn": ">= 15% over recent 21 trading days",
+    "recentVolumeRatio": ">= 1.8x vs previous 105-trading-day daily average",
     "relativeReturn": ">= 8% vs QQQ",
     "setupScore": ">= 70",
-    "volumeRatio": ">= 1.8x vs previous 5-month average"
+    "tenDayTrend": "close >= 10-day average for confirmed candidates",
+    "volumeRatio": ">= 1.8x vs previous 5 rolling 21-trading-day averages"
   },
   "exchangeRate": {
     "pair": "USD/KRW",
-    "value": 1507.82
+    "value": 1507.13
   },
   "marketMonth": "2026-05",
   "note": "Forward returns are included only for historical review and are not used in the screen.",
-  "universe": "Nasdaq Trader listed U.S. common stocks and ADRs; ETFs, units, warrants, rights, preferreds, funds, SPAC/acquisition vehicles, and test issues excluded",
-  "rawUniverseCount": 4906,
+  "screenVersion": "us-rolling-21-v3",
+  "universe": "Manual symbols: NVDA, AVGO, MU",
+  "rawUniverseCount": 4904,
   "prefilter": {
-    "marketCapCoverageCount": 4857,
-    "minimumMarketCapUsd": 6632091364,
-    "usedMarketCapPrefilter": true
+    "marketCapCoverageCount": 4856,
+    "minimumMarketCapUsd": 6635127693,
+    "usedMarketCapPrefilter": false
   },
-  "universeCount": 1076,
+  "universeCount": 3,
   "matchCount": 0,
   "failureCount": 0,
   "results": []
