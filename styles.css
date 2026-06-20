@@ -797,6 +797,36 @@ h1 {
   gap: 8px;
 }
 
+.recommendation-section {
+  display: grid;
+  gap: 8px;
+}
+
+.recommendation-section + .recommendation-section {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid #e3e9f1;
+}
+
+.recommendation-section-title {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.recommendation-section-title strong {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.recommendation-section.is-caution .recommendation-section-title strong {
+  color: #b7791f;
+}
+
 .recommendation-list.is-refreshing {
   opacity: 0.72;
 }
@@ -830,6 +860,11 @@ h1 {
 .recommendation-card:hover {
   border-color: rgba(21, 132, 95, 0.34);
   box-shadow: 0 8px 18px rgba(16, 24, 40, 0.08);
+}
+
+.recommendation-card.is-caution {
+  border-color: rgba(183, 121, 31, 0.28);
+  background: linear-gradient(180deg, rgba(183, 121, 31, 0.08), rgba(255, 255, 255, 0));
 }
 
 .recommendation-card:focus-visible {
@@ -3604,9 +3639,27 @@ h1,
 .stock-evaluation-check-header small,
 .stock-evaluation-check-header i,
 .recommendation-insight-block > b,
+.recommendation-section-title,
 .recommendation-detail-summary strong,
 .recommendation-detail-grid dt {
   color: var(--muted);
+}
+
+.recommendation-section-title strong {
+  color: var(--ink);
+}
+
+.recommendation-section.is-caution .recommendation-section-title strong {
+  color: var(--yellow);
+}
+
+.recommendation-section + .recommendation-section {
+  border-top-color: rgba(255, 255, 255, 0.06);
+}
+
+.recommendation-card.is-caution {
+  border-color: rgba(238, 179, 74, 0.22);
+  background: linear-gradient(180deg, rgba(238, 179, 74, 0.08), rgba(31, 34, 41, 0.92));
 }
 
 .signal-copy strong {

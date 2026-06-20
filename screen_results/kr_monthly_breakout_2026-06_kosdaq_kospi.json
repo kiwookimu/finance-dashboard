@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-20T12:26:42.970Z",
+  "generatedAt": "2026-06-20T14:55:49.034Z",
   "benchmarkByMarket": {
     "KOSDAQ": "KOSDAQ",
     "KOSPI": "KOSPI"
@@ -170,12 +170,14 @@
       "recentVolumeRatio": 4.58,
       "recentWorstDailyReturn": -5.12,
       "recommendationStage": "watch",
+      "riskStage": "caution",
+      "riskStageLabel": "주의 관찰",
       "relativeReturn": 103.56,
       "rollingReturn": 128.05,
       "rollingWindowDays": 21,
       "rollingWindowStartDate": "2026-05-20",
       "setupScore": 100,
-      "signal": "강한 관찰 후보",
+      "signal": "주의 관찰 후보",
       "symbol": "085620.KS",
       "targetMonthVolume": 56599786,
       "technicalCautionReasons": [

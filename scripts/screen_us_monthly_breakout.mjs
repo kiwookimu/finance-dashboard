@@ -492,6 +492,12 @@ function screenStock(stock, rows, benchmarkRows) {
     mirofishAdjustedScore < MIN_CONFIRMED_SETUP_SCORE ? "확신 점수 부족" : "",
     mirofishFit?.score <= -0.25 ? `MiroFish ${mirofishFit.label}` : "",
   ].filter(Boolean);
+  const cautionObservation =
+    overheatRisk ||
+    mfiReversalRisk ||
+    eventPriceLockRisk ||
+    speculativeBiotechRisk ||
+    targetReturn > MAX_CONFIRMED_ROLLING_RETURN;
 
   if (
     mirofishAdjustedScore < MIN_SETUP_SCORE ||
@@ -521,8 +527,12 @@ function screenStock(stock, rows, benchmarkRows) {
     : confirmedCandidate || observationCandidate
       ? "watch"
       : "observe";
+  const riskStage = cautionObservation ? "caution" : "normal";
+  const riskStageLabel = cautionObservation ? "주의 관찰" : "";
   const signal =
-    recommendationStage === "confirmed"
+    riskStage === "caution"
+      ? "주의 관찰 후보"
+      : recommendationStage === "confirmed"
       ? highConfidenceCandidate
         ? "고확신 1개월 상승 후보"
         : setupScore >= 85
@@ -574,6 +584,8 @@ function screenStock(stock, rows, benchmarkRows) {
     recentWorstDailyReturn: round(recentWorstDailyReturn, 2),
     recommendationStage,
     eventPriceLockRisk,
+    riskStage,
+    riskStageLabel,
     relativeReturn: round(relativeReturn, 2),
     rollingReturn: round(targetReturn, 2),
     rollingWindowDays: ROLLING_WINDOW_DAYS,
@@ -1182,6 +1194,8 @@ function toCsv(rows) {
     "aboveTenDayAverage",
     "aboveTrailing3Average",
     "recommendationStage",
+    "riskStage",
+    "riskStageLabel",
     "rollingWindowDays",
     "rollingWindowStartDate",
     "next1mReturn",

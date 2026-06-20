@@ -535,6 +535,12 @@ function screenStock({ benchmarkLabel, benchmarkRows, market, mirofishContext, m
     relativeReturn,
     targetReturn,
   });
+  const cautionObservation =
+    overheatRisk ||
+    mfiReversalRisk ||
+    eventPriceLockRisk ||
+    speculativeBiotechRisk ||
+    targetReturn > MAX_CONFIRMED_ROLLING_RETURN;
   const domesticConfirmationReady =
     market !== "kr" ||
     (volumeStats.volumeRatio >= MIN_KR_CONFIRMED_VOLUME_RATIO &&
@@ -590,6 +596,8 @@ function screenStock({ benchmarkLabel, benchmarkRows, market, mirofishContext, m
         ? "watch"
         : "observe";
   const recommendationStage = mirofishStage;
+  const riskStage = cautionObservation ? "caution" : "normal";
+  const riskStageLabel = cautionObservation ? "주의 관찰" : "";
   const confirmationReady = mirofishConfirmationReady;
   const highConfidenceCandidate =
     confirmationReady &&
@@ -655,6 +663,8 @@ function screenStock({ benchmarkLabel, benchmarkRows, market, mirofishContext, m
     recentWorstDailyReturn: round(recentWorstDailyReturn, 2),
     legacyRecommendationStage,
     recommendationStage,
+    riskStage,
+    riskStageLabel,
     relativeReturn: round(relativeReturn, 2),
     setupScore,
     symbol: stock.rawSymbol || stock.symbol,
@@ -1427,6 +1437,8 @@ function toCsv(items) {
     "month",
     "lastDate",
     "recommendationStage",
+    "riskStage",
+    "riskStageLabel",
     "legacyRecommendationStage",
     "baselineStage",
     "mirofishStage",

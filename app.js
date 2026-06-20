@@ -1056,9 +1056,61 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
     return;
   }
 
-  list.innerHTML = results
+  if (config.view === "observation") {
+    const normalResults = results.filter(({ item }) => !isCautionObservationItem(item));
+    const cautionResults = results.filter(({ item }) => isCautionObservationItem(item));
+    list.innerHTML = [
+      recommendationSectionMarkup({
+        detailPrefix,
+        emptyText: "일반 관찰 조건 충족 종목 없음",
+        items: normalResults,
+        title: "일반 관찰",
+      }),
+      recommendationSectionMarkup({
+        caution: true,
+        detailPrefix,
+        emptyText: "",
+        items: cautionResults,
+        title: "주의 관찰",
+      }),
+    ]
+      .filter(Boolean)
+      .join("");
+  } else {
+    list.innerHTML = recommendationCardsMarkup(results, detailPrefix);
+  }
+  bindRecommendationDetailCards(list);
+}
+
+function recommendationSectionMarkup({
+  caution = false,
+  detailPrefix,
+  emptyText = "",
+  items,
+  title,
+}) {
+  if (!items.length && !emptyText) return "";
+  const subtitle = caution
+    ? "과열·이벤트·바이오 리스크가 있어 매수 후보가 아니라 추적 대상이야."
+    : "리스크 분리 기준을 통과한 관찰 후보야.";
+  return `
+    <section class="recommendation-section${caution ? " is-caution" : ""}">
+      <div class="recommendation-section-title">
+        <strong>${escapeHtml(title)}</strong>
+        <span>${escapeHtml(subtitle)}</span>
+      </div>
+      ${
+        items.length
+          ? recommendationCardsMarkup(items, `${detailPrefix}-${caution ? "caution" : "normal"}`)
+          : `<p class="recommendation-empty">${escapeHtml(emptyText)}</p>`
+      }
+    </section>
+  `;
+}
+
+function recommendationCardsMarkup(items, detailPrefix) {
+  return items
     .map(({ item, entryDecision, mirofishFit }, index) => {
-      const ticker = item.code || item.symbol || item.rawSymbol;
       const setup = buildRecommendationSetup(item, entryDecision, mirofishFit);
       const detailId = `${detailPrefix}-${index}`;
       recommendationDetailById.set(detailId, { item, setup });
@@ -1072,8 +1124,9 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
       const quote = recommendationQuoteInfo(item);
       const fundamentalMetrics = recommendationFundamentalMetricsMarkup(item);
       const businessDescription = recommendationBusinessDescription(item);
+      const cautionClass = isCautionObservationItem(item) ? " is-caution" : "";
       return `
-        <article class="recommendation-card" role="button" tabindex="0" data-recommendation-detail-id="${escapeHtml(detailId)}" aria-label="${escapeHtml(item.name)} 상세 정보 보기">
+        <article class="recommendation-card${cautionClass}" role="button" tabindex="0" data-recommendation-detail-id="${escapeHtml(detailId)}" aria-label="${escapeHtml(item.name)} 상세 정보 보기">
           <span class="recommendation-rank">${index + 1}</span>
           <div class="recommendation-copy">
             <div class="recommendation-title">
@@ -1113,7 +1166,6 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
       `;
     })
     .join("");
-  bindRecommendationDetailCards(list);
 }
 
 function recommendationInsightBlockMarkup(label, text, className = "") {
@@ -1132,6 +1184,21 @@ function shouldShowRecommendationInView(item, view = "all") {
   if (view === "confirmed") return stage === "confirmed";
   if (view === "observation") return stage === "watch" || stage === "observe";
   return true;
+}
+
+function isCautionObservationItem(item) {
+  if (!item) return false;
+  if (item.riskStage === "caution") return true;
+  if (item.eventPriceLockRisk || item.speculativeBiotechRisk || item.mfiReversalRisk) return true;
+  const reasons = Array.isArray(item.technicalCautionReasons)
+    ? item.technicalCautionReasons
+    : String(item.technicalCautionReasons || "")
+        .split(",")
+        .map((reason) => reason.trim())
+        .filter(Boolean);
+  return reasons.some((reason) =>
+    /과열|MFI 과열|이벤트성|바이오|단기 과열/.test(String(reason)),
+  );
 }
 
 function recommendationConditionText(payload, config = RECOMMENDATION_CONFIGS.domestic) {
@@ -1673,6 +1740,7 @@ function recommendationEntryDecisionForItem(item) {
     monthHighDrawdown: Number(item.monthHighDrawdown),
     monthlyReturn: Number(item.monthlyReturn),
     recommendationStage: item.recommendationStage,
+    riskStage: item.riskStage,
   });
 }
 
@@ -1720,6 +1788,7 @@ function buildRecommendationSetup(
       monthHighDrawdown,
       monthlyReturn,
       recommendationStage: item.recommendationStage,
+      riskStage: item.riskStage,
       recentWorstDailyReturn: Number(item.recentWorstDailyReturn),
       technicalCautionReasons: item.technicalCautionReasons,
       technicalRecommendationStage: item.technicalRecommendationStage,
@@ -1737,6 +1806,7 @@ function buildRecommendationSetup(
         recentVolumeRatio,
         recommendationStage: item.recommendationStage,
         relativeReturn,
+        riskStage: item.riskStage,
         technicalCautionReasons: item.technicalCautionReasons,
         technicalRecommendationStage: item.technicalRecommendationStage,
         volumeRatio,
@@ -1755,12 +1825,23 @@ function recommendationSetupSummary({
   monthlyReturn,
   recentVolumeRatio,
   recommendationStage,
+  riskStage,
   relativeReturn,
   technicalCautionReasons,
   technicalRecommendationStage,
   volumeRatio,
 }) {
   const action = entryDecision.action;
+  if (riskStage === "caution") {
+    const reasons = Array.isArray(technicalCautionReasons)
+      ? technicalCautionReasons
+      : String(technicalCautionReasons || "")
+          .split(",")
+          .map((reason) => reason.trim())
+          .filter(Boolean);
+    const reasonText = reasons.length ? recommendationReasonSubject(reasons.join("·")) : "주의 신호";
+    return `${reasonText}가 있어 일반 관찰과 분리했어. ${action}`;
+  }
   if (technicalRecommendationStage === "confirmed" && recommendationStage !== "confirmed") {
     const reasons = Array.isArray(technicalCautionReasons)
       ? technicalCautionReasons
@@ -1818,6 +1899,7 @@ function recommendationRiskText({
   monthHighDrawdown,
   monthlyReturn,
   recommendationStage,
+  riskStage,
   recentWorstDailyReturn,
   technicalCautionReasons,
   technicalRecommendationStage,
@@ -1832,6 +1914,10 @@ function recommendationRiskText({
         .map((reason) => reason.trim())
         .filter(Boolean);
 
+  if (riskStage === "caution") {
+    const reasonText = reasons.length ? reasons.join("·") : "주의 신호";
+    return `${recommendationReasonSubject(reasonText)}가 있어 매수 후보가 아니라 추적 관찰로만 봐.`;
+  }
   if (technicalRecommendationStage === "confirmed" && recommendationStage !== "confirmed") {
     const reasonText = reasons.length ? reasons.join("·") : "확정 조건 보류 신호";
     return `${recommendationReasonSubject(reasonText)}가 남아 있어 추천보다 관찰 관점으로 봐.`;
@@ -1925,12 +2011,14 @@ function recommendationActionText({
   monthHighDrawdown,
   monthlyReturn,
   recommendationStage,
+  riskStage,
 }) {
   return recommendationEntryDecision({
     mfi,
     monthHighDrawdown,
     monthlyReturn,
     recommendationStage,
+    riskStage,
   }).action;
 }
 
@@ -1939,7 +2027,16 @@ function recommendationEntryDecision({
   monthHighDrawdown,
   monthlyReturn,
   recommendationStage,
+  riskStage,
 }) {
+  if (riskStage === "caution") {
+    return {
+      action: "주의 관찰만 해.",
+      label: "주의 관찰",
+      rank: 0,
+      tone: "caution",
+    };
+  }
   if (recommendationStage === "watch" || recommendationStage === "observe") {
     return {
       action: "우선 관찰해.",

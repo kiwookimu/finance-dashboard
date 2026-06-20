@@ -1406,6 +1406,12 @@ function evaluateStockTechnicals({
       ? "KOSPI 상대강도 강화 기준 부족"
       : "",
   ].filter(Boolean);
+  const cautionObservation =
+    overheatRisk ||
+    mfiReversalRisk ||
+    eventPriceLockRisk ||
+    speculativeBiotechRisk ||
+    targetReturn > STOCK_EVALUATION_MAX_CONFIRMED_ROLLING_RETURN;
 
   const domesticConfirmedExtras =
     !isDomestic ||
@@ -1444,8 +1450,12 @@ function evaluateStockTechnicals({
         ? "watch"
         : "observe"
       : "none";
+  const riskStage = cautionObservation && recommendationStage !== "none" ? "caution" : "normal";
+  const riskStageLabel = riskStage === "caution" ? "주의 관찰" : "";
   const signal =
-    recommendationStage === "confirmed"
+    riskStage === "caution"
+      ? "주의 관찰 후보"
+      : recommendationStage === "confirmed"
       ? highConfidenceCandidate
         ? "고확신 1개월 상승 후보"
         : setupScore >= 85
@@ -1484,6 +1494,8 @@ function evaluateStockTechnicals({
     recentVolumeRatio: roundFinite(recentVolumeRatio, 2),
     recentWorstDailyReturn: roundFinite(recentWorstDailyReturn, 2),
     recommendationStage,
+    riskStage,
+    riskStageLabel,
     relativeReturn: roundFinite(relativeReturn, 2),
     rollingReturn: roundFinite(targetReturn, 2),
     rollingWindowDays: STOCK_EVALUATION_ROLLING_DAYS,
@@ -2765,20 +2777,99 @@ async function normalizeDomesticStockRecommendationPayload(payload, flags = {}) 
   };
 }
 
+function applyStoredRecommendationRisk(item, { isDomestic = false } = {}) {
+  if (!item || typeof item !== "object") return item;
+  const targetReturn = optionalNumber(item.rollingReturn ?? item.monthlyReturn);
+  const monthHighDrawdown = optionalNumber(item.liveMonthHighDrawdown ?? item.monthHighDrawdown);
+  const mfi = optionalNumber(item.mfi);
+  const recentVolumeRatio = optionalNumber(item.recentVolumeRatio);
+  const recentWorstDailyReturn = optionalNumber(item.recentWorstDailyReturn);
+  const volumeRatio = optionalNumber(item.volumeRatio);
+  const existingReasons = Array.isArray(item.technicalCautionReasons)
+    ? item.technicalCautionReasons
+    : String(item.technicalCautionReasons || "")
+        .split(",")
+        .map((reason) => reason.trim())
+        .filter(Boolean);
+
+  const overheatRisk = stockEvaluationOverheatRisk({
+    mfi,
+    monthHighDrawdown,
+    recentWorstDailyReturn,
+    targetReturn,
+    volumeRatio,
+  });
+  const mfiReversalRisk = stockEvaluationMfiReversalRisk({
+    mfi,
+    monthHighDrawdown,
+    recentVolumeRatio,
+    recentWorstDailyReturn,
+  });
+  const eventPriceLockRisk =
+    !isDomestic &&
+    stockEvaluationEventPriceLockRisk({
+      monthHighDrawdown,
+      recentVolumeRatio,
+      recentWorstDailyReturn,
+      targetReturn,
+      volumeRatio,
+    });
+  const speculativeBiotechRisk =
+    !isDomestic &&
+    stockEvaluationSpeculativeBiotechRisk({
+      industry: item.industry,
+      name: item.name,
+      sector: item.sector,
+    });
+  const extremeReturnRisk =
+    Number.isFinite(targetReturn) &&
+    targetReturn > STOCK_EVALUATION_MAX_CONFIRMED_ROLLING_RETURN;
+  const cautionObservation =
+    item.riskStage === "caution" ||
+    overheatRisk ||
+    mfiReversalRisk ||
+    eventPriceLockRisk ||
+    speculativeBiotechRisk ||
+    extremeReturnRisk;
+  const technicalCautionReasons = [
+    ...existingReasons,
+    overheatRisk ? "과열 신호" : "",
+    mfiReversalRisk ? "MFI 과열 후 되밀림" : "",
+    eventPriceLockRisk ? "이벤트성 가격 고정 의심" : "",
+    speculativeBiotechRisk ? "바이오 실적 확인 필요" : "",
+    extremeReturnRisk ? "단기 과열 상승" : "",
+  ].filter(Boolean);
+  const uniqueReasons = [...new Set(technicalCautionReasons)];
+  const riskStage =
+    cautionObservation && item.recommendationStage !== "none" ? "caution" : item.riskStage || "normal";
+
+  return {
+    ...item,
+    eventPriceLockRisk: Boolean(item.eventPriceLockRisk || eventPriceLockRisk),
+    mfiReversalRisk: Boolean(item.mfiReversalRisk || mfiReversalRisk),
+    overheatRisk: Boolean(item.overheatRisk || overheatRisk),
+    riskStage,
+    riskStageLabel: riskStage === "caution" ? "주의 관찰" : item.riskStageLabel || "",
+    signal: riskStage === "caution" ? "주의 관찰 후보" : item.signal,
+    speculativeBiotechRisk: Boolean(item.speculativeBiotechRisk || speculativeBiotechRisk),
+    technicalCautionReasons: uniqueReasons,
+  };
+}
+
 async function enrichUsRecommendationItem(item) {
   const symbol = String(item?.symbol || item?.rawSymbol || "").trim().toUpperCase();
-  if (!symbol) return withBusinessDescription(item);
+  if (!symbol) return withBusinessDescription(applyStoredRecommendationRisk(item));
   try {
     const fundamentals = await fetchNasdaqUsFundamentals(symbol, item);
-    return applyUsFundamentalQuality({
+    return applyStoredRecommendationRisk(applyUsFundamentalQuality({
       ...item,
       ...fundamentals,
-    });
+    }));
   } catch (error) {
-    return applyUsFundamentalQuality({
+    return applyStoredRecommendationRisk(applyUsFundamentalQuality({
       ...item,
       fundamentalStatusError: error.message,
-    });
+    }));
   }
 }
 
@@ -3071,7 +3162,7 @@ function parseNasdaqNumber(value) {
 }
 
 async function enrichDomesticRecommendationItem(item) {
-  if (!item?.code) return withBusinessDescription(item);
+  if (!item?.code) return withBusinessDescription(applyStoredRecommendationRisk(item, { isDomestic: true }));
   const [priceResult, fundamentalResult] = await Promise.allSettled([
     fetchNaverRecentPriceRows(item.code),
     fetchNaverDomesticFundamentals(item.code),
@@ -3089,7 +3180,11 @@ async function enrichDomesticRecommendationItem(item) {
     }
     const rows = priceResult.value;
     const latest = rows.at(-1);
-    if (!latest) return applyDomesticFundamentalQuality(enrichedItem);
+    if (!latest) {
+      return applyStoredRecommendationRisk(applyDomesticFundamentalQuality(enrichedItem), {
+        isDomestic: true,
+      });
+    }
 
     const lastClose = Number(item.lastClose);
     const returnFromSignal = percentChange(latest.close, lastClose);
@@ -3133,13 +3228,18 @@ async function enrichDomesticRecommendationItem(item) {
       recommendationInvalidated: invalidationReasons.length > 0,
       recommendationInvalidationReasons: invalidationReasons,
     };
-    return applyDomesticFundamentalQuality(enrichedItem);
-  } catch (error) {
-    return applyDomesticFundamentalQuality({
-      ...enrichedItem,
-      recommendationInvalidated: false,
-      recommendationStatusError: error.message,
+    return applyStoredRecommendationRisk(applyDomesticFundamentalQuality(enrichedItem), {
+      isDomestic: true,
     });
+  } catch (error) {
+    return applyStoredRecommendationRisk(
+      applyDomesticFundamentalQuality({
+        ...enrichedItem,
+        recommendationInvalidated: false,
+        recommendationStatusError: error.message,
+      }),
+      { isDomestic: true },
+    );
   }
 }
 
