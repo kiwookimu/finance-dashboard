@@ -13,6 +13,8 @@ const {
   MIROFISH_MARKET_SYMBOLS,
   applyMirofishSetupScore,
   buildMirofishSimulationFromHistories,
+  loadMirofishAgentPerformance,
+  mirofishAgentScores,
   scoreRecommendationWithMirofish,
 } = require("../lib/mirofishScreener");
 const RECOMMENDATION_CRITERIA = loadRecommendationCriteria();
@@ -162,6 +164,22 @@ const MAX_CONFIRMED_HIGH_DRAWDOWN = Number(
   process.env.MAX_CONFIRMED_HIGH_DRAWDOWN ||
     criteriaNumber(RECOMMENDATION_CRITERIA, "maxConfirmedHighDrawdown", 10),
 );
+const MAX_CONFIRMED_MFI = Number(
+  process.env.MAX_CONFIRMED_MFI ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "maxConfirmedMfi", 90),
+);
+const MFI_REVERSAL_MAX_HIGH_DRAWDOWN = Number(
+  process.env.MFI_REVERSAL_MAX_HIGH_DRAWDOWN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "mfiReversalMaxHighDrawdown", 5),
+);
+const MFI_REVERSAL_RECENT_VOLUME_RATIO = Number(
+  process.env.MFI_REVERSAL_RECENT_VOLUME_RATIO ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "mfiReversalRecentVolumeRatio", 3),
+);
+const MFI_REVERSAL_WORST_DAILY_RETURN = Number(
+  process.env.MFI_REVERSAL_WORST_DAILY_RETURN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "mfiReversalWorstDailyReturn", 3),
+);
 const OVERHEAT_MFI = Number(
   process.env.OVERHEAT_MFI || criteriaNumber(RECOMMENDATION_CRITERIA, "overheatMfi", 92),
 );
@@ -209,6 +227,10 @@ const mirofishMarketHistories = await fetchMirofishMarketHistories({
   kosdaq: benchmarkRowsByMarket.KOSDAQ,
   kospi: benchmarkRowsByMarket.KOSPI,
 });
+const mirofishAgentPerformance =
+  process.env.MIROFISH_AGENT_PERFORMANCE === "0"
+    ? null
+    : loadMirofishAgentPerformance();
 const mirofishSimulationByDate = new Map();
 const rawUniverse = (await fetchKrxUniverse())
   .filter((stock) => ALLOWED_MARKETS.has(stock.marketType))
@@ -289,6 +311,7 @@ const payload = {
   mirofish: {
     enabled: true,
     adjustment: "setupScore is adjusted by market/theme fit before final sorting",
+    agentPerformance: mirofishAgentPerformance,
     availableMarketSeries: Object.keys(mirofishMarketHistories),
   },
   universe: "KRX listed corporations from KIND; KOSPI/KOSDAQ stocks only",
@@ -417,6 +440,12 @@ function screenStock(stock, rows, benchmarkRows) {
     targetReturn,
     volumeRatio: volumeStats.volumeRatio,
   });
+  const mfiReversalRisk = recommendationMfiReversalRisk({
+    mfi,
+    monthHighDrawdown,
+    recentVolumeRatio,
+    recentWorstDailyReturn,
+  });
   const weakMarketRegime = recommendationWeakMarketRegime({
     benchmarkReturn,
     breakout,
@@ -425,6 +454,7 @@ function screenStock(stock, rows, benchmarkRows) {
   });
   const technicalCautionReasons = [
     overheatRisk ? "과열 신호" : "",
+    mfiReversalRisk ? "MFI 과열 후 되밀림" : "",
     targetReturn > MAX_CONFIRMED_ROLLING_RETURN ? "단기 과열 상승" : "",
     monthHighDrawdown <= -MAX_CONFIRMED_HIGH_DRAWDOWN ? "고점 이탈" : "",
     weakMarketRegime ? "시장 약세" : "",
@@ -465,6 +495,7 @@ function screenStock(stock, rows, benchmarkRows) {
     (stock.marketType !== "KOSPI" ||
       (volumeStats.volumeRatio >= MIN_DOMESTIC_KOSPI_CONFIRMED_VOLUME_RATIO &&
         relativeReturn >= MIN_DOMESTIC_KOSPI_CONFIRMED_RELATIVE_RETURN)) &&
+    !mfiReversalRisk &&
     !overheatRisk &&
     !weakMarketRegime &&
     (!mirofishFit || mirofishFit.score > -0.35);
@@ -505,9 +536,14 @@ function screenStock(stock, rows, benchmarkRows) {
     market: stock.market,
     marketType: stock.marketType,
     mfi: round(mfi, 2),
+    mfiReversalRisk,
     mirofishAdjustedScore,
     mirofishBonus: mirofishFit?.bonus ?? 0,
+    mirofishConfidence: mirofishFit?.confidence ?? null,
+    mirofishConsensusStrength: mirofishFit?.consensusStrength ?? null,
+    mirofishDisagreement: mirofishFit?.disagreement ?? null,
     mirofishDrivers: mirofishFit?.drivers || [],
+    mirofishAgentScores: mirofishAgentScores(mirofishSimulation),
     mirofishLabel: mirofishFit?.label || "",
     mirofishMarketScore: mirofishSimulation?.score ?? null,
     mirofishScore: round(Number(mirofishFit?.score), 4),
@@ -557,6 +593,20 @@ function recommendationOverheatRisk({
     volumeRatio >= EXTREME_VOLUME_RATIO &&
     mfi >= OVERHEAT_MFI &&
     recentWorstDailyReturn <= -8
+  );
+}
+
+function recommendationMfiReversalRisk({
+  mfi,
+  monthHighDrawdown,
+  recentVolumeRatio,
+  recentWorstDailyReturn,
+}) {
+  return (
+    mfi >= MAX_CONFIRMED_MFI &&
+    monthHighDrawdown <= -MFI_REVERSAL_MAX_HIGH_DRAWDOWN &&
+    recentVolumeRatio >= MFI_REVERSAL_RECENT_VOLUME_RATIO &&
+    recentWorstDailyReturn <= -MFI_REVERSAL_WORST_DAILY_RETURN
   );
 }
 
@@ -873,7 +923,9 @@ function mirofishSimulationForDate(date) {
   if (!mirofishSimulationByDate.has(date)) {
     mirofishSimulationByDate.set(
       date,
-      buildMirofishSimulationFromHistories(mirofishMarketHistories, date),
+      buildMirofishSimulationFromHistories(mirofishMarketHistories, date, {
+        agentPerformance: mirofishAgentPerformance,
+      }),
     );
   }
   return mirofishSimulationByDate.get(date);
@@ -956,10 +1008,14 @@ function toCsv(rows) {
     "setupScore",
     "mirofishAdjustedScore",
     "mirofishBonus",
+    "mirofishConfidence",
+    "mirofishConsensusStrength",
+    "mirofishDisagreement",
     "mirofishScore",
     "mirofishLabel",
     "mirofishTone",
     "mirofishDrivers",
+    "mirofishAgentScores",
     "mirofishMarketScore",
     "lastDate",
     "lastClose",
@@ -1087,7 +1143,7 @@ function round(value, decimals) {
 }
 
 function csvEscape(value) {
-  const text = String(value);
+  const text = value && typeof value === "object" ? JSON.stringify(value) : String(value);
   if (!/[",\n]/.test(text)) return text;
   return `"${text.replace(/"/g, '""')}"`;
 }

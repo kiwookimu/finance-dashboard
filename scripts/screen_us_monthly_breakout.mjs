@@ -13,6 +13,8 @@ const {
   MIROFISH_MARKET_SYMBOLS,
   applyMirofishSetupScore,
   buildMirofishSimulationFromHistories,
+  loadMirofishAgentPerformance,
+  mirofishAgentScores,
   scoreRecommendationWithMirofish,
 } = require("../lib/mirofishScreener");
 const RECOMMENDATION_CRITERIA = loadRecommendationCriteria();
@@ -142,6 +144,22 @@ const MAX_CONFIRMED_HIGH_DRAWDOWN = Number(
   process.env.MAX_CONFIRMED_HIGH_DRAWDOWN ||
     criteriaNumber(RECOMMENDATION_CRITERIA, "maxConfirmedHighDrawdown", 10),
 );
+const MAX_CONFIRMED_MFI = Number(
+  process.env.MAX_CONFIRMED_MFI ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "maxConfirmedMfi", 90),
+);
+const MFI_REVERSAL_MAX_HIGH_DRAWDOWN = Number(
+  process.env.MFI_REVERSAL_MAX_HIGH_DRAWDOWN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "mfiReversalMaxHighDrawdown", 5),
+);
+const MFI_REVERSAL_RECENT_VOLUME_RATIO = Number(
+  process.env.MFI_REVERSAL_RECENT_VOLUME_RATIO ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "mfiReversalRecentVolumeRatio", 3),
+);
+const MFI_REVERSAL_WORST_DAILY_RETURN = Number(
+  process.env.MFI_REVERSAL_WORST_DAILY_RETURN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "mfiReversalWorstDailyReturn", 3),
+);
 const OVERHEAT_MFI = Number(
   process.env.OVERHEAT_MFI || criteriaNumber(RECOMMENDATION_CRITERIA, "overheatMfi", 92),
 );
@@ -156,6 +174,26 @@ const EXTREME_RETURN = Number(
 const EXTREME_VOLUME_RATIO = Number(
   process.env.EXTREME_VOLUME_RATIO ||
     criteriaNumber(RECOMMENDATION_CRITERIA, "extremeVolumeRatio", 12),
+);
+const EVENT_LOCK_VOLUME_RATIO = Number(
+  process.env.EVENT_LOCK_VOLUME_RATIO ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "eventLockVolumeRatio", 5),
+);
+const EVENT_LOCK_RECENT_VOLUME_RATIO = Number(
+  process.env.EVENT_LOCK_RECENT_VOLUME_RATIO ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "eventLockRecentVolumeRatio", 3),
+);
+const EVENT_LOCK_MAX_HIGH_DRAWDOWN = Number(
+  process.env.EVENT_LOCK_MAX_HIGH_DRAWDOWN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "eventLockMaxHighDrawdown", 1),
+);
+const EVENT_LOCK_MAX_ROLLING_RETURN = Number(
+  process.env.EVENT_LOCK_MAX_ROLLING_RETURN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "eventLockMaxRollingReturn", 35),
+);
+const EVENT_LOCK_MAX_RECENT_WORST_DAILY_RETURN = Number(
+  process.env.EVENT_LOCK_MAX_RECENT_WORST_DAILY_RETURN ||
+    criteriaNumber(RECOMMENDATION_CRITERIA, "eventLockMaxRecentWorstDailyReturn", 3),
 );
 const WEAK_MARKET_RETURN = Number(
   process.env.WEAK_MARKET_RETURN ||
@@ -179,8 +217,13 @@ const NASDAQ_SCREENER =
   "https://api.nasdaq.com/api/screener/stocks?tableonly=true&limit=25&offset=0&download=true";
 const NASDAQ_API_HEADERS = {
   Accept: "application/json, text/plain, */*",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Cache-Control": "no-cache",
   Origin: "https://www.nasdaq.com",
   Referer: "https://www.nasdaq.com/",
+  "Sec-Fetch-Dest": "empty",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Site": "same-site",
   "User-Agent": "Mozilla/5.0",
 };
 
@@ -194,6 +237,10 @@ const benchmarkRows = await fetchYahooDaily(
 const mirofishMarketHistories = await fetchMirofishMarketHistories(
   BENCHMARK_SYMBOL === "QQQ" ? { qqq: benchmarkRows } : {},
 );
+const mirofishAgentPerformance =
+  process.env.MIROFISH_AGENT_PERFORMANCE === "0"
+    ? null
+    : loadMirofishAgentPerformance();
 const mirofishSimulationByDate = new Map();
 const EFFECTIVE_MARKET_MONTH = effectiveMarketMonth(MARKET_MONTH, benchmarkRows);
 if (EFFECTIVE_MARKET_MONTH !== MARKET_MONTH) {
@@ -281,6 +328,7 @@ const payload = {
   mirofish: {
     enabled: true,
     adjustment: "setupScore is adjusted by market/theme fit before final sorting",
+    agentPerformance: mirofishAgentPerformance,
     availableMarketSeries: Object.keys(mirofishMarketHistories),
   },
   universe:
@@ -413,6 +461,20 @@ function screenStock(stock, rows, benchmarkRows) {
     targetReturn,
     volumeRatio: volumeStats.volumeRatio,
   });
+  const mfiReversalRisk = recommendationMfiReversalRisk({
+    mfi,
+    monthHighDrawdown,
+    recentVolumeRatio,
+    recentWorstDailyReturn,
+  });
+  const eventPriceLockRisk = recommendationEventPriceLockRisk({
+    monthHighDrawdown,
+    recentVolumeRatio,
+    recentWorstDailyReturn,
+    targetReturn,
+    volumeRatio: volumeStats.volumeRatio,
+  });
+  const speculativeBiotechRisk = usSpeculativeBiotechRisk(stock);
   const weakMarketRegime = recommendationWeakMarketRegime({
     benchmarkReturn,
     breakout,
@@ -421,6 +483,9 @@ function screenStock(stock, rows, benchmarkRows) {
   });
   const technicalCautionReasons = [
     overheatRisk ? "과열 신호" : "",
+    mfiReversalRisk ? "MFI 과열 후 되밀림" : "",
+    eventPriceLockRisk ? "이벤트성 가격 고정 의심" : "",
+    speculativeBiotechRisk ? "바이오 실적 확인 필요" : "",
     targetReturn > MAX_CONFIRMED_ROLLING_RETURN ? "단기 과열 상승" : "",
     monthHighDrawdown <= -MAX_CONFIRMED_HIGH_DRAWDOWN ? "고점 이탈" : "",
     weakMarketRegime ? "시장 약세" : "",
@@ -440,6 +505,9 @@ function screenStock(stock, rows, benchmarkRows) {
     targetReturn <= MAX_CONFIRMED_ROLLING_RETURN &&
     mirofishAdjustedScore >= MIN_CONFIRMED_SETUP_SCORE &&
     monthHighDrawdown > -MAX_CONFIRMED_HIGH_DRAWDOWN &&
+    !mfiReversalRisk &&
+    !eventPriceLockRisk &&
+    !speculativeBiotechRisk &&
     !overheatRisk &&
     !weakMarketRegime &&
     (!mirofishFit || mirofishFit.score > -0.35);
@@ -477,9 +545,14 @@ function screenStock(stock, rows, benchmarkRows) {
     lastClose: round(current.close, 4),
     lastDate: current.date,
     mfi: round(mfi, 2),
+    mfiReversalRisk,
     mirofishAdjustedScore,
     mirofishBonus: mirofishFit?.bonus ?? 0,
+    mirofishConfidence: mirofishFit?.confidence ?? null,
+    mirofishConsensusStrength: mirofishFit?.consensusStrength ?? null,
+    mirofishDisagreement: mirofishFit?.disagreement ?? null,
     mirofishDrivers: mirofishFit?.drivers || [],
+    mirofishAgentScores: mirofishAgentScores(mirofishSimulation),
     mirofishLabel: mirofishFit?.label || "",
     mirofishMarketScore: mirofishSimulation?.score ?? null,
     mirofishScore: round(Number(mirofishFit?.score), 4),
@@ -500,6 +573,7 @@ function screenStock(stock, rows, benchmarkRows) {
     recentVolumeRatio: round(recentVolumeRatio, 2),
     recentWorstDailyReturn: round(recentWorstDailyReturn, 2),
     recommendationStage,
+    eventPriceLockRisk,
     relativeReturn: round(relativeReturn, 2),
     rollingReturn: round(targetReturn, 2),
     rollingWindowDays: ROLLING_WINDOW_DAYS,
@@ -508,6 +582,7 @@ function screenStock(stock, rows, benchmarkRows) {
     signal,
     symbol: stock.symbol,
     targetMonthVolume: Math.round(volumeStats.recentVolume),
+    speculativeBiotechRisk,
     technicalCautionReasons,
     technicalRecommendationStage: confirmedCandidate ? "confirmed" : recommendationStage,
     weakMarketRegime,
@@ -530,6 +605,43 @@ function recommendationOverheatRisk({
     volumeRatio >= EXTREME_VOLUME_RATIO &&
     mfi >= OVERHEAT_MFI &&
     recentWorstDailyReturn <= -8
+  );
+}
+
+function recommendationMfiReversalRisk({
+  mfi,
+  monthHighDrawdown,
+  recentVolumeRatio,
+  recentWorstDailyReturn,
+}) {
+  return (
+    mfi >= MAX_CONFIRMED_MFI &&
+    monthHighDrawdown <= -MFI_REVERSAL_MAX_HIGH_DRAWDOWN &&
+    recentVolumeRatio >= MFI_REVERSAL_RECENT_VOLUME_RATIO &&
+    recentWorstDailyReturn <= -MFI_REVERSAL_WORST_DAILY_RETURN
+  );
+}
+
+function recommendationEventPriceLockRisk({
+  monthHighDrawdown,
+  recentVolumeRatio,
+  recentWorstDailyReturn,
+  targetReturn,
+  volumeRatio,
+}) {
+  return (
+    volumeRatio >= EVENT_LOCK_VOLUME_RATIO &&
+    recentVolumeRatio >= EVENT_LOCK_RECENT_VOLUME_RATIO &&
+    monthHighDrawdown >= -EVENT_LOCK_MAX_HIGH_DRAWDOWN &&
+    targetReturn <= EVENT_LOCK_MAX_ROLLING_RETURN &&
+    recentWorstDailyReturn >= -EVENT_LOCK_MAX_RECENT_WORST_DAILY_RETURN
+  );
+}
+
+function usSpeculativeBiotechRisk(stock) {
+  const source = [stock.name, stock.industry, stock.sector].filter(Boolean).join(" ").toLowerCase();
+  return /biotech|biotechnology|biopharma|therapeutics|clinical|oncology|pharmaceutical preparations/.test(
+    source,
   );
 }
 
@@ -823,13 +935,16 @@ async function fetchNasdaqDaily(stock) {
   )}/historical?assetclass=stocks&fromdate=${historyStartDate()}&todate=${historyEndDate()}&limit=9999`;
   const response = await fetch(url, { headers: NASDAQ_API_HEADERS });
   if (!response.ok) {
-    throw new Error(`Nasdaq historical unavailable: ${response.status}`);
+    console.error(
+      `Nasdaq historical unavailable for ${stock.symbol}: ${response.status}; falling back to Yahoo`,
+    );
+    return fetchYahooDaily(stock.symbol, historyStartDate(), historyEndDate());
   }
 
   const json = await response.json();
   const rows = json.data?.tradesTable?.rows;
   if (!Array.isArray(rows) || !rows.length) {
-    throw new Error("empty Nasdaq historical data");
+    return fetchYahooDaily(stock.symbol, historyStartDate(), historyEndDate());
   }
 
   return rows
@@ -900,7 +1015,9 @@ function mirofishSimulationForDate(date) {
   if (!mirofishSimulationByDate.has(date)) {
     mirofishSimulationByDate.set(
       date,
-      buildMirofishSimulationFromHistories(mirofishMarketHistories, date),
+      buildMirofishSimulationFromHistories(mirofishMarketHistories, date, {
+        agentPerformance: mirofishAgentPerformance,
+      }),
     );
   }
   return mirofishSimulationByDate.get(date);
@@ -1035,10 +1152,14 @@ function toCsv(rows) {
     "setupScore",
     "mirofishAdjustedScore",
     "mirofishBonus",
+    "mirofishConfidence",
+    "mirofishConsensusStrength",
+    "mirofishDisagreement",
     "mirofishScore",
     "mirofishLabel",
     "mirofishTone",
     "mirofishDrivers",
+    "mirofishAgentScores",
     "mirofishMarketScore",
     "lastDate",
     "lastClose",
@@ -1211,7 +1332,7 @@ function round(value, digits = 2) {
 }
 
 function csvEscape(value) {
-  const text = String(value);
+  const text = value && typeof value === "object" ? JSON.stringify(value) : String(value);
   if (/[",\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
   return text;
 }

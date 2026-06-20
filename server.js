@@ -196,6 +196,26 @@ const STOCK_EVALUATION_MAX_CONFIRMED_HIGH_DRAWDOWN = criteriaNumber(
   "maxConfirmedHighDrawdown",
   10,
 );
+const STOCK_EVALUATION_MAX_CONFIRMED_MFI = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "maxConfirmedMfi",
+  90,
+);
+const STOCK_EVALUATION_MFI_REVERSAL_MAX_HIGH_DRAWDOWN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "mfiReversalMaxHighDrawdown",
+  5,
+);
+const STOCK_EVALUATION_MFI_REVERSAL_RECENT_VOLUME_RATIO = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "mfiReversalRecentVolumeRatio",
+  3,
+);
+const STOCK_EVALUATION_MFI_REVERSAL_WORST_DAILY_RETURN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "mfiReversalWorstDailyReturn",
+  3,
+);
 const STOCK_EVALUATION_OVERHEAT_MFI = criteriaNumber(
   RECOMMENDATION_CRITERIA,
   "overheatMfi",
@@ -215,6 +235,31 @@ const STOCK_EVALUATION_EXTREME_VOLUME_RATIO = criteriaNumber(
   RECOMMENDATION_CRITERIA,
   "extremeVolumeRatio",
   12,
+);
+const STOCK_EVALUATION_EVENT_LOCK_VOLUME_RATIO = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "eventLockVolumeRatio",
+  5,
+);
+const STOCK_EVALUATION_EVENT_LOCK_RECENT_VOLUME_RATIO = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "eventLockRecentVolumeRatio",
+  3,
+);
+const STOCK_EVALUATION_EVENT_LOCK_MAX_HIGH_DRAWDOWN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "eventLockMaxHighDrawdown",
+  1,
+);
+const STOCK_EVALUATION_EVENT_LOCK_MAX_ROLLING_RETURN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "eventLockMaxRollingReturn",
+  35,
+);
+const STOCK_EVALUATION_EVENT_LOCK_MAX_RECENT_WORST_DAILY_RETURN = criteriaNumber(
+  RECOMMENDATION_CRITERIA,
+  "eventLockMaxRecentWorstDailyReturn",
+  3,
 );
 const STOCK_EVALUATION_US_WEAK_MARKET_RETURN = criteriaNumber(
   RECOMMENDATION_CRITERIA,
@@ -616,6 +661,7 @@ async function fetchMarketOverview() {
     semiLeaderQuotes,
     fredQuotes,
     ddr5Spot,
+    mirofishAgentPerformance,
   ] = await Promise.all([
     Promise.all(MARKET_SOURCES.map((source) => optionalMarketQuote(fetchYahooQuote(source), source))),
     Promise.all(
@@ -634,6 +680,7 @@ async function fetchMarketOverview() {
       symbol: "DDR5 16Gb (2Gx8) 4800/5600",
       valuePrefix: "$",
     }),
+    readMirofishAgentPerformance(),
   ]);
   const derivedById = Object.fromEntries(
     derivedYahooQuotes.map((quote) => [quote.id, quote]),
@@ -696,6 +743,7 @@ async function fetchMarketOverview() {
         ddr5Spot,
       ].map((quote) => [quote.id, quote]),
     ),
+    mirofishAgentPerformance,
     sources: {
       quote: "Yahoo Finance chart endpoint",
       breadth: "Yahoo Finance ETF and semiconductor leader basket",
@@ -703,6 +751,15 @@ async function fetchMarketOverview() {
       fred: "FRED CSV series",
     },
   };
+}
+
+async function readMirofishAgentPerformance() {
+  try {
+    const filePath = path.join(ROOT, "screen_results", "mirofish_agent_performance.json");
+    return JSON.parse(await readFile(filePath, "utf8"));
+  } catch {
+    return null;
+  }
 }
 
 async function optionalMarketQuote(promise, fallbackSource, timeoutMs = 5500) {
@@ -1043,6 +1100,7 @@ async function getCachedUsSearchUniverse() {
   cachedUsSearchUniverse = rows
     .map((row) => ({
       exchange: row.exchange || row.exchangeCode || "",
+      industry: normalizeText(row.industry),
       marketCapUsd: parseNasdaqNumber(row.marketCap),
       name: normalizeText(row.name),
       sector: normalizeText(row.sector),
@@ -1293,6 +1351,22 @@ function evaluateStockTechnicals({
     targetReturn,
     volumeRatio: volumeStats.volumeRatio,
   });
+  const mfiReversalRisk = stockEvaluationMfiReversalRisk({
+    mfi,
+    monthHighDrawdown,
+    recentVolumeRatio,
+    recentWorstDailyReturn,
+  });
+  const eventPriceLockRisk =
+    !isDomestic &&
+    stockEvaluationEventPriceLockRisk({
+      monthHighDrawdown,
+      recentVolumeRatio,
+      recentWorstDailyReturn,
+      targetReturn,
+      volumeRatio: volumeStats.volumeRatio,
+    });
+  const speculativeBiotechRisk = !isDomestic && stockEvaluationSpeculativeBiotechRisk(stock);
   const weakMarketRegime = stockEvaluationWeakMarketRegime({
     benchmarkReturn,
     breakout,
@@ -1303,6 +1377,9 @@ function evaluateStockTechnicals({
 
   const technicalCautionReasons = [
     overheatRisk ? "과열 신호" : "",
+    mfiReversalRisk ? "MFI 과열 후 되밀림" : "",
+    eventPriceLockRisk ? "이벤트성 가격 고정 의심" : "",
+    speculativeBiotechRisk ? "바이오 실적 확인 필요" : "",
     targetReturn > STOCK_EVALUATION_MAX_CONFIRMED_ROLLING_RETURN ? "단기 과열 상승" : "",
     monthHighDrawdown <= -STOCK_EVALUATION_MAX_CONFIRMED_HIGH_DRAWDOWN ? "고점 이탈" : "",
     weakMarketRegime ? "시장 약세" : "",
@@ -1347,6 +1424,9 @@ function evaluateStockTechnicals({
     setupScore >= STOCK_EVALUATION_MIN_CONFIRMED_SETUP_SCORE &&
     monthHighDrawdown > -STOCK_EVALUATION_MAX_CONFIRMED_HIGH_DRAWDOWN &&
     domesticConfirmedExtras &&
+    !mfiReversalRisk &&
+    !eventPriceLockRisk &&
+    !speculativeBiotechRisk &&
     !overheatRisk &&
     !weakMarketRegime;
   const highConfidenceCandidate =
@@ -1390,6 +1470,8 @@ function evaluateStockTechnicals({
     lastClose: roundFinite(current.close, isDomestic ? 0 : 4),
     lastDate: current.date,
     mfi: roundFinite(mfi, 2),
+    mfiReversalRisk,
+    eventPriceLockRisk,
     monthHigh: roundFinite(rollingHigh, isDomestic ? 0 : 4),
     monthHighDrawdown: roundFinite(monthHighDrawdown, 2),
     monthlyReturn: roundFinite(targetReturn, 2),
@@ -1409,6 +1491,7 @@ function evaluateStockTechnicals({
     setupScore,
     signal,
     targetMonthVolume: Math.round(volumeStats.recentVolume),
+    speculativeBiotechRisk,
     technicalCautionReasons,
     technicalRecommendationStage: confirmedCandidate ? "confirmed" : recommendationStage,
     weakMarketRegime,
@@ -1517,6 +1600,13 @@ function buildStockEvaluationChecks(item, minimumMarketCapKrw) {
     stockEvaluationCheck("추천 확정", "MFI", mfi, 80, ">=", {
       display: "number",
     }),
+    {
+      group: "추천 확정",
+      label: "MFI 되밀림",
+      threshold: "없음",
+      tone: item.mfiReversalRisk ? "fail" : "pass",
+      value: item.mfiReversalRisk ? "있음" : "없음",
+    },
     stockEvaluationCheck("추천 확정", "상승률", monthlyReturn, 15, ">=", {
       display: "percent",
     }),
@@ -1543,8 +1633,22 @@ function buildStockEvaluationChecks(item, minimumMarketCapKrw) {
       group: "추천 확정",
       label: "과열 리스크",
       threshold: "없음",
-      tone: item.technicalCautionReasons?.includes("과열 신호") ? "fail" : "pass",
-      value: item.technicalCautionReasons?.includes("과열 신호") ? "있음" : "없음",
+      tone: hasTechnicalCaution(item, "과열") ? "fail" : "pass",
+      value: hasTechnicalCaution(item, "과열") ? "있음" : "없음",
+    },
+    {
+      group: "추천 확정",
+      label: "이벤트 가격 고정",
+      threshold: "없음",
+      tone: item.eventPriceLockRisk ? "fail" : "pass",
+      value: item.eventPriceLockRisk ? "있음" : "없음",
+    },
+    {
+      group: "추천 확정",
+      label: "바이오 실적 리스크",
+      threshold: "없음",
+      tone: item.speculativeBiotechRisk ? "fail" : "pass",
+      value: item.speculativeBiotechRisk ? "있음" : "없음",
     },
     {
       group: "추천 확정",
@@ -1693,6 +1797,10 @@ function stockEvaluationCheck(group, label, value, threshold, operator, options 
   };
 }
 
+function hasTechnicalCaution(item, keyword) {
+  return (item.technicalCautionReasons || []).some((reason) => String(reason).includes(keyword));
+}
+
 function stockEvaluationThresholdText(threshold, operator, display) {
   const prefix =
     operator === "<=" ? "이하" : operator === "<" ? "미만" : operator === ">" ? "초과" : "이상";
@@ -1837,6 +1945,43 @@ function stockEvaluationOverheatRisk({
     volumeRatio >= STOCK_EVALUATION_EXTREME_VOLUME_RATIO &&
     mfi >= STOCK_EVALUATION_OVERHEAT_MFI &&
     recentWorstDailyReturn <= -8
+  );
+}
+
+function stockEvaluationMfiReversalRisk({
+  mfi,
+  monthHighDrawdown,
+  recentVolumeRatio,
+  recentWorstDailyReturn,
+}) {
+  return (
+    mfi >= STOCK_EVALUATION_MAX_CONFIRMED_MFI &&
+    monthHighDrawdown <= -STOCK_EVALUATION_MFI_REVERSAL_MAX_HIGH_DRAWDOWN &&
+    recentVolumeRatio >= STOCK_EVALUATION_MFI_REVERSAL_RECENT_VOLUME_RATIO &&
+    recentWorstDailyReturn <= -STOCK_EVALUATION_MFI_REVERSAL_WORST_DAILY_RETURN
+  );
+}
+
+function stockEvaluationEventPriceLockRisk({
+  monthHighDrawdown,
+  recentVolumeRatio,
+  recentWorstDailyReturn,
+  targetReturn,
+  volumeRatio,
+}) {
+  return (
+    volumeRatio >= STOCK_EVALUATION_EVENT_LOCK_VOLUME_RATIO &&
+    recentVolumeRatio >= STOCK_EVALUATION_EVENT_LOCK_RECENT_VOLUME_RATIO &&
+    monthHighDrawdown >= -STOCK_EVALUATION_EVENT_LOCK_MAX_HIGH_DRAWDOWN &&
+    targetReturn <= STOCK_EVALUATION_EVENT_LOCK_MAX_ROLLING_RETURN &&
+    recentWorstDailyReturn >= -STOCK_EVALUATION_EVENT_LOCK_MAX_RECENT_WORST_DAILY_RETURN
+  );
+}
+
+function stockEvaluationSpeculativeBiotechRisk(stock) {
+  const source = [stock.name, stock.industry, stock.sector].filter(Boolean).join(" ").toLowerCase();
+  return /biotech|biotechnology|biopharma|therapeutics|clinical|oncology|pharmaceutical preparations/.test(
+    source,
   );
 }
 

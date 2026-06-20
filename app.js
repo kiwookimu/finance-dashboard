@@ -123,6 +123,7 @@ let recommendationGlobalRefreshing = false;
 let recommendationGlobalProgressLastPercent = 0;
 let recommendationRefreshToolbarTimer = null;
 let lastRecommendationDetailTrigger = null;
+let latestMirofishAgentPerformance = null;
 let latestMirofishSimulation = null;
 let marketAutoRefreshTimer = null;
 let marketIndicatorRequest = null;
@@ -1489,13 +1490,17 @@ function recommendationPriorityScore(item, mirofishFit = null) {
 function recommendationMirofishPriorityBonus(fit) {
   const score = Number(fit?.score);
   if (!Number.isFinite(score)) return 0;
-  if (score >= 0.45) return 10;
-  if (score >= 0.25) return 6;
-  if (score >= 0.1) return 3;
-  if (score <= -0.45) return -12;
-  if (score <= -0.25) return -8;
-  if (score <= -0.1) return -4;
-  return 0;
+  let base = 0;
+  if (score >= 0.45) base = 10;
+  else if (score >= 0.25) base = 6;
+  else if (score >= 0.1) base = 3;
+  else if (score <= -0.45) base = -12;
+  else if (score <= -0.25) base = -8;
+  else if (score <= -0.1) base = -4;
+  if (!base) return 0;
+  const confidence = Number(fit?.confidence);
+  const multiplier = Number.isFinite(confidence) ? 0.75 + clamp(confidence, 0, 1) * 0.5 : 1;
+  return Math.round(base * multiplier);
 }
 
 function recommendationMirofishFit(
@@ -1517,8 +1522,20 @@ function recommendationMirofishFit(
     return {
       bonus: Number.isFinite(Number(item?.mirofishBonus))
         ? Number(item.mirofishBonus)
-        : recommendationMirofishPriorityBonus({ score: storedScore }),
+        : recommendationMirofishPriorityBonus({
+            confidence: Number(item?.mirofishConfidence),
+            score: storedScore,
+          }),
       drivers: storedDrivers,
+      confidence: Number.isFinite(Number(item?.mirofishConfidence))
+        ? Number(item.mirofishConfidence)
+        : null,
+      consensusStrength: Number.isFinite(Number(item?.mirofishConsensusStrength))
+        ? Number(item.mirofishConsensusStrength)
+        : null,
+      disagreement: Number.isFinite(Number(item?.mirofishDisagreement))
+        ? Number(item.mirofishDisagreement)
+        : null,
       label:
         item?.mirofishLabel ||
         (tone === "tailwind" ? "순풍" : tone === "headwind" ? "역풍" : "중립"),
@@ -1583,7 +1600,15 @@ function recommendationMirofishFit(
       id: "consensus",
       label: "전체 합의",
       score: consensusScore,
-      weight: 0.45,
+      weight: 0.55,
+    });
+  }
+  if (Number.isFinite(Number(simulation.consensusStrength))) {
+    exposures.push({
+      id: "swarm",
+      label: "합의 안정성",
+      score: clamp(Number(simulation.consensusStrength), -1, 1),
+      weight: 0.25,
     });
   }
 
@@ -1602,7 +1627,16 @@ function recommendationMirofishFit(
   const label =
     tone === "tailwind" ? "순풍" : tone === "headwind" ? "역풍" : "중립";
   return {
-    bonus: recommendationMirofishPriorityBonus({ score }),
+    bonus: recommendationMirofishPriorityBonus({ confidence: simulation.confidence, score }),
+    confidence: Number.isFinite(Number(simulation.confidence))
+      ? Number(simulation.confidence)
+      : null,
+    consensusStrength: Number.isFinite(Number(simulation.consensusStrength))
+      ? Number(simulation.consensusStrength)
+      : null,
+    disagreement: Number.isFinite(Number(simulation.disagreement))
+      ? Number(simulation.disagreement)
+      : null,
     drivers: sortedDrivers,
     label,
     score,
@@ -1614,17 +1648,21 @@ function recommendationMirofishSummary(fit) {
   const score = Number(fit?.score);
   if (!Number.isFinite(score)) return "";
   const drivers = fit.drivers?.length ? fit.drivers.join("·") : "시장 합의";
+  const confidence = Number(fit?.confidence);
+  const confidenceText = Number.isFinite(confidence)
+    ? ` 합의 확신도 ${formatNumber(confidence * 100, 0)}%.`
+    : "";
   if (score >= 0.35) {
-    return `MiroFish는 ${drivers} 순풍을 반영해 이 후보의 우선순위를 올렸어.`;
+    return `MiroFish는 ${drivers} 순풍을 반영해 이 후보의 우선순위를 올렸어.${confidenceText}`;
   }
   if (score >= 0.1) {
-    return `MiroFish는 ${drivers} 약한 순풍을 반영해 우선순위를 소폭 올렸어.`;
+    return `MiroFish는 ${drivers} 약한 순풍을 반영해 우선순위를 소폭 올렸어.${confidenceText}`;
   }
   if (score <= -0.25) {
-    return `MiroFish는 ${drivers} 역풍을 반영해 이 후보의 우선순위를 낮췄어.`;
+    return `MiroFish는 ${drivers} 역풍을 반영해 이 후보의 우선순위를 낮췄어.${confidenceText}`;
   }
   if (score <= -0.1) {
-    return `MiroFish는 ${drivers} 약한 역풍을 반영해 우선순위를 소폭 낮췄어.`;
+    return `MiroFish는 ${drivers} 약한 역풍을 반영해 우선순위를 소폭 낮췄어.${confidenceText}`;
   }
   return "";
 }
@@ -2038,7 +2076,7 @@ async function loadIndicatorsNow() {
     renderFearGreed(sentiment.fearGreed);
     renderVix(sentiment.vix);
     renderMarketIndicator("vixTerm", buildVixTermQuote(market.quotes.vix3m, sentiment.vix));
-    renderMirofishSimulation(market.quotes, sentiment);
+    renderMirofishSimulation(market.quotes, sentiment, market.mirofishAgentPerformance);
     renderTradingSignal(market.quotes, sentiment);
     renderIndexPredictions(market.quotes, sentiment);
     renderThemeRadar(market.quotes, sentiment);
@@ -2210,12 +2248,13 @@ function renderThemeRadarError() {
   list.innerHTML = `<p class="theme-radar-empty">테마 데이터 갱신 실패</p>`;
 }
 
-function renderMirofishSimulation(quotes = {}, sentiment = {}) {
+function renderMirofishSimulation(quotes = {}, sentiment = {}, agentPerformance = null) {
   const summaryElement = document.querySelector("#mirofishSummary");
   const agentsElement = document.querySelector("#mirofishAgents");
   if (!summaryElement || !agentsElement) return;
 
-  const simulation = buildMirofishSimulation(quotes, sentiment);
+  latestMirofishAgentPerformance = normalizeMirofishAgentPerformance(agentPerformance);
+  const simulation = buildMirofishSimulation(quotes, sentiment, latestMirofishAgentPerformance);
   latestMirofishSimulation = simulation;
   if (!simulation.agents.length) {
     summaryElement.innerHTML = `<p class="mirofish-empty">시뮬레이션 데이터 부족</p>`;
@@ -2228,9 +2267,9 @@ function renderMirofishSimulation(quotes = {}, sentiment = {}) {
     <div class="mirofish-consensus is-${escapeHtml(simulation.tone)}">
       <span>합의</span>
       <strong>${escapeHtml(simulation.direction)}</strong>
-      <em>${formatSignedScore(simulation.score)}점</em>
+      <em>${formatSignedScore(simulation.score)}점 · 확신 ${formatNumber(simulation.confidence * 100, 0)}%</em>
     </div>
-    <p>${escapeHtml(simulation.summary)}</p>
+    <p>${escapeHtml(simulation.summary)} · ${simulation.roundCount}라운드 합의 · 의견분산 ${formatNumber(simulation.disagreement, 2)}</p>
   `;
   agentsElement.innerHTML = simulation.agents
     .map(
@@ -2240,7 +2279,7 @@ function renderMirofishSimulation(quotes = {}, sentiment = {}) {
             <strong>${escapeHtml(agent.name)}</strong>
             <b>${escapeHtml(agent.vote)}</b>
           </div>
-          <small>${escapeHtml(agent.role)}</small>
+          <small>${escapeHtml(agent.role)} · 상호작용 ${formatSignedNumber(agent.influenceScore * 100, 0)}p${mirofishPerformanceLabel(agent)}</small>
           <span class="mirofish-agent-meter" aria-hidden="true">
             <i style="width: ${agent.meter}%"></i>
           </span>
@@ -2271,7 +2310,11 @@ function rerenderRecommendationsWithMirofish() {
   }
 }
 
-function buildMirofishSimulation(quotes = {}, sentiment = {}) {
+function buildMirofishSimulation(
+  quotes = {},
+  sentiment = {},
+  agentPerformance = latestMirofishAgentPerformance,
+) {
   const vixTermQuote = buildVixTermQuote(quotes.vix3m, sentiment.vix);
   const agentSpecs = [
     {
@@ -2368,7 +2411,11 @@ function buildMirofishSimulation(quotes = {}, sentiment = {}) {
     },
   ];
 
-  const agents = agentSpecs.map(buildMirofishAgent).filter(Boolean);
+  const agents = evolveMirofishAgents(
+    applyMirofishAgentPerformance(agentSpecs, agentPerformance)
+      .map(buildMirofishAgent)
+      .filter(Boolean),
+  );
   const weightedScore = agents.reduce((sum, agent) => sum + agent.rawScore * agent.weight, 0);
   const totalWeight = agents.reduce((sum, agent) => sum + agent.weight, 0);
   const score = totalWeight ? Math.round((weightedScore / totalWeight) * 100) : 0;
@@ -2397,8 +2444,19 @@ function buildMirofishSimulation(quotes = {}, sentiment = {}) {
   ]
     .filter(Boolean)
     .join(". ");
+  const consensus = mirofishConsensusMetrics(agents, score);
 
-  return { agents, direction, score, summary, tone };
+  return {
+    agents,
+    confidence: consensus.confidence,
+    consensusStrength: consensus.consensusStrength,
+    direction,
+    disagreement: consensus.disagreement,
+    roundCount: consensus.roundCount,
+    score,
+    summary,
+    tone,
+  };
 }
 
 function localizedFearGreedRating(value) {
@@ -2480,6 +2538,55 @@ function scoreMirofishPortfolioFit(simulation) {
   ]);
 }
 
+function applyMirofishAgentPerformance(agentSpecs, profile) {
+  const agents = profile?.agents || {};
+  return agentSpecs.map((spec) => {
+    const performance = normalizeMirofishAgentPerformanceRecord(agents[spec.id]);
+    if (!performance) return spec;
+    return {
+      ...spec,
+      performance,
+      weight: roundFinite(Number(spec.weight) * performance.weightMultiplier, 4),
+    };
+  });
+}
+
+function normalizeMirofishAgentPerformance(profile) {
+  if (!profile || typeof profile !== "object") return null;
+  const sourceAgents = profile.agents || profile.agentPerformance?.agents;
+  if (!sourceAgents || typeof sourceAgents !== "object") return null;
+  const agents = {};
+  for (const [id, record] of Object.entries(sourceAgents)) {
+    const normalized = normalizeMirofishAgentPerformanceRecord(record);
+    if (normalized) agents[id] = normalized;
+  }
+  return Object.keys(agents).length
+    ? {
+        generatedAt: profile.generatedAt || profile.agentPerformance?.generatedAt || "",
+        agents,
+      }
+    : null;
+}
+
+function normalizeMirofishAgentPerformanceRecord(record) {
+  if (!record || typeof record !== "object") return null;
+  const weightMultiplier = clamp(Number(record.weightMultiplier), 0.82, 1.22);
+  if (!Number.isFinite(weightMultiplier)) return null;
+  return {
+    hitRate: Number.isFinite(Number(record.hitRate)) ? Number(record.hitRate) : null,
+    observationCount: Number.isFinite(Number(record.observationCount))
+      ? Number(record.observationCount)
+      : null,
+    weightMultiplier,
+  };
+}
+
+function mirofishPerformanceLabel(agent) {
+  const multiplier = Number(agent?.performanceWeightMultiplier);
+  if (!Number.isFinite(multiplier) || Math.abs(multiplier - 1) < 0.015) return "";
+  return ` · 성과가중 x${formatNumber(multiplier, 2)}`;
+}
+
 function buildMirofishAgent(spec) {
   const components = spec.components
     .map((component) => ({
@@ -2501,14 +2608,95 @@ function buildMirofishAgent(spec) {
   const evidence = spec.evidence.filter(Boolean).slice(0, 3).join(" · ") || "가용 지표 혼조";
   return {
     evidence,
+    baseScore: rawScore,
     id: spec.id,
     meter: clamp(Math.round(((rawScore + 1) / 2) * 100), 0, 100),
     name: spec.name,
+    performanceHitRate: spec.performance?.hitRate ?? null,
+    performanceObservationCount: spec.performance?.observationCount ?? null,
+    performanceWeightMultiplier: spec.performance?.weightMultiplier ?? 1,
     rawScore,
     role: spec.role,
     tone,
     vote,
     weight: spec.weight,
+  };
+}
+
+function evolveMirofishAgents(baseAgents) {
+  if (!baseAgents.length) return [];
+  let agents = baseAgents.map((agent) => ({
+    ...agent,
+    history: [roundFinite(agent.rawScore, 4)],
+    influenceScore: 0,
+  }));
+
+  for (let roundIndex = 0; roundIndex < 3; roundIndex += 1) {
+    const consensus = weightedAgentScore(agents);
+    const leaders = agents
+      .slice()
+      .sort((a, b) => Math.abs(b.rawScore) * b.weight - Math.abs(a.rawScore) * a.weight)
+      .slice(0, 2);
+    const leaderScore = weightedAgentScore(leaders);
+    agents = agents.map((agent) => {
+      const conviction = clamp(Math.abs(agent.baseScore), 0.15, 0.85);
+      const peerInfluence = (consensus - agent.rawScore) * (0.18 + (1 - conviction) * 0.1);
+      const leaderInfluence = Number.isFinite(leaderScore)
+        ? (leaderScore - agent.rawScore) * 0.08
+        : 0;
+      const selfAnchor = (agent.baseScore - agent.rawScore) * conviction * 0.1;
+      const nextScore = clamp(agent.rawScore + peerInfluence + leaderInfluence + selfAnchor, -1, 1);
+      const meter = clamp(Math.round(((nextScore + 1) / 2) * 100), 0, 100);
+      return {
+        ...agent,
+        history: [...agent.history, roundFinite(nextScore, 4)],
+        influenceScore: nextScore - agent.baseScore,
+        meter,
+        rawScore: nextScore,
+        tone: nextScore >= 0.35 ? "up" : nextScore <= -0.35 ? "down" : "neutral",
+        vote: nextScore >= 0.35 ? "상승" : nextScore <= -0.35 ? "하락" : "중립",
+      };
+    });
+  }
+
+  return agents.map((agent) => ({
+    ...agent,
+    influenceScore: roundFinite(agent.influenceScore, 4),
+    stability: roundFinite(agentStability(agent.history), 4),
+  }));
+}
+
+function weightedAgentScore(agents) {
+  const validAgents = agents.filter(
+    (agent) => Number.isFinite(agent.rawScore) && Number.isFinite(agent.weight),
+  );
+  const totalWeight = validAgents.reduce((sum, agent) => sum + agent.weight, 0);
+  if (!totalWeight) return NaN;
+  return validAgents.reduce((sum, agent) => sum + agent.rawScore * agent.weight, 0) / totalWeight;
+}
+
+function agentStability(history = []) {
+  if (history.length < 2) return 1;
+  const maxMove = history.slice(1).reduce((max, value, index) => {
+    const previous = history[index];
+    return Math.max(max, Math.abs(value - previous));
+  }, 0);
+  return clamp(1 - maxMove / 0.35, 0, 1);
+}
+
+function mirofishConsensusMetrics(agents, score) {
+  const consensusScore = Number(score) / 100;
+  const disagreement = average(
+    agents.map((agent) => Math.abs(Number(agent.rawScore) - consensusScore)),
+  );
+  const stability = average(agents.map((agent) => Number(agent.stability)));
+  const agreement = Number.isFinite(disagreement) ? clamp(1 - disagreement / 0.75, 0, 1) : NaN;
+  const directionStrength = clamp(Math.abs(consensusScore) / 0.65, 0, 1);
+  return {
+    confidence: roundFinite(average([agreement, stability, directionStrength * 0.85]), 4),
+    consensusStrength: roundFinite(average([agreement, directionStrength, stability]), 4),
+    disagreement: roundFinite(disagreement, 4),
+    roundCount: agents.reduce((max, agent) => Math.max(max, agent.history?.length || 0), 0),
   };
 }
 

@@ -1,0 +1,53 @@
+{
+  "basis": "Agent score is evaluated as a cross-sectional ranker of subsequent 1-month excess return; stronger rank skill increases future agent weight.",
+  "generatedAt": "2026-06-20T12:26:20.169Z",
+  "horizonKey": "next1mReturnExcess",
+  "minSignal": 0.1,
+  "agents": {
+    "macro": {
+      "averageAlignedExcess": -19.2,
+      "averageSignal": 0.2967,
+      "hitRate": 39.4,
+      "observationCount": 84,
+      "pairCount": 2344,
+      "topBottomExcessSpread": -19.2,
+      "weightMultiplier": 0.82
+    },
+    "growth": {
+      "averageAlignedExcess": -21.22,
+      "averageSignal": 0.2812,
+      "hitRate": 36.3,
+      "observationCount": 83,
+      "pairCount": 2537,
+      "topBottomExcessSpread": -21.22,
+      "weightMultiplier": 0.82
+    },
+    "semiconductor": {
+      "averageAlignedExcess": -19.3,
+      "averageSignal": 0.35,
+      "hitRate": 38.5,
+      "observationCount": 90,
+      "pairCount": 2860,
+      "topBottomExcessSpread": -19.3,
+      "weightMultiplier": 0.82
+    },
+    "korea": {
+      "averageAlignedExcess": -15.04,
+      "averageSignal": 0.2992,
+      "hitRate": 45.5,
+      "observationCount": 92,
+      "pairCount": 2729,
+      "topBottomExcessSpread": -15.04,
+      "weightMultiplier": 0.8423
+    },
+    "risk": {
+      "averageAlignedExcess": -21.22,
+      "averageSignal": 0.3219,
+      "hitRate": 38,
+      "observationCount": 83,
+      "pairCount": 2232,
+      "topBottomExcessSpread": -21.22,
+      "weightMultiplier": 0.82
+    }
+  }
+}

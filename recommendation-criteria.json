@@ -1,8 +1,8 @@
 {
-  "version": "rolling-21-v8",
+  "version": "rolling-21-v9",
   "screenVersion": {
-    "domestic": "kr-rolling-21-v11-kospi-tight",
-    "us": "us-rolling-21-v9-win75"
+    "domestic": "kr-rolling-21-v12-mfi90",
+    "us": "us-rolling-21-v10-event-quality"
   },
   "comparisonMonthCount": 5,
   "rollingWindowDays": 21,
@@ -35,10 +35,19 @@
   "maxRollingHighDrawdown": 20,
   "maxConfirmedHighDrawdown": 10,
   "maxConfirmedRollingReturn": 80,
+  "maxConfirmedMfi": 90,
+  "mfiReversalMaxHighDrawdown": 5,
+  "mfiReversalRecentVolumeRatio": 3,
+  "mfiReversalWorstDailyReturn": 3,
   "overheatMfi": 92,
   "overheatReturn": 70,
   "extremeReturn": 100,
   "extremeVolumeRatio": 12,
+  "eventLockVolumeRatio": 5,
+  "eventLockRecentVolumeRatio": 3,
+  "eventLockMaxHighDrawdown": 1,
+  "eventLockMaxRollingReturn": 35,
+  "eventLockMaxRecentWorstDailyReturn": 3,
   "weakMarketReturn": {
     "domestic": 0,
     "us": -5
