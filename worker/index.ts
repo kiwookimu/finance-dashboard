@@ -5,6 +5,27 @@ import trafficHtml from "../traffic.html?raw";
 import trafficScript from "../traffic.js?raw";
 import backtestSnapshot from "./backtest-snapshot.json";
 import handler from "vinext/server/app-router-entry";
+import sitesRecommendation from "../lib/sitesRecommendation.js";
+
+type RecommendationSnapshot = Record<string, unknown> & {
+  generatedAt?: string;
+  marketMonth?: string;
+};
+
+const domesticRecommendationSnapshots = import.meta.glob(
+  "../screen_results/kr_monthly_breakout_*.json",
+  { eager: true, import: "default" },
+) as Record<string, RecommendationSnapshot>;
+const usRecommendationSnapshots = import.meta.glob(
+  "../screen_results/us_monthly_breakout_*.json",
+  { eager: true, import: "default" },
+) as Record<string, RecommendationSnapshot>;
+const domesticRecommendationSnapshot = sitesRecommendation.selectLatestRecommendationSnapshot(
+  domesticRecommendationSnapshots,
+);
+const usRecommendationSnapshot = sitesRecommendation.selectLatestRecommendationSnapshot(
+  usRecommendationSnapshots,
+);
 
 interface Env {
   ASSETS: Fetcher;
@@ -60,18 +81,30 @@ async function handleApi(url: URL) {
     return jsonResponse(await finance.getPortfolioMetrics());
   }
   if (url.pathname === "/api/stock-recommendations") {
+    const payload = domesticRecommendationSnapshot
+      ? await finance.getBundledStockRecommendations(domesticRecommendationSnapshot, {
+          market: "domestic",
+        })
+      : await finance.getStockRecommendations({ asyncRefresh: false, forceRefresh: false });
     return jsonResponse(
-      await finance.getStockRecommendations({ asyncRefresh: false, forceRefresh: false }),
+      sitesRecommendation.withSitesRecommendationMetadata(payload, {
+        refreshRequested: url.searchParams.get("refresh") === "1",
+      }),
     );
   }
   if (url.pathname === "/api/us-stock-recommendations") {
+    const payload = usRecommendationSnapshot
+      ? await finance.getBundledStockRecommendations(usRecommendationSnapshot, { market: "us" })
+      : await finance.getUsStockRecommendations({ asyncRefresh: false, forceRefresh: false });
     return jsonResponse(
-      await finance.getUsStockRecommendations({ asyncRefresh: false, forceRefresh: false }),
+      sitesRecommendation.withSitesRecommendationMetadata(payload, {
+        refreshRequested: url.searchParams.get("refresh") === "1",
+      }),
     );
   }
   if (url.pathname === "/api/recommendation-refresh-progress") {
     return jsonResponse(
-      finance.getRecommendationRefreshProgress(
+      sitesRecommendation.createSitesRecommendationProgress(
         url.searchParams.get("market") === "us" ? "us" : "domestic",
       ),
     );

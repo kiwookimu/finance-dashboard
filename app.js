@@ -688,9 +688,12 @@ async function refreshRecommendations(config, state) {
     });
     if (!startResponse.ok) throw new Error("Stock recommendation refresh failed");
     const startPayload = await startResponse.json();
-    if (startPayload?.refreshBlocked) {
+    if (startPayload?.refreshBlocked || startPayload?.refreshSupported === false) {
       renderRecommendationPayloadForBase(startPayload, config.baseMarket);
       return;
+    }
+    if (startPayload?.refreshStarted !== true) {
+      throw new Error("Recommendation refresh did not start");
     }
 
     const finalProgress = await waitForRecommendationRefresh(config);
@@ -949,6 +952,7 @@ function setRecommendationBaseLoading(baseMarket, isLoading) {
 
 function canRefreshRecommendationBase(baseMarket) {
   const payload = recommendationPayloadByBaseMarket[baseMarket];
+  if (payload?.refreshSupported === false) return false;
   return !payload || canRefreshRecommendations(payload);
 }
 
@@ -966,13 +970,19 @@ function updateRecommendationGlobalToolbar() {
   const latestGeneratedAt = generatedTimes.length
     ? new Date(Math.max(...generatedTimes)).toISOString()
     : "";
+  const usesStoredRecommendations = Object.values(recommendationPayloadByBaseMarket).some(
+    (payload) => payload?.refreshSupported === false,
+  );
   if (dateLabel) {
-    dateLabel.textContent = `최근 갱신 일자 : ${
+    dateLabel.textContent = `${usesStoredRecommendations ? "저장 데이터 기준" : "최근 갱신 일자"} : ${
       latestGeneratedAt ? formatRecommendationDateTime(latestGeneratedAt) : "확인 중"
     }`;
   }
   if (!refreshButton) return;
 
+  const refreshSupported = Object.values(recommendationPayloadByBaseMarket).every(
+    (payload) => payload?.refreshSupported !== false,
+  );
   const canRefresh = RECOMMENDATION_BASE_MARKETS.some(canRefreshRecommendationBase);
   const refreshStateReady = RECOMMENDATION_BASE_MARKETS.every(
     (baseMarket) => recommendationPayloadByBaseMarket[baseMarket],
@@ -982,8 +992,8 @@ function updateRecommendationGlobalToolbar() {
     Object.values(recommendationProgressByBaseMarket).some(
       (progress) => progress?.state === "running",
     );
-  refreshButton.hidden = isRefreshing || !refreshStateReady || !canRefresh;
-  refreshButton.disabled = isRefreshing || !canRefresh;
+  refreshButton.hidden = !refreshSupported || isRefreshing || !refreshStateReady || !canRefresh;
+  refreshButton.disabled = !refreshSupported || isRefreshing || !canRefresh;
   refreshButton.setAttribute("aria-busy", String(isRefreshing));
   refreshButton.setAttribute("aria-disabled", String(!canRefresh));
   refreshButton.title = canRefresh ? "" : "최근 갱신 후 1시간 동안은 다시 갱신할 수 없습니다.";
@@ -1029,6 +1039,7 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
   const showInvalidatedCount = !payload?.logicOutdated && invalidatedCount > 0;
   const statusParts = [
     showCurrentStatus ? payload?.marketMonth : "",
+    showCurrentStatus && payload?.refreshSupported === false ? "저장본" : "",
     showInvalidatedCount ? `무효화 ${invalidatedCount}개 제외` : "",
   ].filter(Boolean);
   setText(
@@ -1051,7 +1062,9 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
 
   if (!results.length) {
     list.innerHTML = `<p class="recommendation-empty">${
-      payload?.logicOutdated ? "새 기준으로 다시 계산해 주세요" : "조건 충족 종목 없음"
+      payload?.logicOutdated
+        ? "현재 기준과 일치하는 저장 데이터가 없습니다"
+        : "조건 충족 종목 없음"
     }</p>`;
     return;
   }

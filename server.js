@@ -2804,6 +2804,24 @@ async function normalizeDomesticStockRecommendationPayload(payload, flags = {}) 
   };
 }
 
+async function getBundledStockRecommendations(payload, { market = "domestic" } = {}) {
+  const isUs = market === "us";
+  const logicOutdated = isUs
+    ? !isUsStockRecommendationCurrent(payload)
+    : !isDomesticStockRecommendationCurrent(payload);
+  const normalize = isUs
+    ? normalizeUsStockRecommendationPayload
+    : normalizeDomesticStockRecommendationPayload;
+  return normalize(payload, {
+    bundled: true,
+    cached: false,
+    logicOutdated,
+    refreshed: false,
+    saved: true,
+    stale: payload?.marketMonth !== currentKoreaMonth(),
+  });
+}
+
 function applyStoredRecommendationRisk(item, { isDomestic = false } = {}) {
   if (!item || typeof item !== "object") return item;
   const targetReturn = optionalNumber(item.rollingReturn ?? item.monthlyReturn);
@@ -4796,6 +4814,7 @@ function toIsoDate(usDate) {
 
 module.exports = {
   getBacktestSummary: () => getBacktestSummary({ root: ROOT }),
+  getBundledStockRecommendations,
   getMarketOverview,
   getMarketSentiment,
   getPortfolioMetrics,
