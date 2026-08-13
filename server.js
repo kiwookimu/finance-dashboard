@@ -1,9 +1,5 @@
-const http = require("node:http");
-const https = require("node:https");
 const crypto = require("node:crypto");
 const path = require("node:path");
-const { spawn } = require("node:child_process");
-const { readFile } = require("node:fs/promises");
 
 const PORT = Number(process.env.PORT || 5173);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -506,11 +502,30 @@ let cachedUsSearchUniverse = null;
 let cachedUsSearchUniverseAt = 0;
 let cachedUsdKrw = null;
 let cachedUsdKrwAt = 0;
-const trafficStore = createTrafficStore({
-  filePath: TRAFFIC_EVENTS_PATH,
-  limit: TRAFFIC_EVENT_LIMIT,
-  retentionMs: TRAFFIC_RETENTION_MS,
-});
+const trafficStore =
+  process.env.FINANCE_SITES_MODE === "1"
+    ? {
+        add(event) {
+          this.events.push(event);
+          this.prune();
+        },
+        events: [],
+        prune() {
+          const cutoff = Date.now() - TRAFFIC_RETENTION_MS;
+          while (
+            this.events.length > TRAFFIC_EVENT_LIMIT ||
+            (this.events.length && Date.parse(this.events[0].at) < cutoff)
+          ) {
+            this.events.shift();
+          }
+        },
+        startedAt: new Date().toISOString(),
+      }
+    : createTrafficStore({
+        filePath: TRAFFIC_EVENTS_PATH,
+        limit: TRAFFIC_EVENT_LIMIT,
+        retentionMs: TRAFFIC_RETENTION_MS,
+      });
 const trafficEvents = trafficStore.events;
 const trafficStartedAt = trafficStore.startedAt;
 const recommendationRefreshProgress = {
@@ -518,7 +533,7 @@ const recommendationRefreshProgress = {
   us: createRecommendationRefreshProgress("us"),
 };
 
-const server = http.createServer(async (request, response) => {
+async function handleNodeRequest(request, response) {
   try {
     const url = new URL(request.url, `http://${request.headers.host}`);
     trackTraffic(request, response, url);
@@ -610,12 +625,21 @@ const server = http.createServer(async (request, response) => {
       500,
     );
   }
-});
+}
 
-server.listen(PORT, HOST, () => {
-  const displayHost = HOST === "0.0.0.0" ? "127.0.0.1" : HOST;
-  console.log(`Finance dashboard: http://${displayHost}:${PORT}/`);
-});
+function startServer() {
+  const http = require("node:http");
+  const server = http.createServer(handleNodeRequest);
+  server.listen(PORT, HOST, () => {
+    const displayHost = HOST === "0.0.0.0" ? "127.0.0.1" : HOST;
+    console.log(`Finance dashboard: http://${displayHost}:${PORT}/`);
+  });
+  return server;
+}
+
+if (require.main === module) {
+  startServer();
+}
 
 async function getMarketOverview() {
   const now = Date.now();
@@ -755,6 +779,7 @@ async function fetchMarketOverview() {
 
 async function readMirofishAgentPerformance() {
   try {
+    const { readFile } = await import("node:fs/promises");
     const filePath = path.join(ROOT, "screen_results", "mirofish_agent_performance.json");
     return JSON.parse(await readFile(filePath, "utf8"));
   } catch {
@@ -2539,6 +2564,7 @@ async function refreshUsStockRecommendations(month) {
 
 function runRecommendationScript(market, args, { env, timeout }) {
   return new Promise((resolve, reject) => {
+    const { spawn } = require("node:child_process");
     updateRecommendationRefreshProgress(market, {
       detail: "데이터 소스에 접속하고 대상 종목 목록을 가져옵니다.",
       message: "스크리너 시작 중",
@@ -2721,6 +2747,7 @@ function getRecommendationRefreshProgress(market) {
 }
 
 async function readStockRecommendationFile(filePath) {
+  const { readFile } = await import("node:fs/promises");
   return JSON.parse(await readFile(filePath, "utf8"));
 }
 
@@ -4205,65 +4232,32 @@ function parseVix(csv) {
 }
 
 function fetchText(url, accept = "text/csv,text/plain,*/*") {
-  return new Promise((resolve, reject) => {
-    const request = https.get(
-      url,
-      {
-        headers: {
-          Accept: accept,
-          "User-Agent": "Mozilla/5.0",
-        },
-        timeout: 20000,
-      },
-      (response) => {
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          reject(new Error(`Request failed: ${response.statusCode} ${url}`));
-          response.resume();
-          return;
-        }
-
-        let body = "";
-        response.setEncoding("utf8");
-        response.on("data", (chunk) => {
-          body += chunk;
-        });
-        response.on("end", () => resolve(body));
-      },
-    );
-
-    request.on("timeout", () => request.destroy(new Error(`Timeout: ${url}`)));
-    request.on("error", reject);
+  return fetch(url, {
+    headers: {
+      Accept: accept,
+      "User-Agent": "Mozilla/5.0",
+    },
+    signal: AbortSignal.timeout(20000),
+  }).then((response) => {
+    if (!response.ok) {
+      throw new Error(`Request failed: ${response.status} ${url}`);
+    }
+    return response.text();
   });
 }
 
 function fetchBinary(url, accept = "application/octet-stream,*/*") {
-  return new Promise((resolve, reject) => {
-    const request = https.get(
-      url,
-      {
-        headers: {
-          Accept: accept,
-          "User-Agent": "Mozilla/5.0",
-        },
-        timeout: 20000,
-      },
-      (response) => {
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          reject(new Error(`Request failed: ${response.statusCode} ${url}`));
-          response.resume();
-          return;
-        }
-
-        const chunks = [];
-        response.on("data", (chunk) => {
-          chunks.push(chunk);
-        });
-        response.on("end", () => resolve(Buffer.concat(chunks)));
-      },
-    );
-
-    request.on("timeout", () => request.destroy(new Error(`Timeout: ${url}`)));
-    request.on("error", reject);
+  return fetch(url, {
+    headers: {
+      Accept: accept,
+      "User-Agent": "Mozilla/5.0",
+    },
+    signal: AbortSignal.timeout(20000),
+  }).then(async (response) => {
+    if (!response.ok) {
+      throw new Error(`Request failed: ${response.status} ${url}`);
+    }
+    return Buffer.from(await response.arrayBuffer());
   });
 }
 
@@ -4799,3 +4793,17 @@ function toIsoDate(usDate) {
   if (!month || !day || !year) return "";
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
+
+module.exports = {
+  getBacktestSummary: () => getBacktestSummary({ root: ROOT }),
+  getMarketOverview,
+  getMarketSentiment,
+  getPortfolioMetrics,
+  getRecommendationRefreshProgress,
+  getStockRecommendations,
+  getStockSearchResults,
+  getStockEvaluation,
+  getTrafficSummary,
+  getUsStockRecommendations,
+  startServer,
+};
