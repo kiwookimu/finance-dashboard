@@ -3,6 +3,7 @@ import dashboardHtml from "../index.html?raw";
 import dashboardStyles from "../styles.css?raw";
 import trafficHtml from "../traffic.html?raw";
 import trafficScript from "../traffic.js?raw";
+import backtestSnapshot from "./backtest-snapshot.json";
 import handler from "vinext/server/app-router-entry";
 
 interface Env {
@@ -76,7 +77,7 @@ async function handleApi(url: URL) {
     );
   }
   if (url.pathname === "/api/backtest-summary") {
-    return jsonResponse(await finance.getBacktestSummary());
+    return jsonResponse({ ...backtestSnapshot, generatedAt: new Date().toISOString() });
   }
   if (url.pathname === "/api/traffic") {
     return jsonResponse(finance.getTrafficSummary());

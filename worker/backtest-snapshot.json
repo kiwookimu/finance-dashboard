@@ -1,0 +1,38 @@
+{
+  "generatedAt": "2026-08-13T12:42:44.348Z",
+  "caveat": "공개 데이터 재현 기준입니다. 상장폐지 종목, 정확한 과거 시총, 과거 컨센서스는 완전히 복원하지 못할 수 있습니다.",
+  "index": {
+    "fileName": "backtest_index_predictions_2025-05-30_2026-05-29.json",
+    "generatedAt": "2026-06-12T14:17:51.379Z",
+    "range": {
+      "endDate": "2026-05-29",
+      "fetchEndDate": "2026-06-06",
+      "fetchStartDate": "2024-03-26",
+      "minCoverage": 1,
+      "targetHitRate": 70,
+      "startDate": "2025-05-30"
+    },
+    "rows": [
+      { "coverage": 65, "hitRate": 76.6, "label": "KOSPI", "observations": 158 },
+      { "coverage": 86.5, "hitRate": 71, "label": "NASDAQ", "observations": 217 },
+      { "coverage": 86.5, "hitRate": 69.6, "label": "S&P 500", "observations": 217 }
+    ],
+    "total": { "coverage": 79.5, "hitRate": 72, "observations": 592 }
+  },
+  "recommendation": {
+    "fileName": "backtest_monthly_recommendations_both_2025-01_2026-05.json",
+    "generatedAt": "2026-06-20T12:22:16.003Z",
+    "range": {
+      "endMonth": "2026-05",
+      "fetchEndDate": "2026-06-20",
+      "fetchStartDate": "2023-12-01",
+      "months": ["2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05"],
+      "startMonth": "2025-01"
+    },
+    "rows": [
+      { "count": 116, "label": "전체", "oneMonthAverage": 8.69, "oneMonthHitRate": 51.8, "oneMonthSample": 110, "subtitle": "추천+관찰 전체", "threeMonthAverage": 33.61, "threeMonthHitRate": 61, "threeMonthSample": 100 },
+      { "count": 10, "label": "국내 추천", "oneMonthAverage": 35.78, "oneMonthHitRate": 88.9, "oneMonthSample": 9, "subtitle": "확정 후보", "threeMonthAverage": 36.78, "threeMonthHitRate": 87.5, "threeMonthSample": 8 },
+      { "count": 2, "label": "미국 추천", "oneMonthAverage": 17.79, "oneMonthHitRate": 50, "oneMonthSample": 2, "subtitle": "확정 후보", "threeMonthAverage": 132.97, "threeMonthHitRate": 100, "threeMonthSample": 2 }
+    ]
+  }
+}
