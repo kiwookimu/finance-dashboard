@@ -5087,3 +5087,104 @@ h1,
     font-size: 16px;
   }
 }
+
+/* Keep holding rows decision-first; full factor evidence opens on demand. */
+.holdings-row:not(.is-editing) {
+  min-height: 0;
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+.holdings-main {
+  gap: 8px;
+}
+
+.holdings-row-title {
+  align-items: center;
+}
+
+.holdings-name {
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.holdings-summary-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.holdings-summary-line b {
+  color: #b9d9ff;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.holdings-main > .holdings-decision {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.holdings-row-details {
+  padding-top: 2px;
+}
+
+.holdings-row-details summary {
+  color: #8ea6c2;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.holdings-row-details > div {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 10px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--dark-hairline);
+  border-radius: 10px;
+}
+
+.holdings-row-details small {
+  color: #8f99a7;
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.holdings-row-details p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.holdings-row-details .holdings-detail-factor {
+  color: #b9d9ff;
+  font-weight: 800;
+}
+
+.holdings-actions {
+  align-self: end;
+  padding-top: 0;
+}
+
+@media (max-width: 620px) {
+  .holdings-row-title {
+    display: flex;
+  }
+
+  .holdings-diagnostic-chip {
+    margin-left: auto;
+  }
+}

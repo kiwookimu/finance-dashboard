@@ -844,27 +844,37 @@ function renderManagedHoldings() {
         ? `모멘텀 ${formatHoldingScore(diagnostic.scores?.momentum)}/40 · 추세·위험 ${formatHoldingScore(diagnostic.scores?.trendRisk)}/25 · 적합도 ${formatHoldingScore(diagnostic.scores?.portfolioFit)}/25 · 유동성·비용 ${formatHoldingScore(diagnostic.scores?.liquidityCost)}/10`
         : "100점 팩터 계산 중";
       const quantText = diagnostic
-        ? `#${Number(diagnostic.rank || index + 1)} · Quant ${formatHoldingScore(diagnostic.quantScore)} ${escapeHtml(diagnostic.rating || "-")}`
-        : "Quant -";
-      const reason = diagnostic?.reasons?.[0] || "평가금액을 입력하면 실제 비중 기준으로 다시 계산합니다.";
+        ? `Quant #${Number(diagnostic.rank || index + 1)} · ${formatHoldingScore(diagnostic.quantScore)}점 · ${escapeHtml(diagnostic.rating || "-")}등급`
+        : "Quant 계산 중";
+      const decision = holdingDiagnosticSummary(diagnostic);
+      const conditionsText = diagnostic
+        ? `매수 ${Number(diagnostic.buyConditionCount || 0)}/7 · 매도 ${Number(diagnostic.sellConditionCount || 0)}/6 · 신뢰 ${diagnostic.confidenceLabel || "-"}`
+        : "조건 계산 중";
+      const detailReason = diagnostic?.reasons?.join(" · ") ||
+        "평가금액을 입력하면 실제 비중 기준으로 다시 계산합니다.";
       return `
         <li class="holdings-row" data-holding-id="${id}">
           <span class="holdings-index" aria-hidden="true">${index + 1}</span>
           <div class="holdings-main">
             <div class="holdings-row-title">
               <strong class="holdings-name">${name}</strong>
-              <span class="holdings-row-badges">
-                <span class="holdings-quant-badge" data-rating="${escapeHtml(diagnostic?.rating || "")}">${quantText}</span>
-                <span class="holdings-diagnostic-chip" data-action="${escapeHtml(actionCode)}">${escapeHtml(actionLabel)}</span>
-              </span>
+              <span class="holdings-diagnostic-chip" data-action="${escapeHtml(actionCode)}">${escapeHtml(actionLabel)}</span>
             </div>
-            <small>${code} · ${escapeHtml(amountText)}</small>
-            <div class="holdings-factor-line">${escapeHtml(factorText)}</div>
-            <div class="holdings-weight-line">
+            <div class="holdings-summary-line">
+              <span class="holdings-quant-badge" data-rating="${escapeHtml(diagnostic?.rating || "")}">${quantText}</span>
               <b>${escapeHtml(weightText)}</b>
-              <span>${escapeHtml(metricText)}</span>
             </div>
-            <p>${escapeHtml(reason)}</p>
+            <p class="holdings-decision">${escapeHtml(decision)}</p>
+            <details class="holdings-row-details">
+              <summary>상세 진단</summary>
+              <div>
+                <small>${code} · ${escapeHtml(amountText)}</small>
+                <p class="holdings-detail-factor">${escapeHtml(factorText)}</p>
+                <p>${escapeHtml(metricText)}</p>
+                <p>${escapeHtml(conditionsText)}</p>
+                <p>${escapeHtml(detailReason)}</p>
+              </div>
+            </details>
           </div>
           <div class="holdings-actions">
             <button class="holdings-action" type="button" data-holding-action="edit" aria-label="${name} 수정"${disabled}>수정</button>
@@ -874,6 +884,17 @@ function renderManagedHoldings() {
       `;
     })
     .join("");
+}
+
+function holdingDiagnosticSummary(diagnostic) {
+  if (!diagnostic) return "가격 이력과 진단 데이터를 준비하고 있습니다.";
+  return {
+    expand: "상대강도와 목표비중 기준상 확대 검토 구간입니다.",
+    trim: "추세와 목표비중 기준상 축소 검토 구간입니다.",
+    rotate: "상대적으로 강한 종목으로 일부 이동을 검토하는 구간입니다.",
+    pending: diagnostic.reasons?.[0] || "판단에 필요한 데이터가 부족합니다.",
+    hold: "현재는 확대·축소 기준을 모두 충족하지 않았습니다.",
+  }[diagnostic.actionCode] || "현재 비중을 유지하며 추가 확인하는 구간입니다.";
 }
 
 function formatKoreanWon(value) {
