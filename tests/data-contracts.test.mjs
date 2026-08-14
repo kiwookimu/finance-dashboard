@@ -150,8 +150,11 @@ test("validation UI distinguishes retrospective results from prospective collect
     readFile(new URL("../index.html", import.meta.url), "utf8"),
   ]);
   assert.match(clientSource, /회고검증/);
-  assert.match(clientSource, /전향 검증 수집 중/);
+  assert.match(clientSource, /전향 수집 중/);
   assert.doesNotMatch(clientSource, /고신뢰 검증 구간/);
   assert.match(htmlSource, /id="recommendationValidationBadge"/);
+  assert.match(htmlSource, /id="recommendationValidationSample"/);
+  assert.match(htmlSource, /id="recommendationValidationProspective"/);
+  assert.match(htmlSource, /검증 기준 자세히/);
   assert.match(htmlSource, /id="indexValidationNote"/);
 });

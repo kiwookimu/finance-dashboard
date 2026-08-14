@@ -2423,19 +2423,27 @@ function renderRecommendationValidation(validation) {
   setText(
     "#recommendationValidationBadge",
     prospective?.performanceReady
-      ? "전향 검증 방향성 확보"
-      : "전향 검증 수집 중",
+      ? "전향 지표 공개"
+      : "전향 수집 중",
   );
+  const compactPeriod =
+    firstSlice?.startMonth && latestSlice?.endMonth
+      ? `${firstSlice.startMonth.replace("-", ".")}–${latestSlice.endMonth.slice(2).replace("-", ".")}`
+      : "-";
   setText(
     "#recommendationValidationPeriod",
-    firstSlice?.startMonth && latestSlice?.endMonth
-      ? `${firstSlice.startMonth.replace("-", ".")}~${latestSlice.endMonth.replace("-", ".")}`
-      : "-",
+    compactPeriod,
   );
   setText(
     "#recommendationValidationHitRate",
     Number.isFinite(hitRate)
-      ? `${hitRate.toFixed(1)}% · n=${Number(metrics.sample).toLocaleString("ko-KR")}`
+      ? `${hitRate.toFixed(1)}%`
+      : "-",
+  );
+  setText(
+    "#recommendationValidationSample",
+    Number.isFinite(Number(metrics?.sample))
+      ? `${Number(metrics.sample).toLocaleString("ko-KR")}건`
       : "-",
   );
   setText(
@@ -2446,25 +2454,31 @@ function renderRecommendationValidation(validation) {
   );
   const confidence =
     Number.isFinite(hitRateLower) && Number.isFinite(hitRateUpper)
-      ? `95% 신뢰구간 ${hitRateLower.toFixed(1)}~${hitRateUpper.toFixed(1)}%`
-      : "";
+      ? `${hitRateLower.toFixed(1)}–${hitRateUpper.toFixed(1)}%`
+      : "-";
   const yearlyRates = timeSlices
     .filter((slice) => Number.isFinite(finiteDisplayNumber(slice?.metrics?.hitRate)))
-    .map((slice) => `${slice.year}년 ${Number(slice.metrics.hitRate).toFixed(1)}%`)
+    .map((slice) => `${slice.year} ${Number(slice.metrics.hitRate).toFixed(1)}%`)
     .join(" · ");
   setText(
     "#recommendationValidationNote",
+    "과거 데이터 재검증 결과입니다. 미래 성과를 보장하지 않습니다.",
+  );
+  setText("#recommendationValidationConfidence", confidence);
+  setText("#recommendationValidationYearly", yearlyRates || "-");
+  const prospectiveSample = Number(prospective?.metrics?.sample) || 0;
+  const prospectiveMinimum = Number(prospective?.minimumMaturedSamples) || 0;
+  setText(
+    "#recommendationValidationProspective",
+    prospective?.startMonth
+      ? `${prospective.startMonth.replace("-", ".")} 시작 · ${prospectiveSample}/${prospectiveMinimum}건`
+      : "수집 계획 확인 중",
+  );
+  setText(
+    "#recommendationValidationCaveat",
     [
-      "현행 기술 규칙의 연도별 회고검증이며 독립 홀드아웃이 아닙니다.",
-      confidence,
-      yearlyRates ? `연도별 적중 ${yearlyRates}.` : "",
-      missingOutcomeCount > 0
-        ? `1개월 성과 미도래 ${missingOutcomeCount}건은 집계에서 제외했습니다.`
-        : "",
-      "실적·컨센서스 현재 조회값은 과거 성과에 포함하지 않습니다.",
-      prospective?.startMonth
-        ? `동일 규칙 전향 검증은 ${prospective.startMonth.replace("-", ".")}부터 최소 ${prospective.minimumMaturedSamples}건을 수집합니다.`
-        : "",
+      missingOutcomeCount > 0 ? `성과 미도래 ${missingOutcomeCount}건 제외.` : "",
+      "현재 실적·컨센서스는 과거 성과 집계에 포함하지 않습니다.",
     ]
       .filter(Boolean)
       .join(" "),

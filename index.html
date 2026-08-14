@@ -115,16 +115,48 @@
             <div class="recommendation-validation-head">
               <div>
                 <span>성과 검증</span>
-                <strong>기술 신호 기준</strong>
+                <strong>추천 신뢰도</strong>
               </div>
               <em id="recommendationValidationBadge">검증 정보 확인 중</em>
             </div>
-            <div class="recommendation-validation-metrics">
-              <span><b id="recommendationValidationPeriod">-</b><small>회고 구간</small></span>
-              <span><b id="recommendationValidationHitRate">-</b><small>1개월 적중</small></span>
-              <span><b id="recommendationValidationMedian">-</b><small>1개월 중앙값</small></span>
+            <div class="recommendation-validation-metrics" role="list" aria-label="회고검증 핵심 지표">
+              <div class="recommendation-validation-metric is-period" role="listitem">
+                <small>회고 기간</small>
+                <b id="recommendationValidationPeriod">-</b>
+              </div>
+              <div class="recommendation-validation-metric" role="listitem">
+                <small>1개월 적중</small>
+                <b id="recommendationValidationHitRate">-</b>
+                <i id="recommendationValidationSample">-</i>
+              </div>
+              <div class="recommendation-validation-metric" role="listitem">
+                <small>중앙값 수익</small>
+                <b id="recommendationValidationMedian">-</b>
+              </div>
             </div>
-            <p id="recommendationValidationNote">과거검증과 전향검증을 분리하는 중입니다.</p>
+            <p class="recommendation-validation-interpretation" id="recommendationValidationNote">
+              과거 데이터 재검증 결과입니다. 미래 성과를 보장하지 않습니다.
+            </p>
+            <div class="recommendation-validation-forward">
+              <span>전향 검증</span>
+              <strong id="recommendationValidationProspective">수집 계획 확인 중</strong>
+            </div>
+            <details class="recommendation-validation-details">
+              <summary>검증 기준 자세히</summary>
+              <dl>
+                <div>
+                  <dt>95% 신뢰구간</dt>
+                  <dd id="recommendationValidationConfidence">-</dd>
+                </div>
+                <div>
+                  <dt>연도별 적중</dt>
+                  <dd id="recommendationValidationYearly">-</dd>
+                </div>
+              </dl>
+              <p id="recommendationValidationCaveat">
+                현재 실적·컨센서스는 과거 성과 집계에 포함하지 않습니다.
+              </p>
+            </details>
           </section>
 
           <div class="dashboard-tabs dashboard-tabs-secondary" data-tab-group="recommendations" role="tablist" aria-label="추천 구분">
