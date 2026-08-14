@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "holdings": [
+    { "id": "time-nasdaq100-bond50", "name": "TIME 미국나스닥100채권혼합50액티브", "sortOrder": 1 },
+    { "id": "rise-samsung-hynix-bond50", "name": "RISE 삼성전자SK하이닉스채권혼합50", "sortOrder": 2 },
+    { "id": "kodex-kosdaq150", "name": "KODEX 코스닥150", "sortOrder": 3 },
+    { "id": "kodex-200-us-treasury50", "name": "KODEX 200미국채혼합50", "sortOrder": 4 },
+    { "id": "kodex-top5-plus-tr", "name": "KODEX Top5 PlusTR", "sortOrder": 5 },
+    { "id": "rise-network-infra", "name": "RISE 네트워크인프라", "sortOrder": 6 },
+    { "id": "tiger-us-philadelphia-semi", "name": "TIGER 미국필라델피아반도체나스닥", "sortOrder": 7 },
+    { "id": "hanaro-fn-k-semi", "name": "HANARO Fn K-반도체", "sortOrder": 8 },
+    { "id": "tiger-global-ai-cybersecurity", "name": "TIGER 글로벌AI사이버보안", "sortOrder": 9 },
+    { "id": "plus-global-hbm-semi", "name": "PLUS 글로벌HBM반도체", "sortOrder": 10 },
+    { "id": "plus-k-defense", "name": "PLUS K방산", "sortOrder": 11 },
+    { "id": "time-global-ai-active", "name": "TIME 글로벌AI인공지능액티브", "sortOrder": 12 },
+    { "id": "kodex-us-ai-power-infra", "name": "KODEX 미국AI전력핵심인프라", "sortOrder": 13 },
+    { "id": "kodex-ai-power-equipment", "name": "KODEX AI전력핵심설비", "sortOrder": 14 }
+  ]
+}

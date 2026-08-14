@@ -71,6 +71,16 @@
           </button>
           <button
             class="dashboard-tab"
+            id="holdingsTab"
+            type="button"
+            role="tab"
+            aria-controls="holdingsPanel"
+            aria-selected="false"
+          >
+            보유
+          </button>
+          <button
+            class="dashboard-tab"
             id="stockSearchTab"
             type="button"
             role="tab"
@@ -300,6 +310,46 @@
             </div>
           </section>
         </section>
+        </section>
+
+        <section
+          class="tab-panel holdings-panel"
+          id="holdingsPanel"
+          role="tabpanel"
+          aria-labelledby="holdingsTab"
+          data-tab-panel-group="main"
+          hidden
+        >
+          <section class="holdings-card" aria-label="보유종목 관리">
+            <div class="holdings-heading">
+              <div>
+                <span>나의 포트폴리오</span>
+                <strong>보유종목</strong>
+              </div>
+              <em id="holdingsCount">14개</em>
+            </div>
+            <p class="holdings-intro">
+              종목명을 추가하거나 수정·삭제할 수 있습니다. 목록은 비공개 사이트에 저장됩니다.
+            </p>
+            <form class="holdings-add-form" id="holdingsAddForm">
+              <label class="sr-only" for="holdingsAddInput">새 보유종목 이름</label>
+              <input
+                id="holdingsAddInput"
+                name="name"
+                type="text"
+                maxlength="80"
+                autocomplete="off"
+                placeholder="보유종목 이름 입력"
+              />
+              <button type="submit">추가</button>
+            </form>
+            <p class="holdings-status" id="holdingsStatus" role="status" aria-live="polite">
+              보유종목을 불러오는 중입니다.
+            </p>
+            <ol class="holdings-list" id="holdingsList" aria-label="보유종목 목록">
+              <li class="holdings-empty">목록을 불러오는 중입니다.</li>
+            </ol>
+          </section>
         </section>
 
         <section

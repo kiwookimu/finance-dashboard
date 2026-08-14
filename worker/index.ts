@@ -7,6 +7,12 @@ import backtestSnapshot from "./backtest-snapshot.json";
 import handler from "vinext/server/app-router-entry";
 import portfolioConfigLib from "../lib/portfolioConfig.js";
 import sitesRecommendation from "../lib/sitesRecommendation.js";
+import {
+  createManagedHoldingsStore,
+  isHoldingId,
+  normalizeHoldingName,
+  type D1DatabaseLike,
+} from "./holdings-store";
 
 const portfolioConfig = portfolioConfigLib.getPortfolioConfig();
 
@@ -32,6 +38,7 @@ const usRecommendationSnapshot = sitesRecommendation.selectLatestRecommendationS
 
 interface Env {
   ASSETS: Fetcher;
+  DB?: D1DatabaseLike;
 }
 
 interface ExecutionContext {
@@ -68,9 +75,13 @@ function jsonResponse(data: unknown, status = 200) {
   });
 }
 
-async function handleApi(url: URL) {
+async function handleApi(request: Request, url: URL, env?: Env) {
   if (url.pathname === "/api/health") {
     return jsonResponse({ ok: true, service: "finance-dashboard-sites" });
+  }
+
+  if (url.pathname === "/api/holdings" || url.pathname.startsWith("/api/holdings/")) {
+    return handleHoldingsApi(request, url, env);
   }
 
   const finance = await loadFinanceModule();
@@ -137,12 +148,65 @@ async function handleApi(url: URL) {
   return jsonResponse({ error: "not_found" }, 404);
 }
 
+async function handleHoldingsApi(request: Request, url: URL, env?: Env) {
+  const store = createManagedHoldingsStore(env?.DB);
+  const idMatch = url.pathname.match(/^\/api\/holdings\/([^/]+)$/);
+  const id = idMatch ? decodeURIComponent(idMatch[1]) : "";
+
+  try {
+    if (url.pathname === "/api/holdings" && request.method === "GET") {
+      const holdings = await store.list();
+      return jsonResponse({
+        count: holdings.length,
+        holdings,
+        storage: env?.DB ? "d1" : "memory",
+      });
+    }
+
+    if (url.pathname === "/api/holdings" && request.method === "POST") {
+      const name = normalizeHoldingName((await readJsonBody(request)).name);
+      if (!name) return jsonResponse({ error: "name_required" }, 400);
+      const holding = await store.create(name);
+      return jsonResponse({ holding }, 201);
+    }
+
+    if (idMatch && request.method === "PATCH") {
+      if (!isHoldingId(id)) return jsonResponse({ error: "invalid_id" }, 400);
+      const name = normalizeHoldingName((await readJsonBody(request)).name);
+      if (!name) return jsonResponse({ error: "name_required" }, 400);
+      const holding = await store.update(id, name);
+      return jsonResponse({ holding });
+    }
+
+    if (idMatch && request.method === "DELETE") {
+      if (!isHoldingId(id)) return jsonResponse({ error: "invalid_id" }, 400);
+      await store.remove(id);
+      return jsonResponse({ deleted: true, id });
+    }
+
+    return jsonResponse({ error: "method_not_allowed" }, 405);
+  } catch (error) {
+    const status = Number((error as { status?: number })?.status) || 500;
+    const code = String((error as { code?: string })?.code || "holdings_unavailable");
+    return jsonResponse({ error: code }, status);
+  }
+}
+
+async function readJsonBody(request: Request) {
+  try {
+    const payload = await request.json();
+    return payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
 const worker = {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env | undefined, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     try {
-      if (url.pathname.startsWith("/api/")) return await handleApi(url);
+      if (url.pathname.startsWith("/api/")) return await handleApi(request, url, env);
       if (url.pathname === "/" || url.pathname === "/index.html") {
         return textResponse(dashboardHtml, "text/html; charset=utf-8");
       }

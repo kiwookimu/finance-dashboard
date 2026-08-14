@@ -341,7 +341,7 @@ h1 {
 }
 
 .dashboard-tabs-primary {
-  --tab-columns: 3;
+  --tab-columns: 4;
 }
 
 .recommendation-root-panel {
@@ -918,6 +918,249 @@ h1 {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--line);
+}
+
+.holdings-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.24);
+}
+
+.holdings-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.holdings-heading > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.holdings-heading span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.holdings-heading strong {
+  color: var(--ink);
+  font-size: 27px;
+  font-weight: 900;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+
+.holdings-heading em {
+  min-width: 48px;
+  padding: 7px 10px;
+  color: #d9ecff;
+  background: rgba(90, 167, 255, 0.16);
+  border-radius: 999px;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 850;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.holdings-intro,
+.holdings-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.holdings-add-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.holdings-add-form input,
+.holdings-edit-form input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 13px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 750;
+  outline: 0;
+}
+
+.holdings-add-form input::placeholder,
+.holdings-edit-form input::placeholder {
+  color: var(--muted);
+}
+
+.holdings-add-form button,
+.holdings-edit-form button,
+.holdings-action {
+  min-height: 44px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.holdings-add-form button,
+.holdings-edit-save {
+  color: #ffffff;
+  background: #1463c2;
+}
+
+.holdings-edit-cancel,
+.holdings-action {
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.holdings-add-form button:disabled,
+.holdings-edit-form button:disabled,
+.holdings-action:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.holdings-status {
+  min-height: 20px;
+  padding: 0 2px;
+}
+
+.holdings-status[data-tone="success"] {
+  color: var(--green);
+}
+
+.holdings-status[data-tone="error"] {
+  color: var(--red);
+}
+
+.holdings-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  list-style: none;
+}
+
+.holdings-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-height: 62px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.holdings-row:last-child {
+  border-bottom: 0;
+}
+
+.holdings-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.holdings-name {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.holdings-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.holdings-action {
+  min-width: 44px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+.holdings-action[data-holding-action="delete"] {
+  color: var(--red);
+}
+
+.holdings-actions.is-confirming {
+  gap: 5px;
+}
+
+.holdings-action.holdings-delete-confirm {
+  min-width: 68px;
+  color: #ffffff;
+  background: #b83142;
+  border-color: transparent;
+}
+
+.holdings-row.is-confirming-delete {
+  background: rgba(255, 107, 122, 0.06);
+}
+
+.holdings-edit-form {
+  display: grid;
+  grid-column: 2 / -1;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+  min-width: 0;
+}
+
+.holdings-edit-form button {
+  min-width: 48px;
+  padding: 0 10px;
+}
+
+.holdings-empty {
+  padding: 24px 14px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.holdings-add-form input:focus-visible,
+.holdings-edit-form input:focus-visible,
+.holdings-add-form button:focus-visible,
+.holdings-edit-form button:focus-visible,
+.holdings-action:focus-visible {
+  outline: 2px solid rgba(90, 167, 255, 0.55);
+  outline-offset: 2px;
 }
 
 .recommendation-progress {

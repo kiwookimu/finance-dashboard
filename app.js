@@ -108,6 +108,14 @@ let marketLastRefreshAttemptAt = 0;
 let stockSearchAbortController = null;
 let stockEvaluationAbortController = null;
 let stockSearchTimer = null;
+const managedHoldingsState = {
+  confirmingDeleteId: null,
+  editingId: null,
+  holdings: [],
+  loaded: false,
+  loading: false,
+  saving: false,
+};
 const dashboardTabGroups = new Map();
 
 initializeDashboardTabs();
@@ -116,6 +124,7 @@ initializeRecommendationActions();
 initializeRecommendationDetailModal();
 initializeMarketAutoRefresh();
 initializeStockSearch();
+initializeManagedHoldings();
 loadPortfolioConfiguration().finally(() => loadIndicators());
 
 function initializeDashboardTabs() {
@@ -126,6 +135,8 @@ function initializeDashboardTabs() {
         scheduleMarketAutoRefresh();
       } else if (panelId === "recommendationRootPanel") {
         activateCurrentRecommendationPanel();
+      } else if (panelId === "holdingsPanel") {
+        loadManagedHoldings();
       }
     },
   });
@@ -323,6 +334,255 @@ function initializeStockSearch() {
       }
     }, 320);
   });
+}
+
+function initializeManagedHoldings() {
+  const addForm = document.querySelector("#holdingsAddForm");
+  const list = document.querySelector("#holdingsList");
+  if (!addForm || !list) return;
+
+  addForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (managedHoldingsState.saving) return;
+    const input = addForm.querySelector("#holdingsAddInput");
+    const name = String(input?.value || "").replace(/\s+/g, " ").trim();
+    if (!name) {
+      setManagedHoldingsStatus("추가할 종목명을 입력해 주세요.", "error");
+      input?.focus();
+      return;
+    }
+
+    await runManagedHoldingsMutation(async () => {
+      const payload = await requestManagedHoldings("/api/holdings", {
+        body: JSON.stringify({ name }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      managedHoldingsState.holdings.push(payload.holding);
+      managedHoldingsState.editingId = null;
+      addForm.reset();
+      renderManagedHoldings();
+      setManagedHoldingsStatus(`${name}을(를) 추가했습니다.`, "success");
+      input?.focus();
+    });
+  });
+
+  list.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-holding-action]");
+    if (!button || managedHoldingsState.saving) return;
+    const row = button.closest("[data-holding-id]");
+    const id = row?.dataset.holdingId || "";
+    const holding = managedHoldingsState.holdings.find((item) => item.id === id);
+    if (!holding) return;
+
+    const action = button.dataset.holdingAction;
+    if (action === "edit") {
+      managedHoldingsState.confirmingDeleteId = null;
+      managedHoldingsState.editingId = id;
+      renderManagedHoldings();
+      window.requestAnimationFrame(() => {
+        const input = list.querySelector(`[data-holding-id="${cssEscape(id)}"] input`);
+        input?.focus();
+        input?.select();
+      });
+      return;
+    }
+
+    if (action === "cancel") {
+      managedHoldingsState.editingId = null;
+      renderManagedHoldings();
+      return;
+    }
+
+    if (action === "delete") {
+      managedHoldingsState.editingId = null;
+      managedHoldingsState.confirmingDeleteId = id;
+      renderManagedHoldings();
+      setManagedHoldingsStatus("삭제하려면 ‘삭제 확인’을 한 번 더 눌러 주세요.");
+      return;
+    }
+
+    if (action === "cancel-delete") {
+      managedHoldingsState.confirmingDeleteId = null;
+      renderManagedHoldings();
+      setManagedHoldingsStatus("삭제를 취소했습니다.");
+      return;
+    }
+
+    if (action === "confirm-delete") {
+      await runManagedHoldingsMutation(async () => {
+        await requestManagedHoldings(`/api/holdings/${encodeURIComponent(id)}`, {
+          method: "DELETE",
+        });
+        managedHoldingsState.holdings = managedHoldingsState.holdings.filter(
+          (item) => item.id !== id,
+        );
+        managedHoldingsState.confirmingDeleteId = null;
+        managedHoldingsState.editingId = null;
+        renderManagedHoldings();
+        setManagedHoldingsStatus(`${holding.name}을(를) 삭제했습니다.`, "success");
+      });
+    }
+  });
+
+  list.addEventListener("submit", async (event) => {
+    const form = event.target.closest(".holdings-edit-form");
+    if (!form) return;
+    event.preventDefault();
+    if (managedHoldingsState.saving) return;
+    const id = form.dataset.holdingId || "";
+    const input = form.querySelector("input[name='name']");
+    const name = String(input?.value || "").replace(/\s+/g, " ").trim();
+    if (!name) {
+      setManagedHoldingsStatus("종목명은 비워둘 수 없습니다.", "error");
+      input?.focus();
+      return;
+    }
+
+    await runManagedHoldingsMutation(async () => {
+      const payload = await requestManagedHoldings(
+        `/api/holdings/${encodeURIComponent(id)}`,
+        {
+          body: JSON.stringify({ name }),
+          headers: { "Content-Type": "application/json" },
+          method: "PATCH",
+        },
+      );
+      managedHoldingsState.holdings = managedHoldingsState.holdings.map((holding) =>
+        holding.id === id ? payload.holding : holding,
+      );
+      managedHoldingsState.editingId = null;
+      renderManagedHoldings();
+      setManagedHoldingsStatus("종목명을 수정했습니다.", "success");
+    });
+  });
+}
+
+async function loadManagedHoldings({ force = false } = {}) {
+  if (managedHoldingsState.loading || (managedHoldingsState.loaded && !force)) return;
+  managedHoldingsState.loading = true;
+  setManagedHoldingsStatus("보유종목을 불러오는 중입니다.");
+  try {
+    const payload = await requestManagedHoldings("/api/holdings");
+    managedHoldingsState.holdings = Array.isArray(payload.holdings)
+      ? payload.holdings
+      : [];
+    managedHoldingsState.loaded = true;
+    managedHoldingsState.confirmingDeleteId = null;
+    managedHoldingsState.editingId = null;
+    renderManagedHoldings();
+    setManagedHoldingsStatus("비공개 사이트에 저장된 목록입니다.", "success");
+  } catch (error) {
+    console.warn("Managed holdings unavailable", error);
+    renderManagedHoldings();
+    setManagedHoldingsStatus(holdingManagerErrorMessage(error), "error");
+  } finally {
+    managedHoldingsState.loading = false;
+  }
+}
+
+async function runManagedHoldingsMutation(callback) {
+  managedHoldingsState.saving = true;
+  renderManagedHoldings();
+  setManagedHoldingsStatus("목록을 저장하는 중입니다.");
+  try {
+    await callback();
+  } catch (error) {
+    console.warn("Managed holdings update failed", error);
+    setManagedHoldingsStatus(holdingManagerErrorMessage(error), "error");
+  } finally {
+    managedHoldingsState.saving = false;
+    renderManagedHoldings();
+  }
+}
+
+async function requestManagedHoldings(path, options = {}) {
+  const response = await fetch(apiEndpoint(path), {
+    cache: "no-store",
+    ...options,
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload.error || "holdings_unavailable");
+    error.code = payload.error || "holdings_unavailable";
+    throw error;
+  }
+  return payload;
+}
+
+function renderManagedHoldings() {
+  const list = document.querySelector("#holdingsList");
+  const count = document.querySelector("#holdingsCount");
+  if (!list || !count) return;
+  const holdings = managedHoldingsState.holdings;
+  count.textContent = `${holdings.length.toLocaleString("ko-KR")}개`;
+
+  if (!holdings.length) {
+    list.innerHTML = `<li class="holdings-empty">보유종목이 없습니다. 위 입력창에서 종목을 추가해 주세요.</li>`;
+    return;
+  }
+
+  list.innerHTML = holdings
+    .map((holding, index) => {
+      const id = escapeHtml(holding.id || "");
+      const name = escapeHtml(holding.name || "");
+      const disabled = managedHoldingsState.saving ? " disabled" : "";
+      if (managedHoldingsState.editingId === holding.id) {
+        return `
+          <li class="holdings-row is-editing" data-holding-id="${id}">
+            <span class="holdings-index" aria-hidden="true">${index + 1}</span>
+            <form class="holdings-edit-form" data-holding-id="${id}">
+              <label class="sr-only" for="holdingEdit-${id}">${name} 이름 수정</label>
+              <input id="holdingEdit-${id}" name="name" type="text" maxlength="80" value="${name}" autocomplete="off" />
+              <button class="holdings-edit-save" type="submit"${disabled}>저장</button>
+              <button class="holdings-edit-cancel" type="button" data-holding-action="cancel"${disabled}>취소</button>
+            </form>
+          </li>
+        `;
+      }
+      if (managedHoldingsState.confirmingDeleteId === holding.id) {
+        return `
+          <li class="holdings-row is-confirming-delete" data-holding-id="${id}">
+            <span class="holdings-index" aria-hidden="true">${index + 1}</span>
+            <strong class="holdings-name">${name}</strong>
+            <div class="holdings-actions is-confirming">
+              <button class="holdings-action" type="button" data-holding-action="cancel-delete"${disabled}>취소</button>
+              <button class="holdings-action holdings-delete-confirm" type="button" data-holding-action="confirm-delete" aria-label="${name} 삭제 확인"${disabled}>삭제 확인</button>
+            </div>
+          </li>
+        `;
+      }
+      return `
+        <li class="holdings-row" data-holding-id="${id}">
+          <span class="holdings-index" aria-hidden="true">${index + 1}</span>
+          <strong class="holdings-name">${name}</strong>
+          <div class="holdings-actions">
+            <button class="holdings-action" type="button" data-holding-action="edit" aria-label="${name} 수정"${disabled}>수정</button>
+            <button class="holdings-action" type="button" data-holding-action="delete" aria-label="${name} 삭제"${disabled}>삭제</button>
+          </div>
+        </li>
+      `;
+    })
+    .join("");
+}
+
+function setManagedHoldingsStatus(text, tone = "") {
+  const status = document.querySelector("#holdingsStatus");
+  if (!status) return;
+  status.textContent = text;
+  if (tone) status.dataset.tone = tone;
+  else delete status.dataset.tone;
+}
+
+function holdingManagerErrorMessage(error) {
+  if (error?.code === "duplicate_name") return "이미 목록에 있는 종목입니다.";
+  if (error?.code === "not_found") return "해당 종목을 찾지 못했습니다. 목록을 다시 열어 주세요.";
+  if (error?.code === "name_required") return "종목명을 입력해 주세요.";
+  return "목록을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+}
+
+function cssEscape(value) {
+  return window.CSS?.escape ? window.CSS.escape(String(value)) : String(value).replace(/"/g, "\\\"");
 }
 
 function apiEndpoint(path) {

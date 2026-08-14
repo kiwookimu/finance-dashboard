@@ -100,6 +100,63 @@ test("client loads portfolio holdings from the API", async () => {
   assert.doesNotMatch(clientSource, /const PORTFOLIO_HOLDINGS = \[/);
 });
 
+test("managed holdings seed preserves the requested 14-item order", async () => {
+  const seed = JSON.parse(
+    await readFile(new URL("../managed-holdings.json", import.meta.url), "utf8"),
+  );
+  assert.equal(seed.holdings.length, 14);
+  assert.deepEqual(
+    seed.holdings.map((holding) => holding.name),
+    [
+      "TIME 미국나스닥100채권혼합50액티브",
+      "RISE 삼성전자SK하이닉스채권혼합50",
+      "KODEX 코스닥150",
+      "KODEX 200미국채혼합50",
+      "KODEX Top5 PlusTR",
+      "RISE 네트워크인프라",
+      "TIGER 미국필라델피아반도체나스닥",
+      "HANARO Fn K-반도체",
+      "TIGER 글로벌AI사이버보안",
+      "PLUS 글로벌HBM반도체",
+      "PLUS K방산",
+      "TIME 글로벌AI인공지능액티브",
+      "KODEX 미국AI전력핵심인프라",
+      "KODEX AI전력핵심설비",
+    ],
+  );
+  assert.deepEqual(
+    seed.holdings.map((holding) => holding.sortOrder),
+    Array.from({ length: 14 }, (_, index) => index + 1),
+  );
+});
+
+test("holdings tab uses durable D1 CRUD instead of browser storage", async () => {
+  const [htmlSource, clientSource, workerSource, hostingSource, migrationSource] =
+    await Promise.all([
+      readFile(new URL("../index.html", import.meta.url), "utf8"),
+      readFile(new URL("../app.js", import.meta.url), "utf8"),
+      readFile(new URL("../worker/index.ts", import.meta.url), "utf8"),
+      readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"),
+      readFile(
+        new URL("../drizzle/0000_classy_pandemic.sql", import.meta.url),
+        "utf8",
+      ),
+    ]);
+  assert.match(htmlSource, /id="holdingsTab"/);
+  assert.match(htmlSource, /id="holdingsPanel"/);
+  assert.match(htmlSource, /id="holdingsAddForm"/);
+  assert.match(clientSource, /method: "POST"/);
+  assert.match(clientSource, /method: "PATCH"/);
+  assert.match(clientSource, /method: "DELETE"/);
+  assert.doesNotMatch(clientSource, /localStorage|sessionStorage/);
+  assert.match(workerSource, /createManagedHoldingsStore\(env\?\.DB\)/);
+  assert.equal(JSON.parse(hostingSource).d1, "DB");
+  assert.equal(
+    (migrationSource.match(/INSERT OR IGNORE INTO `managed_holdings`/g) || []).length,
+    14,
+  );
+});
+
 test("recommendation performance is labeled retrospective and excludes current fundamentals", async () => {
   const [backtest, ledger] = await Promise.all([
     readFile(
