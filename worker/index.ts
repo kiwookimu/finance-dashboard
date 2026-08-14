@@ -133,7 +133,11 @@ async function handleApi(request: Request, url: URL, env?: Env) {
     return jsonResponse(finance.getTrafficSummary());
   }
   if (url.pathname === "/api/stock-search") {
-    return jsonResponse(await finance.getStockSearchResults(url.searchParams.get("q")));
+    return jsonResponse(
+      await finance.getStockSearchResults(url.searchParams.get("q"), {
+        includeDomesticSecurities: url.searchParams.get("scope") === "holdings",
+      }),
+    );
   }
   if (url.pathname === "/api/stock-evaluation") {
     return jsonResponse(

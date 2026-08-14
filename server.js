@@ -305,6 +305,7 @@ const TRAFFIC_VISITOR_SALT =
   process.env.TRAFFIC_VISITOR_SALT || "finance-dashboard-traffic-v1";
 const KRX_CORP_LIST =
   "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13";
+const NAVER_STOCK_AUTOCOMPLETE = "https://ac.stock.naver.com/ac";
 const NASDAQ_SCREENER =
   "https://api.nasdaq.com/api/screener/stocks?tableonly=true&limit=8000&offset=0&download=true";
 const NASDAQ_API_HEADERS = {
@@ -571,7 +572,12 @@ async function handleNodeRequest(request, response) {
     }
 
     if (url.pathname === "/api/stock-search") {
-      sendJson(response, await getStockSearchResults(url.searchParams.get("q")));
+      sendJson(
+        response,
+        await getStockSearchResults(url.searchParams.get("q"), {
+          includeDomesticSecurities: url.searchParams.get("scope") === "holdings",
+        }),
+      );
       return;
     }
 
@@ -981,33 +987,91 @@ async function fetchPortfolioMetrics() {
   };
 }
 
-async function getStockSearchResults(query) {
+async function getStockSearchResults(query, { includeDomesticSecurities = false } = {}) {
   const normalizedQuery = normalizeStockSearchQuery(query);
   if (!normalizedQuery) {
     return { generatedAt: new Date().toISOString(), query: "", results: [] };
   }
 
-  const [domesticResults, usResults] = await Promise.all([
+  const [domesticResults, domesticSecurityResults, usResults] = await Promise.all([
     searchDomesticStocks(normalizedQuery).catch((error) => {
       console.warn("Domestic stock search unavailable", error);
       return [];
     }),
+    includeDomesticSecurities
+      ? searchNaverDomesticSecurities(normalizedQuery).catch((error) => {
+          console.warn("Domestic security search unavailable", error);
+          return [];
+        })
+      : Promise.resolve([]),
     searchUsStocks(normalizedQuery).catch((error) => {
       console.warn("U.S. stock search unavailable", error);
       return [];
     }),
   ]);
 
-  const results = [...domesticResults, ...usResults]
+  const rankedResults = [...domesticResults, ...domesticSecurityResults, ...usResults]
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
-    .slice(0, 12)
-    .map(({ score, ...item }) => item);
+    .filter((item, index, items) => {
+      const key = `${item.market}:${item.code || item.symbol}`;
+      return items.findIndex((candidate) =>
+        `${candidate.market}:${candidate.code || candidate.symbol}` === key
+      ) === index;
+    })
+    .slice(0, 12);
+  const results = rankedResults.map(({ score, ...item }) => item);
 
   return {
     generatedAt: new Date().toISOString(),
     query: normalizedQuery.raw,
     results,
   };
+}
+
+async function searchNaverDomesticSecurities(query) {
+  const url = new URL(NAVER_STOCK_AUTOCOMPLETE);
+  url.searchParams.set("q", query.raw);
+  url.searchParams.set("target", "stock");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        Referer: "https://stock.naver.com/",
+        "User-Agent": "Mozilla/5.0",
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Naver security search failed: ${response.status}`);
+    }
+    const payload = await response.json();
+    return (Array.isArray(payload.items) ? payload.items : [])
+      .map((item, index) => {
+        const name = normalizeText(item.name);
+        const code = String(item.code || "").trim().toUpperCase();
+        if (!name || !/^[0-9A-Z]{6}$/.test(code)) return null;
+        const marketType = item.typeCode === "KOSDAQ" ? "KOSDAQ" : "KOSPI";
+        const compactName = name.replace(/\s+/g, "").toUpperCase();
+        const score = compactName === query.compact ? 118 : Math.max(84, 104 - index);
+        return {
+          code,
+          label: name,
+          market: "kr",
+          marketType,
+          name,
+          score,
+          subLabel: `${marketType} · ${code}`,
+          symbol: /^\d{6}$/.test(code)
+            ? `${code}.${marketType === "KOSDAQ" ? "KQ" : "KS"}`
+            : code,
+        };
+      })
+      .filter(Boolean);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function normalizeStockSearchQuery(value) {

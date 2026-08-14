@@ -329,20 +329,27 @@
               <em id="holdingsCount">14개</em>
             </div>
             <p class="holdings-intro">
-              종목명을 추가하거나 수정·삭제할 수 있습니다. 목록은 비공개 사이트에 저장됩니다.
+              종목명이나 티커를 검색한 뒤 결과에서 선택해 추가하세요. 목록은 비공개 사이트에 저장됩니다.
             </p>
-            <form class="holdings-add-form" id="holdingsAddForm">
-              <label class="sr-only" for="holdingsAddInput">새 보유종목 이름</label>
+            <form class="stock-search-form holdings-search-form" id="holdingsSearchForm">
+              <label class="visually-hidden" for="holdingsSearchInput">추가할 보유종목 검색</label>
               <input
-                id="holdingsAddInput"
-                name="name"
-                type="text"
+                id="holdingsSearchInput"
+                name="q"
+                type="search"
                 maxlength="80"
                 autocomplete="off"
-                placeholder="보유종목 이름 입력"
+                placeholder="종목명이나 티커 검색"
               />
-              <button type="submit">추가</button>
+              <button type="submit">검색</button>
             </form>
+            <div
+              class="stock-search-results holdings-search-results"
+              id="holdingsSearchResults"
+              aria-live="polite"
+            >
+              <p class="stock-search-empty">검색 결과를 선택하면 보유종목에 추가됩니다.</p>
+            </div>
             <p class="holdings-status" id="holdingsStatus" role="status" aria-live="polite">
               보유종목을 불러오는 중입니다.
             </p>

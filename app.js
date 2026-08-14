@@ -108,6 +108,8 @@ let marketLastRefreshAttemptAt = 0;
 let stockSearchAbortController = null;
 let stockEvaluationAbortController = null;
 let stockSearchTimer = null;
+let holdingsSearchAbortController = null;
+let holdingsSearchTimer = null;
 const managedHoldingsState = {
   confirmingDeleteId: null,
   editingId: null,
@@ -115,6 +117,7 @@ const managedHoldingsState = {
   loaded: false,
   loading: false,
   saving: false,
+  searchResults: [],
 };
 const dashboardTabGroups = new Map();
 
@@ -337,34 +340,41 @@ function initializeStockSearch() {
 }
 
 function initializeManagedHoldings() {
-  const addForm = document.querySelector("#holdingsAddForm");
+  const searchForm = document.querySelector("#holdingsSearchForm");
+  const searchInput = document.querySelector("#holdingsSearchInput");
+  const searchResults = document.querySelector("#holdingsSearchResults");
   const list = document.querySelector("#holdingsList");
-  if (!addForm || !list) return;
+  if (!searchForm || !searchInput || !searchResults || !list) return;
 
-  addForm.addEventListener("submit", async (event) => {
+  searchForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (managedHoldingsState.saving) return;
-    const input = addForm.querySelector("#holdingsAddInput");
-    const name = String(input?.value || "").replace(/\s+/g, " ").trim();
-    if (!name) {
-      setManagedHoldingsStatus("추가할 종목명을 입력해 주세요.", "error");
-      input?.focus();
+    runManagedHoldingSearch(searchInput.value);
+  });
+
+  searchInput.addEventListener("input", () => {
+    window.clearTimeout(holdingsSearchTimer);
+    holdingsSearchAbortController?.abort();
+    holdingsSearchAbortController = null;
+    const query = searchInput.value.trim();
+    if (query.length < 2) {
+      managedHoldingsState.searchResults = [];
+      renderManagedHoldingSearchResults(
+        [],
+        query ? "두 글자 이상 입력해 주세요." : "검색 결과를 선택하면 보유종목에 추가됩니다.",
+      );
       return;
     }
+    holdingsSearchTimer = window.setTimeout(() => {
+      runManagedHoldingSearch(query);
+    }, 320);
+  });
 
-    await runManagedHoldingsMutation(async () => {
-      const payload = await requestManagedHoldings("/api/holdings", {
-        body: JSON.stringify({ name }),
-        headers: { "Content-Type": "application/json" },
-        method: "POST",
-      });
-      managedHoldingsState.holdings.push(payload.holding);
-      managedHoldingsState.editingId = null;
-      addForm.reset();
-      renderManagedHoldings();
-      setManagedHoldingsStatus(`${name}을(를) 추가했습니다.`, "success");
-      input?.focus();
-    });
+  searchResults.addEventListener("click", async (event) => {
+    const button = event.target.closest(".holdings-search-result");
+    if (!button || button.disabled || managedHoldingsState.saving) return;
+    const name = String(button.dataset.holdingName || "").replace(/\s+/g, " ").trim();
+    if (!name) return;
+    await addManagedHoldingFromSearch(name);
   });
 
   list.addEventListener("click", async (event) => {
@@ -420,6 +430,7 @@ function initializeManagedHoldings() {
         managedHoldingsState.confirmingDeleteId = null;
         managedHoldingsState.editingId = null;
         renderManagedHoldings();
+        rerenderManagedHoldingSearchResults();
         setManagedHoldingsStatus(`${holding.name}을(를) 삭제했습니다.`, "success");
       });
     }
@@ -453,9 +464,128 @@ function initializeManagedHoldings() {
       );
       managedHoldingsState.editingId = null;
       renderManagedHoldings();
+      rerenderManagedHoldingSearchResults();
       setManagedHoldingsStatus("종목명을 수정했습니다.", "success");
     });
   });
+}
+
+async function runManagedHoldingSearch(query) {
+  const normalizedQuery = String(query || "").trim();
+  if (normalizedQuery.length < 2) {
+    managedHoldingsState.searchResults = [];
+    renderManagedHoldingSearchResults([], "두 글자 이상 입력해 주세요.");
+    return;
+  }
+
+  holdingsSearchAbortController?.abort();
+  const requestController = new AbortController();
+  holdingsSearchAbortController = requestController;
+  renderManagedHoldingSearchResults([], "검색 중입니다.");
+  try {
+    const response = await fetch(
+      apiEndpoint(
+        `/api/stock-search?q=${encodeURIComponent(normalizedQuery)}&scope=holdings`,
+      ),
+      {
+        cache: "no-store",
+        signal: requestController.signal,
+      },
+    );
+    if (!response.ok) throw new Error("Holding search request failed");
+    const payload = await response.json();
+    managedHoldingsState.searchResults = Array.isArray(payload.results)
+      ? payload.results
+      : [];
+    renderManagedHoldingSearchResults(managedHoldingsState.searchResults);
+  } catch (error) {
+    if (error.name === "AbortError") return;
+    console.warn("Holding search unavailable", error);
+    managedHoldingsState.searchResults = [];
+    renderManagedHoldingSearchResults([], "검색 데이터를 불러오지 못했습니다.");
+  } finally {
+    if (holdingsSearchAbortController === requestController) {
+      holdingsSearchAbortController = null;
+    }
+  }
+}
+
+function renderManagedHoldingSearchResults(
+  results,
+  emptyText = "검색 결과가 없습니다.",
+) {
+  const container = document.querySelector("#holdingsSearchResults");
+  if (!container) return;
+  if (!results.length) {
+    container.innerHTML = `<p class="stock-search-empty">${escapeHtml(emptyText)}</p>`;
+    return;
+  }
+
+  const heldNames = new Set(
+    managedHoldingsState.holdings.map((holding) => managedHoldingNameKey(holding.name)),
+  );
+  container.innerHTML = results
+    .map((item) => {
+      const name = item.label || item.name || item.symbol || item.code || "";
+      const isHeld = heldNames.has(managedHoldingNameKey(name));
+      const disabled = isHeld || managedHoldingsState.saving ? " disabled" : "";
+      return `
+        <button
+          class="stock-search-result holdings-search-result${isHeld ? " is-held" : ""}"
+          type="button"
+          data-holding-name="${escapeHtml(name)}"
+          aria-label="${escapeHtml(name)} ${isHeld ? "이미 보유 중" : "보유종목에 추가"}"
+          ${disabled}
+        >
+          <strong>${escapeHtml(name)}</strong>
+          <span class="holdings-search-meta">
+            <span>${escapeHtml(item.subLabel || "")}</span>
+            <b>${isHeld ? "보유중" : "선택해 추가"}</b>
+          </span>
+        </button>
+      `;
+    })
+    .join("");
+}
+
+async function addManagedHoldingFromSearch(name) {
+  if (managedHoldingsState.saving) return;
+  await runManagedHoldingsMutation(async () => {
+    const payload = await requestManagedHoldings("/api/holdings", {
+      body: JSON.stringify({ name }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    managedHoldingsState.holdings.push(payload.holding);
+    managedHoldingsState.editingId = null;
+    managedHoldingsState.searchResults = [];
+    clearManagedHoldingSearch();
+    renderManagedHoldings();
+    setManagedHoldingsStatus(`${name}을(를) 추가했습니다.`, "success");
+    document.querySelector("#holdingsSearchInput")?.focus();
+  });
+}
+
+function clearManagedHoldingSearch() {
+  window.clearTimeout(holdingsSearchTimer);
+  holdingsSearchAbortController?.abort();
+  holdingsSearchAbortController = null;
+  const input = document.querySelector("#holdingsSearchInput");
+  if (input) input.value = "";
+  renderManagedHoldingSearchResults(
+    [],
+    "검색 결과를 선택하면 보유종목에 추가됩니다.",
+  );
+}
+
+function managedHoldingNameKey(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().toLocaleUpperCase("ko-KR");
+}
+
+function rerenderManagedHoldingSearchResults() {
+  if (managedHoldingsState.searchResults.length) {
+    renderManagedHoldingSearchResults(managedHoldingsState.searchResults);
+  }
 }
 
 async function loadManagedHoldings({ force = false } = {}) {
@@ -471,6 +601,7 @@ async function loadManagedHoldings({ force = false } = {}) {
     managedHoldingsState.confirmingDeleteId = null;
     managedHoldingsState.editingId = null;
     renderManagedHoldings();
+    rerenderManagedHoldingSearchResults();
     setManagedHoldingsStatus("비공개 사이트에 저장된 목록입니다.", "success");
   } catch (error) {
     console.warn("Managed holdings unavailable", error);
@@ -484,6 +615,7 @@ async function loadManagedHoldings({ force = false } = {}) {
 async function runManagedHoldingsMutation(callback) {
   managedHoldingsState.saving = true;
   renderManagedHoldings();
+  rerenderManagedHoldingSearchResults();
   setManagedHoldingsStatus("목록을 저장하는 중입니다.");
   try {
     await callback();
@@ -493,6 +625,7 @@ async function runManagedHoldingsMutation(callback) {
   } finally {
     managedHoldingsState.saving = false;
     renderManagedHoldings();
+    rerenderManagedHoldingSearchResults();
   }
 }
 
@@ -518,7 +651,7 @@ function renderManagedHoldings() {
   count.textContent = `${holdings.length.toLocaleString("ko-KR")}개`;
 
   if (!holdings.length) {
-    list.innerHTML = `<li class="holdings-empty">보유종목이 없습니다. 위 입력창에서 종목을 추가해 주세요.</li>`;
+    list.innerHTML = `<li class="holdings-empty">보유종목이 없습니다. 위에서 종목을 검색해 추가해 주세요.</li>`;
     return;
   }
 
@@ -532,7 +665,7 @@ function renderManagedHoldings() {
           <li class="holdings-row is-editing" data-holding-id="${id}">
             <span class="holdings-index" aria-hidden="true">${index + 1}</span>
             <form class="holdings-edit-form" data-holding-id="${id}">
-              <label class="sr-only" for="holdingEdit-${id}">${name} 이름 수정</label>
+              <label class="visually-hidden" for="holdingEdit-${id}">${name} 이름 수정</label>
               <input id="holdingEdit-${id}" name="name" type="text" maxlength="80" value="${name}" autocomplete="off" />
               <button class="holdings-edit-save" type="submit"${disabled}>저장</button>
               <button class="holdings-edit-cancel" type="button" data-holding-action="cancel"${disabled}>취소</button>

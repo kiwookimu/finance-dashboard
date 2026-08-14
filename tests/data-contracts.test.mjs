@@ -131,10 +131,18 @@ test("managed holdings seed preserves the requested 14-item order", async () => 
 });
 
 test("holdings tab uses durable D1 CRUD instead of browser storage", async () => {
-  const [htmlSource, clientSource, workerSource, hostingSource, migrationSource] =
+  const [
+    htmlSource,
+    clientSource,
+    serverSource,
+    workerSource,
+    hostingSource,
+    migrationSource,
+  ] =
     await Promise.all([
       readFile(new URL("../index.html", import.meta.url), "utf8"),
       readFile(new URL("../app.js", import.meta.url), "utf8"),
+      readFile(new URL("../server.js", import.meta.url), "utf8"),
       readFile(new URL("../worker/index.ts", import.meta.url), "utf8"),
       readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"),
       readFile(
@@ -144,12 +152,22 @@ test("holdings tab uses durable D1 CRUD instead of browser storage", async () =>
     ]);
   assert.match(htmlSource, /id="holdingsTab"/);
   assert.match(htmlSource, /id="holdingsPanel"/);
-  assert.match(htmlSource, /id="holdingsAddForm"/);
+  assert.match(htmlSource, /id="holdingsSearchForm"/);
+  assert.match(htmlSource, /id="holdingsSearchResults"/);
+  assert.doesNotMatch(htmlSource, /id="holdingsAddForm"/);
+  assert.match(clientSource, /runManagedHoldingSearch/);
+  assert.match(clientSource, /\/api\/stock-search\?q=.*scope=holdings/);
+  assert.match(clientSource, /data-holding-name=/);
+  assert.match(clientSource, /보유중/);
   assert.match(clientSource, /method: "POST"/);
   assert.match(clientSource, /method: "PATCH"/);
   assert.match(clientSource, /method: "DELETE"/);
   assert.doesNotMatch(clientSource, /localStorage|sessionStorage/);
   assert.match(workerSource, /createManagedHoldingsStore\(env\?\.DB\)/);
+  assert.match(workerSource, /includeDomesticSecurities/);
+  assert.match(workerSource, /scope.*holdings/);
+  assert.match(serverSource, /NAVER_STOCK_AUTOCOMPLETE/);
+  assert.match(serverSource, /searchNaverDomesticSecurities/);
   assert.equal(JSON.parse(hostingSource).d1, "DB");
   assert.equal(
     (migrationSource.match(/INSERT OR IGNORE INTO `managed_holdings`/g) || []).length,
