@@ -2951,29 +2951,65 @@ function renderIndexPredictions(quotes = {}, sentiment = {}) {
             : "unknown";
       return `
         <article class="prediction-row ${tone}">
-          <div class="prediction-copy">
-            ${formatPredictionLabel(prediction)}
-            <small>${escapeHtml(prediction.summary)}</small>
+          <div class="prediction-primary">
+            <strong class="prediction-label">${escapeHtml(prediction.label)}</strong>
+            <div class="prediction-result">
+              <b>${escapeHtml(prediction.direction)}</b>
+            </div>
           </div>
-          <div class="prediction-result">
-            <b>${escapeHtml(prediction.direction)}</b>
-          </div>
+          <p class="prediction-reason">${escapeHtml(compactPredictionSummary(prediction.summary))}</p>
+          ${formatPredictionValidationDisclosure(prediction.id)}
         </article>
       `;
     })
     .join("");
 }
 
-function formatPredictionLabel(prediction) {
-  const metrics = NEXT_DAY_PREDICTION_BACKTEST_METRICS[prediction.id];
-  if (!metrics) {
-    return `<strong class="prediction-label"><span class="prediction-label-main">${escapeHtml(prediction.label)}</span></strong>`;
-  }
+function compactPredictionSummary(summary) {
+  const generic = new Set([
+    "고신뢰 규칙 구간",
+    "고신뢰 확장 구간",
+    "MiroFish 확장 구간",
+  ]);
+  const normalized = String(summary || "")
+    .split(" · ")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => !generic.has(part))
+    .map((part) => part === "고신뢰 조건 미충족" ? "확정 조건 미충족" : part)
+    .map((part) => part.replace("VIX구조", "VIX 구조"));
+  return [...new Set(normalized)].slice(0, 2).join(" · ") || "근거 확인 중";
+}
+
+function formatPredictionValidationDisclosure(indexId) {
+  const metrics = NEXT_DAY_PREDICTION_BACKTEST_METRICS[indexId];
+  if (!metrics) return "";
+  const hitRate = indexMetricPercent(metrics.hitRate);
+  const observations = metrics.observations !== null && metrics.observations !== undefined &&
+    Number.isFinite(Number(metrics.observations))
+    ? Math.round(Number(metrics.observations)).toLocaleString("ko-KR")
+    : "-";
+  const period = indexBacktestPeriodText(nextDayPredictionBacktestRange) || "-";
+  const confidenceInterval = metrics.hitRateLower !== null && metrics.hitRateLower !== undefined &&
+    metrics.hitRateUpper !== null && metrics.hitRateUpper !== undefined &&
+    Number.isFinite(Number(metrics.hitRateLower)) &&
+    Number.isFinite(Number(metrics.hitRateUpper))
+    ? `${Number(metrics.hitRateLower).toFixed(1)}~${Number(metrics.hitRateUpper).toFixed(1)}%`
+    : "-";
   return `
-    <strong class="prediction-label">
-      <span class="prediction-label-main">${escapeHtml(prediction.label)}</span>
-      <span class="prediction-label-metrics">${escapeHtml(indexBacktestMetricText(metrics))}</span>
-    </strong>
+    <details class="prediction-backtest">
+      <summary>
+        <span>회고 적중</span>
+        <b>${hitRate}</b>
+        <em>표본 ${observations}</em>
+      </summary>
+      <dl>
+        <div><dt>신호 커버리지</dt><dd>${indexMetricPercent(metrics.coverage)}</dd></div>
+        <div><dt>95% 신뢰구간</dt><dd>${confidenceInterval}</dd></div>
+        <div><dt>연도별 최저</dt><dd>${indexMetricPercent(metrics.worstYearHitRate)}</dd></div>
+        <div><dt>검증기간</dt><dd>${period}</dd></div>
+      </dl>
+    </details>
   `;
 }
 
@@ -2992,31 +3028,10 @@ function applyIndexPredictionBacktestSummary(payload) {
   nextDayPredictionBacktestRange = payload?.index?.range || null;
 }
 
-function indexBacktestMetricText(metrics) {
-  const parts = [
-    "회고검증",
-    Number.isFinite(Number(metrics.coverage))
-      ? `커버리지 ${Number(metrics.coverage).toFixed(1)}%`
-      : "",
-    Number.isFinite(Number(metrics.hitRate))
-      ? `적중 ${Number(metrics.hitRate).toFixed(1)}%`
-      : "",
-    Number.isFinite(Number(metrics.observations))
-      ? `n=${Math.round(Number(metrics.observations)).toLocaleString("ko-KR")}`
-      : "",
-    Number.isFinite(Number(metrics.hitRateLower)) &&
-    Number.isFinite(Number(metrics.hitRateUpper))
-      ? `95% CI ${Number(metrics.hitRateLower).toFixed(1)}~${Number(
-          metrics.hitRateUpper,
-        ).toFixed(1)}%`
-      : "",
-    Number.isFinite(Number(metrics.worstYearHitRate))
-      ? `연도별 최저 ${Number(metrics.worstYearHitRate).toFixed(1)}%`
-      : "",
-  ].filter(Boolean);
-  const period = indexBacktestPeriodText(nextDayPredictionBacktestRange);
-  if (period) parts.push(period);
-  return `(${parts.join(" · ")})`;
+function indexMetricPercent(value) {
+  return value !== null && value !== undefined && Number.isFinite(Number(value))
+    ? `${Number(value).toFixed(1)}%`
+    : "-";
 }
 
 function renderIndexValidationNote(validation) {

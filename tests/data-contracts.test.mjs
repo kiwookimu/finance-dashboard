@@ -247,7 +247,9 @@ test("validation UI distinguishes retrospective results from prospective collect
     readFile(new URL("../app.js", import.meta.url), "utf8"),
     readFile(new URL("../index.html", import.meta.url), "utf8"),
   ]);
-  assert.match(clientSource, /회고검증/);
+  assert.match(clientSource, /회고 적중/);
+  assert.match(clientSource, /compactPredictionSummary/);
+  assert.match(clientSource, /신호 커버리지/);
   assert.match(clientSource, /전향 수집 중/);
   assert.doesNotMatch(clientSource, /고신뢰 검증 구간/);
   assert.match(htmlSource, /id="recommendationValidationBadge"/);
@@ -255,4 +257,5 @@ test("validation UI distinguishes retrospective results from prospective collect
   assert.match(htmlSource, /id="recommendationValidationProspective"/);
   assert.match(htmlSource, /검증 기준 자세히/);
   assert.match(htmlSource, /id="indexValidationNote"/);
+  assert.match(htmlSource, /검증 기준 보기/);
 });
