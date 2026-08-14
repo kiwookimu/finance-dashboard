@@ -178,6 +178,10 @@ test("holdings tab uses durable D1 CRUD instead of browser storage", async () =>
   assert.match(workerSource, /scope.*holdings/);
   assert.match(workerSource, /\/api\/holdings\/diagnostics/);
   assert.match(htmlSource, /조건부 퀀트 진단/);
+  assert.match(htmlSource, /id="holdingsRotationRecommendation"/);
+  assert.match(htmlSource, /모멘텀 40 · 추세\/위험 25 · 포트폴리오 적합도 25 · 유동성\/비용 10/);
+  assert.match(clientSource, /renderHoldingsRotation/);
+  assert.match(clientSource, /Quant \$\{formatHoldingScore/);
   assert.match(clientSource, /currentValueKrw/);
   assert.match(serverSource, /NAVER_STOCK_AUTOCOMPLETE/);
   assert.match(serverSource, /searchNaverDomesticSecurities/);

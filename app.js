@@ -700,6 +700,7 @@ function renderManagedHoldingsDiagnostics() {
   const kpis = document.querySelector("#holdingsDiagnosticsKpis");
   const summary = document.querySelector("#holdingsDiagnosticsSummary");
   const note = document.querySelector("#holdingsDiagnosticsNote");
+  const rotation = document.querySelector("#holdingsRotationRecommendation");
   const refresh = document.querySelector("#holdingsDiagnosticsRefresh");
   if (!kpis || !summary || !note) return;
   if (refresh) {
@@ -710,12 +711,14 @@ function renderManagedHoldingsDiagnostics() {
   if (managedHoldingsState.diagnosticsLoading && !diagnostics) {
     kpis.innerHTML = `<span>가격 이력 수집 중</span>`;
     summary.textContent = "14개 종목의 모멘텀·변동성·추세·집중도를 계산하고 있습니다.";
+    if (rotation) rotation.hidden = true;
     return;
   }
   if (!diagnostics) {
     kpis.innerHTML = `<span>진단 지연</span>`;
     summary.textContent = "진단 데이터를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.";
     note.textContent = "보유 목록은 정상 저장되며 진단만 일시적으로 지연된 상태입니다.";
+    if (rotation) rotation.hidden = true;
     return;
   }
   const counts = diagnostics.summary || {};
@@ -723,6 +726,7 @@ function renderManagedHoldingsDiagnostics() {
     <span data-action="expand">확대 후보 <b>${Number(counts.expand || 0)}</b></span>
     <span data-action="hold">유지 <b>${Number(counts.hold || 0)}</b></span>
     <span data-action="trim">축소 후보 <b>${Number(counts.trim || 0)}</b></span>
+    <span data-action="rotate">회전 후보 <b>${Number(counts.rotate || 0)}</b></span>
     <span data-action="pending">보류 <b>${Number(counts.pending || 0)}</b></span>
   `;
   const modeText = diagnostics.weightMode === "actual"
@@ -731,8 +735,35 @@ function renderManagedHoldingsDiagnostics() {
   const topTheme = counts.topTheme?.tag
     ? ` · 최대 중첩 테마 ${holdingThemeLabel(counts.topTheme.tag)} ${formatHoldingPercent(counts.topTheme.weight)}`
     : "";
-  summary.textContent = `${modeText} · ${Number(diagnostics.dataReadyCount || 0)}/${Number(diagnostics.count || 0)}개 진단 가능${topTheme}`;
-  note.textContent = "12-1·6-1개월 모멘텀, 50·200일 추세, 126일 변동성, 축소 공분산과 테마 집중도를 함께 반영합니다. 매매지시가 아닌 검토 우선순위입니다.";
+  const averageScore = counts.averageQuantScore !== null && counts.averageQuantScore !== undefined && Number.isFinite(Number(counts.averageQuantScore))
+    ? ` · 평균 Quant ${Number(counts.averageQuantScore).toFixed(1)}점`
+    : "";
+  const recovery = diagnostics.recoveryMode?.active ? " · 회복모드 적용" : "";
+  summary.textContent = `${modeText} · ${Number(diagnostics.dataReadyCount || 0)}/${Number(diagnostics.count || 0)}개 진단 가능${averageScore}${topTheme}${recovery}`;
+  note.textContent = "가격·거래대금은 실제 이력을 사용합니다. AUM·스프레드·보수·실시간 구성종목은 아직 미연결이며, 결과는 매매지시가 아닌 조건부 검토 우선순위입니다.";
+  renderHoldingsRotation(rotation, diagnostics.rotationRecommendation);
+}
+
+function renderHoldingsRotation(container, recommendation) {
+  if (!container || !recommendation) return;
+  const eligible = recommendation.status === "eligible";
+  container.hidden = false;
+  container.dataset.status = eligible ? "eligible" : "not-met";
+  if (!eligible || !recommendation.sell || !recommendation.buy) {
+    container.innerHTML = `
+      <span>회전 조건</span>
+      <p>${escapeHtml(recommendation.reason || "현재 회전 기준을 충족한 종목 조합이 없습니다.")}</p>
+    `;
+    return;
+  }
+  const amount = recommendation.estimatedAmountKrw !== null && recommendation.estimatedAmountKrw !== undefined && Number.isFinite(Number(recommendation.estimatedAmountKrw))
+    ? ` · 약 ${formatKoreanWon(recommendation.estimatedAmountKrw)}`
+    : "";
+  container.innerHTML = `
+    <span>1차 회전 검토 · 30%</span>
+    <strong>${escapeHtml(recommendation.sell.name)} → ${escapeHtml(recommendation.buy.name)}</strong>
+    <p>Quant ${Number(recommendation.scoreGap || 0).toFixed(1)}점 차 · 3개월 ${formatHoldingPercentagePoint(recommendation.performanceGap)} 차${escapeHtml(amount)}</p>
+  `;
 }
 
 function managedHoldingDiagnostic(id) {
@@ -807,8 +838,14 @@ function renderManagedHoldings() {
         ? `${weightModeLabel} ${formatHoldingPercent(diagnostic.currentWeight)} → 목표 ${formatHoldingPercent(diagnostic.targetWeight)}`
         : "진단 데이터 준비 중";
       const metricText = diagnostic
-        ? `3개월 ${formatHoldingSignedPercent(diagnostic.metrics?.return63)} · 변동성 ${formatHoldingPercent(diagnostic.metrics?.volatility)} · 신뢰 ${diagnostic.confidenceLabel}`
+        ? `1개월 ${formatHoldingSignedPercent(diagnostic.metrics?.return21)} · 3개월 ${formatHoldingSignedPercent(diagnostic.metrics?.return63)} · 6개월 ${formatHoldingSignedPercent(diagnostic.metrics?.return126)} · MDD ${formatHoldingSignedPercent(diagnostic.metrics?.drawdown52w)} · 상관 ${formatHoldingCorrelation(diagnostic.averageCorrelation90d)}`
         : "가격 이력 수집 전";
+      const factorText = diagnostic
+        ? `모멘텀 ${formatHoldingScore(diagnostic.scores?.momentum)}/40 · 추세·위험 ${formatHoldingScore(diagnostic.scores?.trendRisk)}/25 · 적합도 ${formatHoldingScore(diagnostic.scores?.portfolioFit)}/25 · 유동성·비용 ${formatHoldingScore(diagnostic.scores?.liquidityCost)}/10`
+        : "100점 팩터 계산 중";
+      const quantText = diagnostic
+        ? `#${Number(diagnostic.rank || index + 1)} · Quant ${formatHoldingScore(diagnostic.quantScore)} ${escapeHtml(diagnostic.rating || "-")}`
+        : "Quant -";
       const reason = diagnostic?.reasons?.[0] || "평가금액을 입력하면 실제 비중 기준으로 다시 계산합니다.";
       return `
         <li class="holdings-row" data-holding-id="${id}">
@@ -816,9 +853,13 @@ function renderManagedHoldings() {
           <div class="holdings-main">
             <div class="holdings-row-title">
               <strong class="holdings-name">${name}</strong>
-              <span class="holdings-diagnostic-chip" data-action="${escapeHtml(actionCode)}">${escapeHtml(actionLabel)}</span>
+              <span class="holdings-row-badges">
+                <span class="holdings-quant-badge" data-rating="${escapeHtml(diagnostic?.rating || "")}">${quantText}</span>
+                <span class="holdings-diagnostic-chip" data-action="${escapeHtml(actionCode)}">${escapeHtml(actionLabel)}</span>
+              </span>
             </div>
             <small>${code} · ${escapeHtml(amountText)}</small>
+            <div class="holdings-factor-line">${escapeHtml(factorText)}</div>
             <div class="holdings-weight-line">
               <b>${escapeHtml(weightText)}</b>
               <span>${escapeHtml(metricText)}</span>
@@ -836,6 +877,7 @@ function renderManagedHoldings() {
 }
 
 function formatKoreanWon(value) {
+  if (value === null || value === undefined || value === "") return "-";
   const number = Number(value);
   if (!Number.isFinite(number)) return "-";
   if (number >= 100_000_000) return `${(number / 100_000_000).toFixed(number >= 1_000_000_000 ? 0 : 1)}억원`;
@@ -844,23 +886,49 @@ function formatKoreanWon(value) {
 }
 
 function formatHoldingPercent(value) {
+  if (value === null || value === undefined || value === "") return "-";
   const number = Number(value);
   return Number.isFinite(number) ? `${(number * 100).toFixed(1)}%` : "-";
 }
 
 function formatHoldingSignedPercent(value) {
+  if (value === null || value === undefined || value === "") return "-";
   const number = Number(value);
   if (!Number.isFinite(number)) return "-";
   return `${number >= 0 ? "+" : ""}${(number * 100).toFixed(1)}%`;
 }
 
+function formatHoldingPercentagePoint(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `${number >= 0 ? "+" : ""}${(number * 100).toFixed(1)}%p`;
+}
+
+function formatHoldingScore(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toFixed(1) : "-";
+}
+
+function formatHoldingCorrelation(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toFixed(2) : "-";
+}
+
 function holdingThemeLabel(tag) {
   return {
     ai: "AI",
+    ai_infra: "AI 인프라",
     aiInfra: "AI 인프라",
+    bond: "채권",
+    broad_korea: "국내 광역",
+    broad_us: "미국 광역",
     cybersecurity: "사이버보안",
     defense: "방산",
     hbm: "HBM",
+    large_cap_korea: "국내 대형주",
     nasdaq: "나스닥",
     network: "네트워크",
     power: "전력",
