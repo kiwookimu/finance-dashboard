@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "policy": {
+    "criteriaHash": "sha256:6800e31e07c6c33ae9121f2033e171770ae9eeaf745fccfc2b78eec7f0fa606d",
+    "frozenAt": "2026-08-14T01:47:21.000Z",
+    "horizonTradingDays": 21,
+    "minimumMaturedSamples": 30,
+    "scope": "technical-screen-only",
+    "startMonth": "2026-09"
+  },
+  "cohorts": []
+}

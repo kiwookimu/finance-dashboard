@@ -15,6 +15,10 @@ const {
   pickWidestDatedFile,
   wilsonPercentInterval,
 } = require("../lib/backtestSummary.js");
+const { summarizeIndexValidation } = require("../lib/indexValidation.js");
+const {
+  summarizeRecommendationValidation,
+} = require("../lib/recommendationValidation.js");
 
 test("Korean recommendation cutoff excludes an unfinished trading session", () => {
   assert.equal(
@@ -94,4 +98,60 @@ test("client loads portfolio holdings from the API", async () => {
   const clientSource = await readFile(new URL("../app.js", import.meta.url), "utf8");
   assert.match(clientSource, /\/api\/portfolio-config/);
   assert.doesNotMatch(clientSource, /const PORTFOLIO_HOLDINGS = \[/);
+});
+
+test("recommendation performance is labeled retrospective and excludes current fundamentals", async () => {
+  const [backtest, ledger] = await Promise.all([
+    readFile(
+      new URL(
+        "../screen_results/backtest_monthly_recommendations_both_2025-01_2026-05.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ).then(JSON.parse),
+    readFile(
+      new URL("../validation/recommendation-forward-validation.json", import.meta.url),
+      "utf8",
+    ).then(JSON.parse),
+  ]);
+  const validation = summarizeRecommendationValidation(backtest, ledger);
+  assert.equal(validation.independentPerformanceReady, false);
+  assert.equal(validation.retrospective.status, "retrospective-only");
+  assert.equal(validation.retrospective.metrics.sample, 110);
+  assert.equal(validation.retrospective.metrics.medianReturn, 1.85);
+  assert.equal(validation.retrospective.timeSlices[0].metrics.hitRate, 42.4);
+  assert.equal(validation.retrospective.timeSlices[1].metrics.hitRate, 62.7);
+  assert.equal(validation.dataQuality.fundamentalsIncludedInHistoricalPerformance, false);
+  assert.equal(validation.prospective.startMonth, "2026-09");
+  assert.equal(validation.prospective.performanceReady, false);
+});
+
+test("index validation reports yearly stability instead of only an aggregate hit rate", async () => {
+  const backtest = JSON.parse(
+    await readFile(
+      new URL(
+        "../screen_results/backtest_index_predictions_2023-01-01_2026-06-20.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const validation = summarizeIndexValidation(backtest.rows);
+  assert.equal(validation.assessment, "retrospective-only");
+  assert.equal(validation.yearly.length, 4);
+  assert.equal(validation.worstYearHitRate, 69.5);
+  assert.equal(validation.byIndex.kospi.worstYearHitRate, 67.5);
+  assert.equal(validation.yearly.at(-1).isPartial, true);
+});
+
+test("validation UI distinguishes retrospective results from prospective collection", async () => {
+  const [clientSource, htmlSource] = await Promise.all([
+    readFile(new URL("../app.js", import.meta.url), "utf8"),
+    readFile(new URL("../index.html", import.meta.url), "utf8"),
+  ]);
+  assert.match(clientSource, /회고검증/);
+  assert.match(clientSource, /전향 검증 수집 중/);
+  assert.doesNotMatch(clientSource, /고신뢰 검증 구간/);
+  assert.match(htmlSource, /id="recommendationValidationBadge"/);
+  assert.match(htmlSource, /id="indexValidationNote"/);
 });

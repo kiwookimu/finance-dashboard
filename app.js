@@ -1242,6 +1242,9 @@ function recommendationConditionText(payload, config = RECOMMENDATION_CONFIGS.do
       "MFI 75 이상",
       "고점 -5% 이내·10일선 위",
       payload?.condition?.mirofishAdjustment ? "MiroFish 테마·시장 보정" : "",
+      payload?.validationScope?.fundamentalPointInTime === false
+        ? "실적은 현재 조회값"
+        : "",
     ]
       .filter(Boolean)
       .join(" · ");
@@ -1256,7 +1259,9 @@ function recommendationConditionText(payload, config = RECOMMENDATION_CONFIGS.do
     "확정은 고점 -10% 이내",
     payload?.condition?.domesticConfirmationGuard ? "국내 확정 강화" : "",
     "과열·시장약세 관찰 전환",
-    "실적·밸류 보조 검증",
+    payload?.validationScope?.fundamentalPointInTime === false
+      ? "실적·밸류 현재값 보조"
+      : "실적·밸류 보조 검증",
     payload?.condition?.mirofishAdjustment ? "MiroFish 테마·시장 보정" : "",
   ]
     .filter(Boolean)
@@ -1448,11 +1453,19 @@ function recommendationForwardPerLabel(item, hasForwardPer = true) {
 
 function recommendationFundamentalText(item) {
   if (!item.fundamentalSummary) return "";
+  const prefix = item.fundamentalPointInTime === false ? "현재 조회 보조 지표야. " : "";
+  if (prefix) {
+    return recommendationFundamentalText({
+      ...item,
+      fundamentalPointInTime: true,
+      fundamentalSummary: `${prefix}${item.fundamentalSummary}`,
+    });
+  }
   if (item.qualityAdjusted) {
     const marketLabel = /^\d{6}$/.test(String(item.code || "").trim()) ? "국내" : "미국";
     return `${item.fundamentalSummary} 그래서 ${marketLabel} 추천이 아니라 ${marketLabel} 관찰로 낮췄어.`;
   }
-  return item.fundamentalSummary;
+  return `${prefix}${item.fundamentalSummary}`;
 }
 
 function finiteDisplayNumber(value) {
@@ -1791,6 +1804,7 @@ function buildRecommendationSetup(
   const monthHighDrawdown = Number(item.monthHighDrawdown);
   const marketCapKrw = Number(item.marketCapKrw);
   const tags = [
+    item.fundamentalPointInTime === false ? "실적 현재값" : "",
     recommendationVolumeTag(volumeRatio),
     recommendationRecentVolumeTag(recentVolumeRatio),
     recommendationMfiTag(mfi),
@@ -2186,6 +2200,8 @@ async function loadIndicatorsNow() {
     const sentiment = await sentimentResponse.json();
     const backtest = backtestResponse?.ok ? await backtestResponse.json() : null;
     applyIndexPredictionBacktestSummary(backtest);
+    renderIndexValidationNote(backtest?.index?.validation);
+    renderRecommendationValidation(backtest?.recommendation?.validation);
 
     renderMarketIndicator("kospi", market.quotes.kospi);
     renderMarketIndicator("kosdaq", market.quotes.kosdaq);
@@ -2346,6 +2362,7 @@ function applyIndexPredictionBacktestSummary(payload) {
 
 function indexBacktestMetricText(metrics) {
   const parts = [
+    "회고검증",
     Number.isFinite(Number(metrics.coverage))
       ? `커버리지 ${Number(metrics.coverage).toFixed(1)}%`
       : "",
@@ -2361,10 +2378,97 @@ function indexBacktestMetricText(metrics) {
           metrics.hitRateUpper,
         ).toFixed(1)}%`
       : "",
+    Number.isFinite(Number(metrics.worstYearHitRate))
+      ? `연도별 최저 ${Number(metrics.worstYearHitRate).toFixed(1)}%`
+      : "",
   ].filter(Boolean);
   const period = indexBacktestPeriodText(nextDayPredictionBacktestRange);
   if (period) parts.push(period);
   return `(${parts.join(" · ")})`;
+}
+
+function renderIndexValidationNote(validation) {
+  const note = document.querySelector("#indexValidationNote");
+  if (!note) return;
+  if (!validation) {
+    note.textContent = "검증 범위를 확인하지 못했습니다.";
+    return;
+  }
+  const partialYears = (validation.yearly || [])
+    .filter((item) => item.isPartial)
+    .map((item) => `${item.year}년은 부분 구간`)
+    .join(" · ");
+  note.textContent = [
+    "고정 규칙 과거 재생 결과로 독립 전향 성과가 아님",
+    partialYears,
+    validation.prospective?.status === "collecting"
+      ? `전향 신호는 ${formatIsoDate(validation.prospective.startDate)}부터 수집 중`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function renderRecommendationValidation(validation) {
+  const timeSlices = validation?.retrospective?.timeSlices || [];
+  const firstSlice = timeSlices.at(0);
+  const latestSlice = timeSlices.at(-1);
+  const metrics = validation?.retrospective?.metrics;
+  const prospective = validation?.prospective;
+  const hitRate = finiteDisplayNumber(metrics?.hitRate);
+  const medianReturn = finiteDisplayNumber(metrics?.medianReturn);
+  const hitRateLower = finiteDisplayNumber(metrics?.hitRateLower);
+  const hitRateUpper = finiteDisplayNumber(metrics?.hitRateUpper);
+  const missingOutcomeCount = Number(metrics?.missingOutcomeCount) || 0;
+  setText(
+    "#recommendationValidationBadge",
+    prospective?.performanceReady
+      ? "전향 검증 방향성 확보"
+      : "전향 검증 수집 중",
+  );
+  setText(
+    "#recommendationValidationPeriod",
+    firstSlice?.startMonth && latestSlice?.endMonth
+      ? `${firstSlice.startMonth.replace("-", ".")}~${latestSlice.endMonth.replace("-", ".")}`
+      : "-",
+  );
+  setText(
+    "#recommendationValidationHitRate",
+    Number.isFinite(hitRate)
+      ? `${hitRate.toFixed(1)}% · n=${Number(metrics.sample).toLocaleString("ko-KR")}`
+      : "-",
+  );
+  setText(
+    "#recommendationValidationMedian",
+    Number.isFinite(medianReturn)
+      ? `${formatSignedNumber(medianReturn, 1)}%`
+      : "-",
+  );
+  const confidence =
+    Number.isFinite(hitRateLower) && Number.isFinite(hitRateUpper)
+      ? `95% 신뢰구간 ${hitRateLower.toFixed(1)}~${hitRateUpper.toFixed(1)}%`
+      : "";
+  const yearlyRates = timeSlices
+    .filter((slice) => Number.isFinite(finiteDisplayNumber(slice?.metrics?.hitRate)))
+    .map((slice) => `${slice.year}년 ${Number(slice.metrics.hitRate).toFixed(1)}%`)
+    .join(" · ");
+  setText(
+    "#recommendationValidationNote",
+    [
+      "현행 기술 규칙의 연도별 회고검증이며 독립 홀드아웃이 아닙니다.",
+      confidence,
+      yearlyRates ? `연도별 적중 ${yearlyRates}.` : "",
+      missingOutcomeCount > 0
+        ? `1개월 성과 미도래 ${missingOutcomeCount}건은 집계에서 제외했습니다.`
+        : "",
+      "실적·컨센서스 현재 조회값은 과거 성과에 포함하지 않습니다.",
+      prospective?.startMonth
+        ? `동일 규칙 전향 검증은 ${prospective.startMonth.replace("-", ".")}부터 최소 ${prospective.minimumMaturedSamples}건을 수집합니다.`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
 }
 
 function indexBacktestPeriodText(range) {
@@ -3083,10 +3187,10 @@ function backtestedIndexDirection(indexId, components, score) {
 
   if (indexId === "kospi") {
     if (usMarket >= 0.45) {
-      return { direction: "상승", summary: "고신뢰 검증 구간 · 미국장 강세" };
+      return { direction: "상승", summary: "고신뢰 규칙 구간 · 미국장 강세" };
     }
     if (spFuture <= -0.8 && vixTerm < 0.2) {
-      return { direction: "하락", summary: "고신뢰 검증 구간 · S&P선물 급락" };
+      return { direction: "하락", summary: "고신뢰 규칙 구간 · S&P선물 급락" };
     }
     if (rate <= -0.7) {
       return { direction: "하락", summary: "고신뢰 확장 구간 · 금리 급락 위험회피" };
@@ -3107,13 +3211,13 @@ function backtestedIndexDirection(indexId, components, score) {
 
   if (indexId === "nasdaq" || indexId === "sp500") {
     if (vixTerm >= 0.35) {
-      return { direction: "상승", summary: "고신뢰 검증 구간 · VIX 구조 양호" };
+      return { direction: "상승", summary: "고신뢰 규칙 구간 · VIX 구조 양호" };
     }
     if (mirofish >= 0.5 && score >= 0.25) {
       return { direction: "상승", summary: "MiroFish 확장 구간 · 성장/리스크 합의 상승" };
     }
     if (vixTerm <= 0) {
-      return { direction: "하락", summary: "고신뢰 검증 구간 · VIX 구조 경계" };
+      return { direction: "하락", summary: "고신뢰 규칙 구간 · VIX 구조 경계" };
     }
     if (mirofish <= -0.45 && score <= -0.2) {
       return { direction: "하락", summary: "MiroFish 확장 구간 · 성장/리스크 합의 하락" };

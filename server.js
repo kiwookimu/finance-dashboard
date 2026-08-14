@@ -19,6 +19,12 @@ const { createTrafficStore } = require("./lib/trafficStore");
 const RECOMMENDATION_CRITERIA = loadRecommendationCriteria();
 const RECOMMENDATION_CRITERIA_HASH = recommendationCriteriaHash(RECOMMENDATION_CRITERIA);
 const PORTFOLIO_CONFIG = getPortfolioConfig();
+const RECOMMENDATION_VALIDATION_SCOPE = {
+  fundamentalOverlay: "current-context-only",
+  fundamentalPointInTime: false,
+  historicalPerformance: "technical-screen-only",
+  prospectiveStartMonth: "2026-09",
+};
 const MARKET_CACHE_MS = 60 * 1000;
 const SENTIMENT_CACHE_MS = 15 * 60 * 1000;
 const PORTFOLIO_CACHE_MS = 5 * 60 * 1000;
@@ -2756,14 +2762,18 @@ function normalizeStockRecommendationPayload(payload, flags = {}) {
     ...flags,
     results,
     topResults: results.slice(0, 12),
+    validationScope: {
+      ...RECOMMENDATION_VALIDATION_SCOPE,
+      technicalSignalAsOf: payload.dataAsOf || "",
+    },
   };
 }
 
 async function normalizeUsStockRecommendationPayload(payload, flags = {}) {
   const normalized = normalizeStockRecommendationPayload(payload, flags);
-  const enrichedResults = await Promise.all(
+  const enrichedResults = (await Promise.all(
     normalized.results.map((item) => enrichUsRecommendationItem(item)),
-  );
+  )).map((item) => attachRecommendationDataQuality(item, normalized));
   return {
     ...normalized,
     results: enrichedResults,
@@ -2793,9 +2803,9 @@ function isUsStockRecommendationCurrent(payload) {
 
 async function normalizeDomesticStockRecommendationPayload(payload, flags = {}) {
   const normalized = normalizeStockRecommendationPayload(payload, flags);
-  const enrichedResults = await Promise.all(
+  const enrichedResults = (await Promise.all(
     normalized.results.map((item) => enrichDomesticRecommendationItem(item)),
-  );
+  )).map((item) => attachRecommendationDataQuality(item, normalized));
   const invalidatedResults = enrichedResults.filter(
     (item) => item.recommendationInvalidated,
   );
@@ -2811,6 +2821,17 @@ async function normalizeDomesticStockRecommendationPayload(payload, flags = {}) 
     rawMatchCount: Number(normalized.matchCount ?? normalized.results.length),
     results: activeResults,
     topResults: activeResults.slice(0, 12),
+  };
+}
+
+function attachRecommendationDataQuality(item, payload) {
+  return {
+    ...item,
+    fundamentalAsOf:
+      item.consensusDate || item.latestQuarterLabel || item.latestAnnualLabel || "",
+    fundamentalPointInTime: false,
+    fundamentalValidationScope: "current-overlay-not-in-historical-performance",
+    technicalSignalAsOf: item.lastDate || payload.dataAsOf || "",
   };
 }
 

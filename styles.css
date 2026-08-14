@@ -729,6 +729,87 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.recommendation-validation {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  color: var(--text);
+  background: #ffffff;
+  border: 1px solid #dfe6ef;
+  border-radius: 10px;
+}
+
+.recommendation-validation-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.recommendation-validation-head > div {
+  display: grid;
+  gap: 2px;
+}
+
+.recommendation-validation-head span,
+.recommendation-validation-metrics small {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.recommendation-validation-head strong {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.recommendation-validation-head em {
+  padding: 5px 7px;
+  color: #7c5b10;
+  background: #fff6d8;
+  border-radius: 999px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.recommendation-validation-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.recommendation-validation-metrics span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  padding: 8px;
+  background: #f7f9fb;
+  border-radius: 8px;
+}
+
+.recommendation-validation-metrics b {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.recommendation-validation p,
+.prediction-validation-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
 .recommendation-progress {
   display: grid;
   gap: 7px;
@@ -2584,6 +2665,7 @@ h1 {
 
 .signal-panel,
 .recommendation-panel,
+.recommendation-validation,
 .portfolio-panel,
 .stock-search-card,
 .stock-evaluation-card,
@@ -2594,6 +2676,13 @@ h1 {
   border: 1px solid rgba(229, 232, 235, 0.9);
   border-radius: var(--radius-lg);
   box-shadow: 0 1px 2px rgba(25, 31, 40, 0.03);
+}
+
+.prediction-validation-note {
+  display: block;
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
 }
 
 .signal-panel {

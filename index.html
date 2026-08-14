@@ -111,6 +111,22 @@
             <small class="recommendation-progress-detail">진행 상태를 확인하는 중입니다.</small>
           </div>
 
+          <section class="recommendation-validation" aria-label="추천 성과 검증 상태">
+            <div class="recommendation-validation-head">
+              <div>
+                <span>성과 검증</span>
+                <strong>기술 신호 기준</strong>
+              </div>
+              <em id="recommendationValidationBadge">검증 정보 확인 중</em>
+            </div>
+            <div class="recommendation-validation-metrics">
+              <span><b id="recommendationValidationPeriod">-</b><small>회고 구간</small></span>
+              <span><b id="recommendationValidationHitRate">-</b><small>1개월 적중</small></span>
+              <span><b id="recommendationValidationMedian">-</b><small>1개월 중앙값</small></span>
+            </div>
+            <p id="recommendationValidationNote">과거검증과 전향검증을 분리하는 중입니다.</p>
+          </section>
+
           <div class="dashboard-tabs dashboard-tabs-secondary" data-tab-group="recommendations" role="tablist" aria-label="추천 구분">
             <button
               class="dashboard-tab is-active"
@@ -309,6 +325,7 @@
             <div class="prediction-list" id="indexPredictionList">
               <p class="prediction-empty">예측 데이터 계산 중</p>
             </div>
+            <small class="prediction-validation-note" id="indexValidationNote">검증 범위 확인 중</small>
           </section>
 
           <section class="theme-radar-panel" aria-label="테마 레이더">

@@ -79,6 +79,12 @@ await writeFile(
         targetHitRate: MIN_HIT_RATE,
         startDate: START_DATE,
       },
+      validation: {
+        independentHoldout: false,
+        prospectiveStartDate: "2026-08-14",
+        ruleVersion: "index-high-confidence-v1",
+        status: "retrospective-only",
+      },
       summary,
       rows,
     },

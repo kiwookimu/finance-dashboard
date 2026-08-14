@@ -7,6 +7,7 @@ const {
   criteriaMinimumHistoryDays,
   criteriaNumber,
   loadRecommendationCriteria,
+  recommendationCriteriaHash,
 } = require("../lib/recommendationCriteria");
 const {
   MIROFISH_MARKET_SYMBOLS,
@@ -18,6 +19,7 @@ const {
   scoreRecommendationWithMirofish,
 } = require("../lib/mirofishScreener");
 const RECOMMENDATION_CRITERIA = loadRecommendationCriteria();
+const CRITERIA_HASH = recommendationCriteriaHash(RECOMMENDATION_CRITERIA);
 
 const MARKET = (process.argv[2] || "both").toLowerCase();
 const START_MONTH = process.argv[3] || "2025-01";
@@ -263,6 +265,13 @@ await writeFile(
         "Strategy comparison keeps the same technical candidate logic and compares the original setupScore gate/rank against the MiroFish-adjusted setup score.",
         "MiroFish agent performance is generated from this backtest and can be applied to later recommendation refreshes.",
       ],
+      validation: {
+        criteriaHash: CRITERIA_HASH,
+        fundamentalPointInTimeAvailable: false,
+        independentHoldout: false,
+        scope: "technical-screen-only",
+        status: "retrospective-only",
+      },
       config: {
         krMinimumMarketCapKrw: KR_MIN_MARKET_CAP_KRW,
         usMinimumMarketCapKrw: US_MIN_MARKET_CAP_KRW,

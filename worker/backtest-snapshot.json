@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-06-20T12:22:16.003Z",
-  "servedAt": "2026-08-14T01:45:28.310Z",
+  "servedAt": "2026-08-14T03:51:29.810Z",
   "sourceGeneratedAt": "2026-06-20T12:22:16.003Z",
   "caveat": "공개 데이터 재현 기준입니다. 상장폐지 종목, 정확한 과거 시총, 과거 컨센서스는 완전히 복원하지 못할 수 있습니다.",
   "index": {
@@ -21,7 +21,50 @@
         "hitRateLower": 68.2,
         "hitRateUpper": 76,
         "label": "KOSPI",
-        "observations": 501
+        "observations": 501,
+        "worstYearHitRate": 67.5,
+        "yearly": [
+          {
+            "coverage": 61.6,
+            "hitRate": 73.5,
+            "hitRateLower": 65.9,
+            "hitRateUpper": 79.9,
+            "observations": 151,
+            "totalRows": 245,
+            "isPartial": false,
+            "year": "2023"
+          },
+          {
+            "coverage": 51.6,
+            "hitRate": 67.5,
+            "hitRateLower": 58.9,
+            "hitRateUpper": 75.1,
+            "observations": 126,
+            "totalRows": 244,
+            "isPartial": false,
+            "year": "2024"
+          },
+          {
+            "coverage": 58.7,
+            "hitRate": 69.7,
+            "hitRateLower": 61.7,
+            "hitRateUpper": 76.7,
+            "observations": 142,
+            "totalRows": 242,
+            "isPartial": false,
+            "year": "2025"
+          },
+          {
+            "coverage": 73.2,
+            "hitRate": 81.7,
+            "hitRateLower": 72,
+            "hitRateUpper": 88.6,
+            "observations": 82,
+            "totalRows": 112,
+            "isPartial": true,
+            "year": "2026"
+          }
+        ]
       },
       {
         "coverage": 85,
@@ -29,7 +72,50 @@
         "hitRateLower": 66.9,
         "hitRateUpper": 73.5,
         "label": "NASDAQ",
-        "observations": 737
+        "observations": 737,
+        "worstYearHitRate": 67.6,
+        "yearly": [
+          {
+            "coverage": 87.6,
+            "hitRate": 67.6,
+            "hitRateLower": 61.1,
+            "hitRateUpper": 73.4,
+            "observations": 219,
+            "totalRows": 250,
+            "isPartial": false,
+            "year": "2023"
+          },
+          {
+            "coverage": 82.9,
+            "hitRate": 69.9,
+            "hitRateLower": 63.4,
+            "hitRateUpper": 75.7,
+            "observations": 209,
+            "totalRows": 252,
+            "isPartial": false,
+            "year": "2024"
+          },
+          {
+            "coverage": 83.6,
+            "hitRate": 72.7,
+            "hitRateLower": 66.3,
+            "hitRateUpper": 78.3,
+            "observations": 209,
+            "totalRows": 250,
+            "isPartial": false,
+            "year": "2025"
+          },
+          {
+            "coverage": 87,
+            "hitRate": 72,
+            "hitRateLower": 62.5,
+            "hitRateUpper": 79.9,
+            "observations": 100,
+            "totalRows": 115,
+            "isPartial": true,
+            "year": "2026"
+          }
+        ]
       },
       {
         "coverage": 85,
@@ -37,13 +123,272 @@
         "hitRateLower": 66.9,
         "hitRateUpper": 73.5,
         "label": "S&P 500",
-        "observations": 737
+        "observations": 737,
+        "worstYearHitRate": 69.9,
+        "yearly": [
+          {
+            "coverage": 87.6,
+            "hitRate": 69.9,
+            "hitRateLower": 63.5,
+            "hitRateUpper": 75.6,
+            "observations": 219,
+            "totalRows": 250,
+            "isPartial": false,
+            "year": "2023"
+          },
+          {
+            "coverage": 82.9,
+            "hitRate": 70.3,
+            "hitRateLower": 63.8,
+            "hitRateUpper": 76.1,
+            "observations": 209,
+            "totalRows": 252,
+            "isPartial": false,
+            "year": "2024"
+          },
+          {
+            "coverage": 83.6,
+            "hitRate": 70.3,
+            "hitRateLower": 63.8,
+            "hitRateUpper": 76.1,
+            "observations": 209,
+            "totalRows": 250,
+            "isPartial": false,
+            "year": "2025"
+          },
+          {
+            "coverage": 87,
+            "hitRate": 71,
+            "hitRateLower": 61.5,
+            "hitRateUpper": 79,
+            "observations": 100,
+            "totalRows": 115,
+            "isPartial": true,
+            "year": "2026"
+          }
+        ]
       }
     ],
     "total": {
       "coverage": 76.6,
       "hitRate": 70.8,
       "observations": 1975
+    },
+    "validation": {
+      "assessment": "retrospective-only",
+      "byIndex": {
+        "kospi": {
+          "overall": {
+            "coverage": 59.4,
+            "hitRate": 72.3,
+            "hitRateLower": 68.2,
+            "hitRateUpper": 76,
+            "observations": 501,
+            "totalRows": 843
+          },
+          "worstYearHitRate": 67.5,
+          "yearly": [
+            {
+              "coverage": 61.6,
+              "hitRate": 73.5,
+              "hitRateLower": 65.9,
+              "hitRateUpper": 79.9,
+              "observations": 151,
+              "totalRows": 245,
+              "isPartial": false,
+              "year": "2023"
+            },
+            {
+              "coverage": 51.6,
+              "hitRate": 67.5,
+              "hitRateLower": 58.9,
+              "hitRateUpper": 75.1,
+              "observations": 126,
+              "totalRows": 244,
+              "isPartial": false,
+              "year": "2024"
+            },
+            {
+              "coverage": 58.7,
+              "hitRate": 69.7,
+              "hitRateLower": 61.7,
+              "hitRateUpper": 76.7,
+              "observations": 142,
+              "totalRows": 242,
+              "isPartial": false,
+              "year": "2025"
+            },
+            {
+              "coverage": 73.2,
+              "hitRate": 81.7,
+              "hitRateLower": 72,
+              "hitRateUpper": 88.6,
+              "observations": 82,
+              "totalRows": 112,
+              "isPartial": true,
+              "year": "2026"
+            }
+          ]
+        },
+        "nasdaq": {
+          "overall": {
+            "coverage": 85,
+            "hitRate": 70.3,
+            "hitRateLower": 66.9,
+            "hitRateUpper": 73.5,
+            "observations": 737,
+            "totalRows": 867
+          },
+          "worstYearHitRate": 67.6,
+          "yearly": [
+            {
+              "coverage": 87.6,
+              "hitRate": 67.6,
+              "hitRateLower": 61.1,
+              "hitRateUpper": 73.4,
+              "observations": 219,
+              "totalRows": 250,
+              "isPartial": false,
+              "year": "2023"
+            },
+            {
+              "coverage": 82.9,
+              "hitRate": 69.9,
+              "hitRateLower": 63.4,
+              "hitRateUpper": 75.7,
+              "observations": 209,
+              "totalRows": 252,
+              "isPartial": false,
+              "year": "2024"
+            },
+            {
+              "coverage": 83.6,
+              "hitRate": 72.7,
+              "hitRateLower": 66.3,
+              "hitRateUpper": 78.3,
+              "observations": 209,
+              "totalRows": 250,
+              "isPartial": false,
+              "year": "2025"
+            },
+            {
+              "coverage": 87,
+              "hitRate": 72,
+              "hitRateLower": 62.5,
+              "hitRateUpper": 79.9,
+              "observations": 100,
+              "totalRows": 115,
+              "isPartial": true,
+              "year": "2026"
+            }
+          ]
+        },
+        "sp500": {
+          "overall": {
+            "coverage": 85,
+            "hitRate": 70.3,
+            "hitRateLower": 66.9,
+            "hitRateUpper": 73.5,
+            "observations": 737,
+            "totalRows": 867
+          },
+          "worstYearHitRate": 69.9,
+          "yearly": [
+            {
+              "coverage": 87.6,
+              "hitRate": 69.9,
+              "hitRateLower": 63.5,
+              "hitRateUpper": 75.6,
+              "observations": 219,
+              "totalRows": 250,
+              "isPartial": false,
+              "year": "2023"
+            },
+            {
+              "coverage": 82.9,
+              "hitRate": 70.3,
+              "hitRateLower": 63.8,
+              "hitRateUpper": 76.1,
+              "observations": 209,
+              "totalRows": 252,
+              "isPartial": false,
+              "year": "2024"
+            },
+            {
+              "coverage": 83.6,
+              "hitRate": 70.3,
+              "hitRateLower": 63.8,
+              "hitRateUpper": 76.1,
+              "observations": 209,
+              "totalRows": 250,
+              "isPartial": false,
+              "year": "2025"
+            },
+            {
+              "coverage": 87,
+              "hitRate": 71,
+              "hitRateLower": 61.5,
+              "hitRateUpper": 79,
+              "observations": 100,
+              "totalRows": 115,
+              "isPartial": true,
+              "year": "2026"
+            }
+          ]
+        }
+      },
+      "independentPerformanceReady": false,
+      "methodology": "fixed-rule historical replay",
+      "prospective": {
+        "performanceReady": false,
+        "startDate": "2026-08-14",
+        "status": "collecting"
+      },
+      "ruleVersion": "index-high-confidence-v1",
+      "warning": "규칙 확정 전 기간을 포함한 회고검증이며 독립 전향 성과가 아닙니다.",
+      "worstYearHitRate": 69.5,
+      "yearly": [
+        {
+          "coverage": 79.1,
+          "hitRate": 69.9,
+          "hitRateLower": 66.1,
+          "hitRateUpper": 73.5,
+          "observations": 589,
+          "totalRows": 745,
+          "isPartial": false,
+          "year": "2023"
+        },
+        {
+          "coverage": 72.7,
+          "hitRate": 69.5,
+          "hitRateLower": 65.5,
+          "hitRateUpper": 73.2,
+          "observations": 544,
+          "totalRows": 748,
+          "isPartial": false,
+          "year": "2024"
+        },
+        {
+          "coverage": 75.5,
+          "hitRate": 71.1,
+          "hitRateLower": 67.2,
+          "hitRateUpper": 74.7,
+          "observations": 560,
+          "totalRows": 742,
+          "isPartial": false,
+          "year": "2025"
+        },
+        {
+          "coverage": 82.5,
+          "hitRate": 74.5,
+          "hitRateLower": 69.1,
+          "hitRateUpper": 79.2,
+          "observations": 282,
+          "totalRows": 342,
+          "isPartial": true,
+          "year": "2026"
+        }
+      ]
     }
   },
   "recommendation": {
@@ -131,6 +476,95 @@
         "threeMonthSample": 2
       }
     ],
-    "validationStatus": "동일 구간에서 설계·평가된 규칙이며 독립 홀드아웃은 아직 없습니다."
+    "validation": {
+      "assessment": "collecting",
+      "dataQuality": {
+        "fundamentalsIncludedInHistoricalPerformance": false,
+        "fundamentalPointInTimeAvailable": false,
+        "marketCapHistoryReconstructed": false,
+        "outcomeCensoring": "전체 21거래일 수익률이 존재하는 신호만 성과 모수에 포함",
+        "survivorshipBiasRisk": true
+      },
+      "independentPerformanceReady": false,
+      "prospective": {
+        "criteriaHash": "sha256:6800e31e07c6c33ae9121f2033e171770ae9eeaf745fccfc2b78eec7f0fa606d",
+        "frozenAt": "2026-08-14T01:47:21.000Z",
+        "marketMonths": [],
+        "metrics": {
+          "averageReturn": null,
+          "averageReturnExcess": null,
+          "hitRate": null,
+          "hitRateLower": null,
+          "hitRateUpper": null,
+          "medianReturn": null,
+          "medianReturnExcess": null,
+          "missingOutcomeCount": 0,
+          "sampleAdequacy": "insufficient",
+          "sample": 0,
+          "signalCount": 0
+        },
+        "minimumMaturedSamples": 30,
+        "performanceReady": false,
+        "startMonth": "2026-09",
+        "status": "collecting"
+      },
+      "retrospective": {
+        "metrics": {
+          "averageReturn": 8.69,
+          "averageReturnExcess": 4.56,
+          "hitRate": 51.8,
+          "hitRateLower": 42.6,
+          "hitRateUpper": 60.9,
+          "medianReturn": 1.85,
+          "medianReturnExcess": -1.51,
+          "missingOutcomeCount": 6,
+          "sampleAdequacy": "directional",
+          "sample": 110,
+          "signalCount": 116
+        },
+        "scope": "technical-screen-only",
+        "status": "retrospective-only",
+        "timeSlices": [
+          {
+            "endMonth": "2025-12",
+            "metrics": {
+              "averageReturn": 4.43,
+              "averageReturnExcess": 0.03,
+              "hitRate": 42.4,
+              "hitRateLower": 30.6,
+              "hitRateUpper": 55.1,
+              "medianReturn": -1.52,
+              "medianReturnExcess": -5.72,
+              "missingOutcomeCount": 0,
+              "sampleAdequacy": "directional",
+              "sample": 59,
+              "signalCount": 59
+            },
+            "startMonth": "2025-01",
+            "year": "2025"
+          },
+          {
+            "endMonth": "2026-05",
+            "metrics": {
+              "averageReturn": 13.61,
+              "averageReturnExcess": 9.8,
+              "hitRate": 62.7,
+              "hitRateLower": 49,
+              "hitRateUpper": 74.6,
+              "medianReturn": 5.52,
+              "medianReturnExcess": 4.16,
+              "missingOutcomeCount": 6,
+              "sampleAdequacy": "directional",
+              "sample": 51,
+              "signalCount": 57
+            },
+            "startMonth": "2026-01",
+            "year": "2026"
+          }
+        ]
+      },
+      "warning": "과거 성과는 현행 기술 규칙을 이전 구간에 재적용한 회고검증입니다. 실적·컨센서스는 시점 자료가 없어 성과에 포함하지 않았습니다."
+    },
+    "validationStatus": "기술 신호 회고검증이며, 규칙 확정 후 전향 성과는 수집 중입니다."
   }
 }
