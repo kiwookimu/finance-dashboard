@@ -1,19 +1,19 @@
 {
-  "version": 1,
+  "version": 2,
   "holdings": [
-    { "id": "time-nasdaq100-bond50", "name": "TIME 미국나스닥100채권혼합50액티브", "sortOrder": 1 },
-    { "id": "rise-samsung-hynix-bond50", "name": "RISE 삼성전자SK하이닉스채권혼합50", "sortOrder": 2 },
-    { "id": "kodex-kosdaq150", "name": "KODEX 코스닥150", "sortOrder": 3 },
-    { "id": "kodex-200-us-treasury50", "name": "KODEX 200미국채혼합50", "sortOrder": 4 },
-    { "id": "kodex-top5-plus-tr", "name": "KODEX Top5 PlusTR", "sortOrder": 5 },
-    { "id": "rise-network-infra", "name": "RISE 네트워크인프라", "sortOrder": 6 },
-    { "id": "tiger-us-philadelphia-semi", "name": "TIGER 미국필라델피아반도체나스닥", "sortOrder": 7 },
-    { "id": "hanaro-fn-k-semi", "name": "HANARO Fn K-반도체", "sortOrder": 8 },
-    { "id": "tiger-global-ai-cybersecurity", "name": "TIGER 글로벌AI사이버보안", "sortOrder": 9 },
-    { "id": "plus-global-hbm-semi", "name": "PLUS 글로벌HBM반도체", "sortOrder": 10 },
-    { "id": "plus-k-defense", "name": "PLUS K방산", "sortOrder": 11 },
-    { "id": "time-global-ai-active", "name": "TIME 글로벌AI인공지능액티브", "sortOrder": 12 },
-    { "id": "kodex-us-ai-power-infra", "name": "KODEX 미국AI전력핵심인프라", "sortOrder": 13 },
-    { "id": "kodex-ai-power-equipment", "name": "KODEX AI전력핵심설비", "sortOrder": 14 }
+    { "id": "time-nasdaq100-bond50", "name": "TIME 미국나스닥100채권혼합50액티브", "sortOrder": 1, "code": "0019K0", "market": "kr", "symbol": "0019K0", "benchmark": "nasdaq", "tags": ["nasdaq", "bondMix", "us"] },
+    { "id": "rise-samsung-hynix-bond50", "name": "RISE 삼성전자SK하이닉스채권혼합50", "sortOrder": 2, "code": "0162Z0", "market": "kr", "symbol": "0162Z0", "benchmark": "kospi", "tags": ["semi", "bondMix", "korea"] },
+    { "id": "kodex-kosdaq150", "name": "KODEX 코스닥150", "sortOrder": 3, "code": "229200", "market": "kr", "symbol": "229200.KS", "benchmark": "kosdaq", "tags": ["broad", "growth", "korea"] },
+    { "id": "kodex-200-us-treasury50", "name": "KODEX 200미국채혼합50", "sortOrder": 4, "code": "284430", "market": "kr", "symbol": "284430.KS", "benchmark": "kospi", "tags": ["broad", "bondMix", "korea"] },
+    { "id": "kodex-top5-plus-tr", "name": "KODEX Top5 PlusTR", "sortOrder": 5, "code": "315930", "market": "kr", "symbol": "315930.KS", "benchmark": "kospi", "tags": ["largeCap", "semi", "korea"] },
+    { "id": "rise-network-infra", "name": "RISE 네트워크인프라", "sortOrder": 6, "code": "367760", "market": "kr", "symbol": "367760.KS", "benchmark": "kospi", "tags": ["network", "aiInfra", "korea"] },
+    { "id": "tiger-us-philadelphia-semi", "name": "TIGER 미국필라델피아반도체나스닥", "sortOrder": 7, "code": "381180", "market": "kr", "symbol": "381180.KS", "benchmark": "sox", "tags": ["semi", "us"] },
+    { "id": "hanaro-fn-k-semi", "name": "HANARO Fn K-반도체", "sortOrder": 8, "code": "395270", "market": "kr", "symbol": "395270.KS", "benchmark": "kospi", "tags": ["semi", "korea"] },
+    { "id": "tiger-global-ai-cybersecurity", "name": "TIGER 글로벌AI사이버보안", "sortOrder": 9, "code": "418670", "market": "kr", "symbol": "418670.KS", "benchmark": "nasdaq", "tags": ["ai", "cybersecurity", "global"] },
+    { "id": "plus-global-hbm-semi", "name": "PLUS 글로벌HBM반도체", "sortOrder": 10, "code": "442580", "market": "kr", "symbol": "442580.KS", "benchmark": "sox", "tags": ["semi", "hbm", "global"] },
+    { "id": "plus-k-defense", "name": "PLUS K방산", "sortOrder": 11, "code": "449450", "market": "kr", "symbol": "449450.KS", "benchmark": "kospi", "tags": ["defense", "korea"] },
+    { "id": "time-global-ai-active", "name": "TIME 글로벌AI인공지능액티브", "sortOrder": 12, "code": "456600", "market": "kr", "symbol": "456600.KS", "benchmark": "nasdaq", "tags": ["ai", "global"] },
+    { "id": "kodex-us-ai-power-infra", "name": "KODEX 미국AI전력핵심인프라", "sortOrder": 13, "code": "487230", "market": "kr", "symbol": "487230.KS", "benchmark": "nasdaq", "tags": ["aiInfra", "power", "us"] },
+    { "id": "kodex-ai-power-equipment", "name": "KODEX AI전력핵심설비", "sortOrder": 14, "code": "487240", "market": "kr", "symbol": "487240.KS", "benchmark": "kospi", "tags": ["aiInfra", "power", "korea"] }
   ]
 }

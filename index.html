@@ -329,7 +329,7 @@
               <em id="holdingsCount">14개</em>
             </div>
             <p class="holdings-intro">
-              종목명이나 티커를 검색한 뒤 결과에서 선택해 추가하세요. 목록은 비공개 사이트에 저장됩니다.
+              종목을 검색해 추가하고 평가금액을 입력하면 현재 비중과 조건부 목표비중을 비교합니다.
             </p>
             <form class="stock-search-form holdings-search-form" id="holdingsSearchForm">
               <label class="visually-hidden" for="holdingsSearchInput">추가할 보유종목 검색</label>
@@ -353,6 +353,24 @@
             <p class="holdings-status" id="holdingsStatus" role="status" aria-live="polite">
               보유종목을 불러오는 중입니다.
             </p>
+            <section class="holdings-diagnostics" aria-label="보유종목 조건부 퀀트 진단">
+              <div class="holdings-diagnostics-heading">
+                <div>
+                  <span>위험예산 · 모멘텀 · 추세 · 집중도</span>
+                  <strong>조건부 퀀트 진단</strong>
+                </div>
+                <button type="button" id="holdingsDiagnosticsRefresh">새로고침</button>
+              </div>
+              <div class="holdings-diagnostics-kpis" id="holdingsDiagnosticsKpis">
+                <span>진단 준비 중</span>
+              </div>
+              <p class="holdings-diagnostics-summary" id="holdingsDiagnosticsSummary">
+                가격 이력과 보유 비중을 불러오는 중입니다.
+              </p>
+              <p class="holdings-diagnostics-note" id="holdingsDiagnosticsNote">
+                모든 평가금액을 입력하기 전에는 동일비중 가정이며, 표시는 매매지시가 아닌 추가 검토 우선순위입니다.
+              </p>
+            </section>
             <ol class="holdings-list" id="holdingsList" aria-label="보유종목 목록">
               <li class="holdings-empty">목록을 불러오는 중입니다.</li>
             </ol>

@@ -112,6 +112,9 @@ let holdingsSearchAbortController = null;
 let holdingsSearchTimer = null;
 const managedHoldingsState = {
   confirmingDeleteId: null,
+  diagnostics: null,
+  diagnosticsLoaded: false,
+  diagnosticsLoading: false,
   editingId: null,
   holdings: [],
   loaded: false,
@@ -344,6 +347,7 @@ function initializeManagedHoldings() {
   const searchInput = document.querySelector("#holdingsSearchInput");
   const searchResults = document.querySelector("#holdingsSearchResults");
   const list = document.querySelector("#holdingsList");
+  const diagnosticsRefresh = document.querySelector("#holdingsDiagnosticsRefresh");
   if (!searchForm || !searchInput || !searchResults || !list) return;
 
   searchForm.addEventListener("submit", (event) => {
@@ -374,7 +378,16 @@ function initializeManagedHoldings() {
     if (!button || button.disabled || managedHoldingsState.saving) return;
     const name = String(button.dataset.holdingName || "").replace(/\s+/g, " ").trim();
     if (!name) return;
-    await addManagedHoldingFromSearch(name);
+    await addManagedHoldingFromSearch({
+      name,
+      code: button.dataset.holdingCode || "",
+      market: button.dataset.holdingMarket || "kr",
+      symbol: button.dataset.holdingSymbol || "",
+    });
+  });
+
+  diagnosticsRefresh?.addEventListener("click", () => {
+    loadManagedHoldingsDiagnostics({ force: true });
   });
 
   list.addEventListener("click", async (event) => {
@@ -391,9 +404,10 @@ function initializeManagedHoldings() {
       managedHoldingsState.editingId = id;
       renderManagedHoldings();
       window.requestAnimationFrame(() => {
-        const input = list.querySelector(`[data-holding-id="${cssEscape(id)}"] input`);
+        const input = list.querySelector(
+          `[data-holding-id="${cssEscape(id)}"] input[name="currentValueKrw"]`,
+        );
         input?.focus();
-        input?.select();
       });
       return;
     }
@@ -443,10 +457,18 @@ function initializeManagedHoldings() {
     if (managedHoldingsState.saving) return;
     const id = form.dataset.holdingId || "";
     const input = form.querySelector("input[name='name']");
+    const amountInput = form.querySelector("input[name='currentValueKrw']");
     const name = String(input?.value || "").replace(/\s+/g, " ").trim();
     if (!name) {
       setManagedHoldingsStatus("종목명은 비워둘 수 없습니다.", "error");
       input?.focus();
+      return;
+    }
+    const amountText = String(amountInput?.value || "").replace(/,/g, "").trim();
+    const currentValueKrw = amountText === "" ? null : Number(amountText);
+    if (currentValueKrw !== null && (!Number.isFinite(currentValueKrw) || currentValueKrw < 0)) {
+      setManagedHoldingsStatus("평가금액은 0 이상의 숫자로 입력해 주세요.", "error");
+      amountInput?.focus();
       return;
     }
 
@@ -454,7 +476,7 @@ function initializeManagedHoldings() {
       const payload = await requestManagedHoldings(
         `/api/holdings/${encodeURIComponent(id)}`,
         {
-          body: JSON.stringify({ name }),
+          body: JSON.stringify({ name, currentValueKrw }),
           headers: { "Content-Type": "application/json" },
           method: "PATCH",
         },
@@ -465,7 +487,7 @@ function initializeManagedHoldings() {
       managedHoldingsState.editingId = null;
       renderManagedHoldings();
       rerenderManagedHoldingSearchResults();
-      setManagedHoldingsStatus("종목명을 수정했습니다.", "success");
+      setManagedHoldingsStatus("종목명과 평가금액을 저장했습니다.", "success");
     });
   });
 }
@@ -524,16 +546,23 @@ function renderManagedHoldingSearchResults(
   const heldNames = new Set(
     managedHoldingsState.holdings.map((holding) => managedHoldingNameKey(holding.name)),
   );
+  const heldCodes = new Set(
+    managedHoldingsState.holdings.map((holding) => String(holding.code || "").toUpperCase()).filter(Boolean),
+  );
   container.innerHTML = results
     .map((item) => {
       const name = item.label || item.name || item.symbol || item.code || "";
-      const isHeld = heldNames.has(managedHoldingNameKey(name));
+      const code = String(item.code || "").toUpperCase();
+      const isHeld = (code && heldCodes.has(code)) || heldNames.has(managedHoldingNameKey(name));
       const disabled = isHeld || managedHoldingsState.saving ? " disabled" : "";
       return `
         <button
           class="stock-search-result holdings-search-result${isHeld ? " is-held" : ""}"
           type="button"
           data-holding-name="${escapeHtml(name)}"
+          data-holding-code="${escapeHtml(code)}"
+          data-holding-market="${escapeHtml(item.market || "kr")}"
+          data-holding-symbol="${escapeHtml(item.symbol || code)}"
           aria-label="${escapeHtml(name)} ${isHeld ? "이미 보유 중" : "보유종목에 추가"}"
           ${disabled}
         >
@@ -548,11 +577,12 @@ function renderManagedHoldingSearchResults(
     .join("");
 }
 
-async function addManagedHoldingFromSearch(name) {
+async function addManagedHoldingFromSearch(selected) {
   if (managedHoldingsState.saving) return;
+  const name = selected.name;
   await runManagedHoldingsMutation(async () => {
     const payload = await requestManagedHoldings("/api/holdings", {
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(selected),
       headers: { "Content-Type": "application/json" },
       method: "POST",
     });
@@ -603,6 +633,7 @@ async function loadManagedHoldings({ force = false } = {}) {
     renderManagedHoldings();
     rerenderManagedHoldingSearchResults();
     setManagedHoldingsStatus("비공개 사이트에 저장된 목록입니다.", "success");
+    loadManagedHoldingsDiagnostics();
   } catch (error) {
     console.warn("Managed holdings unavailable", error);
     renderManagedHoldings();
@@ -626,6 +657,7 @@ async function runManagedHoldingsMutation(callback) {
     managedHoldingsState.saving = false;
     renderManagedHoldings();
     rerenderManagedHoldingSearchResults();
+    loadManagedHoldingsDiagnostics({ force: true });
   }
 }
 
@@ -641,6 +673,70 @@ async function requestManagedHoldings(path, options = {}) {
     throw error;
   }
   return payload;
+}
+
+async function loadManagedHoldingsDiagnostics({ force = false } = {}) {
+  if (
+    managedHoldingsState.diagnosticsLoading ||
+    (managedHoldingsState.diagnosticsLoaded && !force)
+  ) return;
+  managedHoldingsState.diagnosticsLoading = true;
+  renderManagedHoldingsDiagnostics();
+  try {
+    const payload = await requestManagedHoldings("/api/holdings/diagnostics");
+    managedHoldingsState.diagnostics = payload;
+    managedHoldingsState.diagnosticsLoaded = true;
+  } catch (error) {
+    console.warn("Managed holdings diagnostics unavailable", error);
+    managedHoldingsState.diagnostics = null;
+  } finally {
+    managedHoldingsState.diagnosticsLoading = false;
+    renderManagedHoldingsDiagnostics();
+    renderManagedHoldings();
+  }
+}
+
+function renderManagedHoldingsDiagnostics() {
+  const kpis = document.querySelector("#holdingsDiagnosticsKpis");
+  const summary = document.querySelector("#holdingsDiagnosticsSummary");
+  const note = document.querySelector("#holdingsDiagnosticsNote");
+  const refresh = document.querySelector("#holdingsDiagnosticsRefresh");
+  if (!kpis || !summary || !note) return;
+  if (refresh) {
+    refresh.disabled = managedHoldingsState.diagnosticsLoading;
+    refresh.textContent = managedHoldingsState.diagnosticsLoading ? "계산 중" : "새로고침";
+  }
+  const diagnostics = managedHoldingsState.diagnostics;
+  if (managedHoldingsState.diagnosticsLoading && !diagnostics) {
+    kpis.innerHTML = `<span>가격 이력 수집 중</span>`;
+    summary.textContent = "14개 종목의 모멘텀·변동성·추세·집중도를 계산하고 있습니다.";
+    return;
+  }
+  if (!diagnostics) {
+    kpis.innerHTML = `<span>진단 지연</span>`;
+    summary.textContent = "진단 데이터를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.";
+    note.textContent = "보유 목록은 정상 저장되며 진단만 일시적으로 지연된 상태입니다.";
+    return;
+  }
+  const counts = diagnostics.summary || {};
+  kpis.innerHTML = `
+    <span data-action="expand">확대 후보 <b>${Number(counts.expand || 0)}</b></span>
+    <span data-action="hold">유지 <b>${Number(counts.hold || 0)}</b></span>
+    <span data-action="trim">축소 후보 <b>${Number(counts.trim || 0)}</b></span>
+    <span data-action="pending">보류 <b>${Number(counts.pending || 0)}</b></span>
+  `;
+  const modeText = diagnostics.weightMode === "actual"
+    ? `입력 평가금액 ${formatKoreanWon(diagnostics.totalAmountKrw)} 기준`
+    : `평가금액 ${Number(diagnostics.missingAmountCount || 0)}개 미입력 · 동일비중 가정`;
+  const topTheme = counts.topTheme?.tag
+    ? ` · 최대 중첩 테마 ${holdingThemeLabel(counts.topTheme.tag)} ${formatHoldingPercent(counts.topTheme.weight)}`
+    : "";
+  summary.textContent = `${modeText} · ${Number(diagnostics.dataReadyCount || 0)}/${Number(diagnostics.count || 0)}개 진단 가능${topTheme}`;
+  note.textContent = "12-1·6-1개월 모멘텀, 50·200일 추세, 126일 변동성, 축소 공분산과 테마 집중도를 함께 반영합니다. 매매지시가 아닌 검토 우선순위입니다.";
+}
+
+function managedHoldingDiagnostic(id) {
+  return managedHoldingsState.diagnostics?.items?.find((item) => item.id === id) || null;
 }
 
 function renderManagedHoldings() {
@@ -659,16 +755,29 @@ function renderManagedHoldings() {
     .map((holding, index) => {
       const id = escapeHtml(holding.id || "");
       const name = escapeHtml(holding.name || "");
+      const code = escapeHtml(holding.code || "코드 미연결");
+      const diagnostic = managedHoldingDiagnostic(holding.id);
       const disabled = managedHoldingsState.saving ? " disabled" : "";
       if (managedHoldingsState.editingId === holding.id) {
+        const amount = holding.currentValueKrw === null || holding.currentValueKrw === undefined
+          ? ""
+          : String(Math.round(Number(holding.currentValueKrw)));
         return `
           <li class="holdings-row is-editing" data-holding-id="${id}">
             <span class="holdings-index" aria-hidden="true">${index + 1}</span>
             <form class="holdings-edit-form" data-holding-id="${id}">
-              <label class="visually-hidden" for="holdingEdit-${id}">${name} 이름 수정</label>
-              <input id="holdingEdit-${id}" name="name" type="text" maxlength="80" value="${name}" autocomplete="off" />
-              <button class="holdings-edit-save" type="submit"${disabled}>저장</button>
-              <button class="holdings-edit-cancel" type="button" data-holding-action="cancel"${disabled}>취소</button>
+              <label class="holdings-edit-field" for="holdingEdit-${id}">
+                <span>종목명</span>
+                <input id="holdingEdit-${id}" name="name" type="text" maxlength="80" value="${name}" autocomplete="off" />
+              </label>
+              <label class="holdings-edit-field" for="holdingAmount-${id}">
+                <span>현재 평가금액(원)</span>
+                <input id="holdingAmount-${id}" name="currentValueKrw" type="number" min="0" step="1000" inputmode="numeric" value="${escapeHtml(amount)}" placeholder="예: 15000000" />
+              </label>
+              <div class="holdings-edit-actions">
+                <button class="holdings-edit-save" type="submit"${disabled}>저장</button>
+                <button class="holdings-edit-cancel" type="button" data-holding-action="cancel"${disabled}>취소</button>
+              </div>
             </form>
           </li>
         `;
@@ -677,7 +786,10 @@ function renderManagedHoldings() {
         return `
           <li class="holdings-row is-confirming-delete" data-holding-id="${id}">
             <span class="holdings-index" aria-hidden="true">${index + 1}</span>
-            <strong class="holdings-name">${name}</strong>
+            <div class="holdings-main">
+              <strong class="holdings-name">${name}</strong>
+              <small>${code}</small>
+            </div>
             <div class="holdings-actions is-confirming">
               <button class="holdings-action" type="button" data-holding-action="cancel-delete"${disabled}>취소</button>
               <button class="holdings-action holdings-delete-confirm" type="button" data-holding-action="confirm-delete" aria-label="${name} 삭제 확인"${disabled}>삭제 확인</button>
@@ -685,10 +797,34 @@ function renderManagedHoldings() {
           </li>
         `;
       }
+      const actionCode = diagnostic?.actionCode || "loading";
+      const actionLabel = diagnostic?.action || (managedHoldingsState.diagnosticsLoading ? "계산 중" : "진단 대기");
+      const amountText = holding.currentValueKrw === null || holding.currentValueKrw === undefined
+        ? "평가금액 미입력"
+        : formatKoreanWon(holding.currentValueKrw);
+      const weightModeLabel = managedHoldingsState.diagnostics?.weightMode === "actual" ? "현재" : "가정";
+      const weightText = diagnostic
+        ? `${weightModeLabel} ${formatHoldingPercent(diagnostic.currentWeight)} → 목표 ${formatHoldingPercent(diagnostic.targetWeight)}`
+        : "진단 데이터 준비 중";
+      const metricText = diagnostic
+        ? `3개월 ${formatHoldingSignedPercent(diagnostic.metrics?.return63)} · 변동성 ${formatHoldingPercent(diagnostic.metrics?.volatility)} · 신뢰 ${diagnostic.confidenceLabel}`
+        : "가격 이력 수집 전";
+      const reason = diagnostic?.reasons?.[0] || "평가금액을 입력하면 실제 비중 기준으로 다시 계산합니다.";
       return `
         <li class="holdings-row" data-holding-id="${id}">
           <span class="holdings-index" aria-hidden="true">${index + 1}</span>
-          <strong class="holdings-name">${name}</strong>
+          <div class="holdings-main">
+            <div class="holdings-row-title">
+              <strong class="holdings-name">${name}</strong>
+              <span class="holdings-diagnostic-chip" data-action="${escapeHtml(actionCode)}">${escapeHtml(actionLabel)}</span>
+            </div>
+            <small>${code} · ${escapeHtml(amountText)}</small>
+            <div class="holdings-weight-line">
+              <b>${escapeHtml(weightText)}</b>
+              <span>${escapeHtml(metricText)}</span>
+            </div>
+            <p>${escapeHtml(reason)}</p>
+          </div>
           <div class="holdings-actions">
             <button class="holdings-action" type="button" data-holding-action="edit" aria-label="${name} 수정"${disabled}>수정</button>
             <button class="holdings-action" type="button" data-holding-action="delete" aria-label="${name} 삭제"${disabled}>삭제</button>
@@ -697,6 +833,39 @@ function renderManagedHoldings() {
       `;
     })
     .join("");
+}
+
+function formatKoreanWon(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  if (number >= 100_000_000) return `${(number / 100_000_000).toFixed(number >= 1_000_000_000 ? 0 : 1)}억원`;
+  if (number >= 10_000) return `${Math.round(number / 10_000).toLocaleString("ko-KR")}만원`;
+  return `${Math.round(number).toLocaleString("ko-KR")}원`;
+}
+
+function formatHoldingPercent(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${(number * 100).toFixed(1)}%` : "-";
+}
+
+function formatHoldingSignedPercent(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `${number >= 0 ? "+" : ""}${(number * 100).toFixed(1)}%`;
+}
+
+function holdingThemeLabel(tag) {
+  return {
+    ai: "AI",
+    aiInfra: "AI 인프라",
+    cybersecurity: "사이버보안",
+    defense: "방산",
+    hbm: "HBM",
+    nasdaq: "나스닥",
+    network: "네트워크",
+    power: "전력",
+    semi: "반도체",
+  }[tag] || tag;
 }
 
 function setManagedHoldingsStatus(text, tone = "") {
@@ -711,6 +880,8 @@ function holdingManagerErrorMessage(error) {
   if (error?.code === "duplicate_name") return "이미 목록에 있는 종목입니다.";
   if (error?.code === "not_found") return "해당 종목을 찾지 못했습니다. 목록을 다시 열어 주세요.";
   if (error?.code === "name_required") return "종목명을 입력해 주세요.";
+  if (error?.code === "invalid_current_value") return "평가금액은 0 이상의 숫자로 입력해 주세요.";
+  if (error?.code === "invalid_code" || error?.code === "invalid_symbol") return "종목 코드 형식이 올바르지 않습니다.";
   return "목록을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.";
 }
 

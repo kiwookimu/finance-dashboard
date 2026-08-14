@@ -15,6 +15,8 @@ const {
 } = require("./lib/recommendationCriteria");
 const { getBacktestSummary } = require("./lib/backtestSummary");
 const { getPortfolioConfig } = require("./lib/portfolioConfig");
+const { buildHoldingsDiagnostics } = require("./lib/holdingsDiagnostics");
+const { completedSessionCutoffDate } = require("./lib/marketDataPolicy");
 const { createTrafficStore } = require("./lib/trafficStore");
 const RECOMMENDATION_CRITERIA = loadRecommendationCriteria();
 const RECOMMENDATION_CRITERIA_HASH = recommendationCriteriaHash(RECOMMENDATION_CRITERIA);
@@ -28,6 +30,7 @@ const RECOMMENDATION_VALIDATION_SCOPE = {
 const MARKET_CACHE_MS = 60 * 1000;
 const SENTIMENT_CACHE_MS = 15 * 60 * 1000;
 const PORTFOLIO_CACHE_MS = 5 * 60 * 1000;
+const HOLDINGS_DIAGNOSTICS_CACHE_MS = 30 * 60 * 1000;
 const STOCK_RECOMMENDATION_CACHE_MS = 30 * 60 * 1000;
 const STOCK_RECOMMENDATION_REFRESH_COOLDOWN_MS = 60 * 60 * 1000;
 const STOCK_SEARCH_CACHE_MS = 6 * 60 * 60 * 1000;
@@ -488,6 +491,10 @@ let cachedSentimentAt = 0;
 let cachedPortfolio = null;
 let cachedPortfolioAt = 0;
 let portfolioRefreshPromise = null;
+let cachedHoldingsDiagnostics = null;
+let cachedHoldingsDiagnosticsAt = 0;
+let cachedHoldingsDiagnosticsKey = "";
+let holdingsDiagnosticsRefreshPromise = null;
 let cachedStockRecommendations = null;
 let cachedStockRecommendationsAt = 0;
 let stockRecommendationRefreshPromise = null;
@@ -985,6 +992,74 @@ async function fetchPortfolioMetrics() {
       0,
     ),
   };
+}
+
+async function getHoldingsDiagnostics(holdings = []) {
+  const normalized = Array.isArray(holdings) ? holdings : [];
+  const completedDate = completedSessionCutoffDate({
+    completionHour: 16,
+    now: new Date(),
+    timeZone: "Asia/Seoul",
+  });
+  const cacheKey = JSON.stringify([
+    completedDate,
+    normalized.map((holding) => [
+      holding.id,
+      holding.code,
+      holding.currentValueKrw,
+      holding.updatedAt,
+    ]),
+  ]);
+  const now = Date.now();
+  if (
+    cachedHoldingsDiagnostics &&
+    cachedHoldingsDiagnosticsKey === cacheKey &&
+    now - cachedHoldingsDiagnosticsAt < HOLDINGS_DIAGNOSTICS_CACHE_MS
+  ) {
+    return { ...cachedHoldingsDiagnostics, cached: true };
+  }
+  if (holdingsDiagnosticsRefreshPromise && cachedHoldingsDiagnosticsKey === cacheKey) {
+    return holdingsDiagnosticsRefreshPromise;
+  }
+
+  cachedHoldingsDiagnosticsKey = cacheKey;
+  holdingsDiagnosticsRefreshPromise = Promise.all(
+    normalized.map(async (holding) => {
+      if (!holding.code) return { ...holding, history: [], historyError: "code_missing" };
+      try {
+        const history = (await withTimeout(
+          fetchNaverDailyHistory(holding.code),
+          15000,
+          holding.name || holding.code,
+        )).filter((row) => row.date <= completedDate);
+        return { ...holding, history };
+      } catch (error) {
+        return {
+          ...holding,
+          history: [],
+          historyError: error?.message || String(error || "history_unavailable"),
+        };
+      }
+    }),
+  )
+    .then((enriched) => {
+      const payload = {
+        ...buildHoldingsDiagnostics(enriched),
+        cached: false,
+        sources: {
+          price: "Naver Finance daily OHLCV chart",
+          position: "Private D1 managed holdings",
+        },
+        completedSessionCutoffDate: completedDate,
+      };
+      cachedHoldingsDiagnostics = payload;
+      cachedHoldingsDiagnosticsAt = Date.now();
+      return payload;
+    })
+    .finally(() => {
+      holdingsDiagnosticsRefreshPromise = null;
+    });
+  return holdingsDiagnosticsRefreshPromise;
 }
 
 async function getStockSearchResults(query, { includeDomesticSecurities = false } = {}) {
@@ -4910,6 +4985,7 @@ function toIsoDate(usDate) {
 module.exports = {
   getBacktestSummary: () => getBacktestSummary({ root: ROOT }),
   getBundledStockRecommendations,
+  getHoldingsDiagnostics,
   getMarketOverview,
   getMarketSentiment,
   getPortfolioConfig: () => PORTFOLIO_CONFIG,

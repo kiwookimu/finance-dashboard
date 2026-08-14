@@ -11,6 +11,8 @@ import {
   createManagedHoldingsStore,
   isHoldingId,
   normalizeHoldingName,
+  normalizeHoldingPosition,
+  storeError,
   type D1DatabaseLike,
 } from "./holdings-store";
 
@@ -154,6 +156,15 @@ async function handleApi(request: Request, url: URL, env?: Env) {
 
 async function handleHoldingsApi(request: Request, url: URL, env?: Env) {
   const store = createManagedHoldingsStore(env?.DB);
+  if (url.pathname === "/api/holdings/diagnostics" && request.method === "GET") {
+    try {
+      const [holdings, finance] = await Promise.all([store.list(), loadFinanceModule()]);
+      return jsonResponse(await finance.getHoldingsDiagnostics(holdings));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "diagnostics_unavailable";
+      return jsonResponse({ error: "diagnostics_unavailable", message }, 503);
+    }
+  }
   const idMatch = url.pathname.match(/^\/api\/holdings\/([^/]+)$/);
   const id = idMatch ? decodeURIComponent(idMatch[1]) : "";
 
@@ -168,17 +179,19 @@ async function handleHoldingsApi(request: Request, url: URL, env?: Env) {
     }
 
     if (url.pathname === "/api/holdings" && request.method === "POST") {
-      const name = normalizeHoldingName((await readJsonBody(request)).name);
+      const body = await readJsonBody(request);
+      const name = normalizeHoldingName(body.name);
       if (!name) return jsonResponse({ error: "name_required" }, 400);
-      const holding = await store.create(name);
+      const holding = await store.create(name, holdingPositionFromBody(body, name));
       return jsonResponse({ holding }, 201);
     }
 
     if (idMatch && request.method === "PATCH") {
       if (!isHoldingId(id)) return jsonResponse({ error: "invalid_id" }, 400);
-      const name = normalizeHoldingName((await readJsonBody(request)).name);
+      const body = await readJsonBody(request);
+      const name = normalizeHoldingName(body.name);
       if (!name) return jsonResponse({ error: "name_required" }, 400);
-      const holding = await store.update(id, name);
+      const holding = await store.update(id, name, holdingPositionFromBody(body, name, true));
       return jsonResponse({ holding });
     }
 
@@ -194,6 +207,73 @@ async function handleHoldingsApi(request: Request, url: URL, env?: Env) {
     const code = String((error as { code?: string })?.code || "holdings_unavailable");
     return jsonResponse({ error: code }, status);
   }
+}
+
+function holdingPositionFromBody(
+  body: Record<string, unknown>,
+  name: string,
+  partial = false,
+) {
+  const code = String(body.code ?? "").trim().toUpperCase();
+  const symbol = String(body.symbol ?? "").trim().toUpperCase();
+  if (code && !/^[0-9A-Z.]{1,20}$/.test(code)) throw storeError("invalid_code", 400);
+  if (symbol && !/^[0-9A-Z.^-]{1,24}$/.test(symbol)) throw storeError("invalid_symbol", 400);
+  if (
+    Object.prototype.hasOwnProperty.call(body, "currentValueKrw") &&
+    body.currentValueKrw !== null &&
+    body.currentValueKrw !== "" &&
+    (!Number.isFinite(Number(body.currentValueKrw)) || Number(body.currentValueKrw) < 0)
+  ) {
+    throw storeError("invalid_current_value", 400);
+  }
+  if (partial) {
+    const position: Record<string, unknown> = {};
+    for (const key of [
+      "code",
+      "market",
+      "symbol",
+      "currentValueKrw",
+      "benchmark",
+      "tags",
+    ]) {
+      if (Object.prototype.hasOwnProperty.call(body, key)) position[key] = body[key];
+    }
+    return position;
+  }
+  const inferred = inferHoldingProfile(name);
+  return normalizeHoldingPosition(
+    {
+      code,
+      market: body.market,
+      symbol,
+      currentValueKrw: body.currentValueKrw,
+      benchmark: body.benchmark,
+      tags: body.tags,
+    },
+    inferred,
+  );
+}
+
+function inferHoldingProfile(name: string) {
+  const compact = name.replace(/\s+/g, "").toUpperCase();
+  const tags: string[] = [];
+  if (/반도체|HBM|하이닉스/.test(compact)) tags.push("semi");
+  if (/AI|인공지능/.test(compact)) tags.push("ai");
+  if (/전력|인프라/.test(compact)) tags.push("aiInfra");
+  if (/사이버보안/.test(compact)) tags.push("cybersecurity");
+  if (/방산/.test(compact)) tags.push("defense");
+  if (/채권혼합/.test(compact)) tags.push("bondMix");
+  if (/미국/.test(compact)) tags.push("us");
+  else if (/글로벌/.test(compact)) tags.push("global");
+  else tags.push("korea");
+  const benchmark = /코스닥/.test(compact)
+    ? "kosdaq"
+    : tags.includes("semi") && (tags.includes("us") || tags.includes("global"))
+      ? "sox"
+      : (tags.includes("us") || tags.includes("global")) && tags.includes("ai")
+        ? "nasdaq"
+        : "kospi";
+  return { benchmark, tags };
 }
 
 async function readJsonBody(request: Request) {

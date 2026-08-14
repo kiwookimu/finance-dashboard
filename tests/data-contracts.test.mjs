@@ -128,6 +128,14 @@ test("managed holdings seed preserves the requested 14-item order", async () => 
     seed.holdings.map((holding) => holding.sortOrder),
     Array.from({ length: 14 }, (_, index) => index + 1),
   );
+  assert.deepEqual(
+    seed.holdings.map((holding) => holding.code),
+    [
+      "0019K0", "0162Z0", "229200", "284430", "315930", "367760", "381180",
+      "395270", "418670", "442580", "449450", "456600", "487230", "487240",
+    ],
+  );
+  assert.ok(seed.holdings.every((holding) => holding.tags.length >= 2));
 });
 
 test("holdings tab uses durable D1 CRUD instead of browser storage", async () => {
@@ -138,6 +146,7 @@ test("holdings tab uses durable D1 CRUD instead of browser storage", async () =>
     workerSource,
     hostingSource,
     migrationSource,
+    positionMigrationSource,
   ] =
     await Promise.all([
       readFile(new URL("../index.html", import.meta.url), "utf8"),
@@ -149,6 +158,7 @@ test("holdings tab uses durable D1 CRUD instead of browser storage", async () =>
         new URL("../drizzle/0000_classy_pandemic.sql", import.meta.url),
         "utf8",
       ),
+      readFile(new URL("../drizzle/0001_many_spot.sql", import.meta.url), "utf8"),
     ]);
   assert.match(htmlSource, /id="holdingsTab"/);
   assert.match(htmlSource, /id="holdingsPanel"/);
@@ -166,11 +176,20 @@ test("holdings tab uses durable D1 CRUD instead of browser storage", async () =>
   assert.match(workerSource, /createManagedHoldingsStore\(env\?\.DB\)/);
   assert.match(workerSource, /includeDomesticSecurities/);
   assert.match(workerSource, /scope.*holdings/);
+  assert.match(workerSource, /\/api\/holdings\/diagnostics/);
+  assert.match(htmlSource, /조건부 퀀트 진단/);
+  assert.match(clientSource, /currentValueKrw/);
   assert.match(serverSource, /NAVER_STOCK_AUTOCOMPLETE/);
   assert.match(serverSource, /searchNaverDomesticSecurities/);
+  assert.match(serverSource, /getHoldingsDiagnostics/);
   assert.equal(JSON.parse(hostingSource).d1, "DB");
   assert.equal(
     (migrationSource.match(/INSERT OR IGNORE INTO `managed_holdings`/g) || []).length,
+    14,
+  );
+  assert.match(positionMigrationSource, /CREATE TABLE `holding_positions`/);
+  assert.equal(
+    (positionMigrationSource.match(/INSERT OR IGNORE INTO `holding_positions`/g) || []).length,
     14,
   );
 });
