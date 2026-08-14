@@ -1,3 +1,9 @@
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const { getPortfolioConfig } = require("../lib/portfolioConfig.js");
+const PORTFOLIO_CONFIG = getPortfolioConfig();
+
 const START_DATE = process.argv[2] || "2025-01-01";
 const END_DATE = process.argv[3] || new Date().toISOString().slice(0, 10);
 const HORIZON_DAYS = Number(process.env.BACKTEST_HORIZON_DAYS || process.argv[4] || 20);
@@ -66,25 +72,8 @@ const SENTIMENT_SOURCES = {
     "https://raw.githubusercontent.com/whit3rabbit/fear-greed-data/main/fear-greed.csv",
   vix: "https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv",
 };
-const PORTFOLIO_HOLDINGS = [
-  { amount: 30041571, benchmark: "kospi", code: "395270", id: "hanaroSemi", name: "HANARO Fn K-반도체", tags: ["semi", "korea"] },
-  { amount: 30003498, benchmark: "kospi", code: "487240", id: "kodexAiPower", name: "KODEX AI전력핵심설비", tags: ["aiPower", "korea"] },
-  { amount: 15064300, benchmark: "sox", code: "442580", id: "plusGlobalHbm", name: "PLUS 글로벌HBM반도체", tags: ["semi", "global"] },
-  { amount: 15032675, benchmark: "sox", code: "381180", id: "tigerSox", name: "TIGER 미국필라델피아반도체나스닥", tags: ["semi", "us"] },
-  { amount: 15005736, benchmark: "kospi", code: "0162Z0", id: "riseSamsungHynixBond", name: "RISE 삼성전자SK하이닉스채권혼합50", tags: ["semi", "bondMix", "korea"] },
-  { amount: 15005730, benchmark: "nasdaq", code: "0019K0", id: "timeNasdaqBond", name: "TIME 미국나스닥100채권혼합50액티브", tags: ["nasdaq", "bondMix", "us"] },
-  { amount: 15002399, benchmark: "kospi", code: "284430", id: "kodex200Treasury", name: "KODEX 200미국채혼합", tags: ["kospi", "bondMix", "korea"] },
-  { amount: 10010605, benchmark: "nasdaq", code: "456600", id: "timeGlobalAi", name: "TIME 글로벌AI인공지능액티브", tags: ["aiPower", "global"] },
-  { amount: 5000440, benchmark: "kospi", code: "466930", id: "solAutoTop3", name: "SOL 자동차TOP3플러스", tags: ["auto", "korea"] },
-  { amount: 5003575, benchmark: "nasdaq", code: "418670", id: "tigerAiCyber", name: "TIGER 글로벌AI사이버보안", tags: ["aiPower", "cyber", "global"] },
-  { amount: 5006750, benchmark: "nasdaq", code: "0183J0", id: "tigerUsSpaceTech", name: "TIGER 미국우주테크", tags: ["space", "us"] },
-  { amount: 5012995, benchmark: "nasdaq", code: "0173Y0", id: "kodexAiOpticalNetwork", name: "KODEX 미국AI광통신네트워크", tags: ["aiPower", "network", "us"] },
-  { amount: 5035970, benchmark: "nasdaq", code: "0023A0", id: "solUsQuantumTop10", name: "SOL 미국양자컴퓨팅TOP10", tags: ["quantum", "us"] },
-];
-const PORTFOLIO_TOTAL = PORTFOLIO_HOLDINGS.reduce(
-  (sum, holding) => sum + holding.amount,
-  0,
-);
+const PORTFOLIO_HOLDINGS = PORTFOLIO_CONFIG.holdings;
+const PORTFOLIO_TOTAL = PORTFOLIO_CONFIG.totalAmount;
 
 const fetchStartDate = shiftDate(START_DATE, -430);
 const fetchEndDate = shiftDate(END_DATE, 40);
@@ -109,6 +98,13 @@ const rows = runBacktest({
 const summary = summarizeBacktest(rows);
 const payload = {
   generatedAt: new Date().toISOString(),
+  portfolio: {
+    asOf: PORTFOLIO_CONFIG.asOf,
+    holdingsCount: PORTFOLIO_CONFIG.holdings.length,
+    investedCount: PORTFOLIO_CONFIG.investedCount,
+    portfolioHash: PORTFOLIO_CONFIG.portfolioHash,
+    totalAmount: PORTFOLIO_CONFIG.totalAmount,
+  },
   range: {
     endDate: END_DATE,
     fetchEndDate,

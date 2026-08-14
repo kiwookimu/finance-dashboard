@@ -1,10 +1,19 @@
 {
-  "generatedAt": "2026-08-13T13:30:16.664Z",
+  "generatedAt": "2026-08-14T01:44:29.736Z",
+  "benchmarkAsOfByMarket": {
+    "KOSDAQ": "2026-08-13",
+    "KOSPI": "2026-08-13"
+  },
   "benchmarkByMarket": {
     "KOSDAQ": "KOSDAQ",
     "KOSPI": "KOSPI"
   },
   "comparisonMonthCount": 5,
+  "completionPolicy": {
+    "cutoffDate": "2026-08-13",
+    "marketCloseBuffer": "16:00 Asia/Seoul",
+    "requiresBenchmarkDateMatch": true
+  },
   "condition": {
     "breakout": "latest close reaches recent 21-trading-day closing high",
     "dailyMfi": ">= 80",
@@ -31,6 +40,13 @@
     "volumeRatio": ">= 1.8x vs previous 5 rolling 21-trading-day averages"
   },
   "marketMonth": "2026-08",
+  "criteriaHash": "sha256:6800e31e07c6c33ae9121f2033e171770ae9eeaf745fccfc2b78eec7f0fa606d",
+  "dataAsOf": "2026-08-13",
+  "dataAsOfByMarket": {
+    "KOSDAQ": "2026-08-13",
+    "KOSPI": "2026-08-13"
+  },
+  "isCompleteBar": true,
   "note": "Forward returns are included only for historical review and are not used in the screen.",
   "screenVersion": "kr-rolling-21-v12-mfi90",
   "mirofish": {
@@ -108,6 +124,7 @@
     ]
   },
   "universe": "KRX listed corporations from KIND; KOSPI/KOSDAQ stocks only",
+  "universeAsOf": "2026-08-14",
   "marketCapPrefilter": {
     "enabled": true,
     "failureCount": 0,
@@ -122,6 +139,7 @@
       "aboveTenDayAverage": true,
       "aboveTrailing3Average": true,
       "benchmark": "KOSDAQ",
+      "benchmarkAsOf": "2026-08-13",
       "benchmarkReturn": 9.87,
       "breakout": true,
       "confidenceRank": 0,
@@ -131,29 +149,30 @@
       "dayReturn": 0.89,
       "lastClose": 124500,
       "lastDate": "2026-08-13",
+      "isCompleteBar": true,
       "market": "코스닥",
       "marketType": "KOSDAQ",
       "mfi": 86.63,
       "mfiReversalRisk": false,
       "mirofishAdjustedScore": 100,
       "mirofishBonus": 7,
-      "mirofishConfidence": 0.799,
-      "mirofishConsensusStrength": 0.8267,
-      "mirofishDisagreement": 0.017,
+      "mirofishConfidence": 0.7909,
+      "mirofishConsensusStrength": 0.8171,
+      "mirofishDisagreement": 0.0192,
       "mirofishDrivers": [
         "한국 위험선호",
         "합의 안정성"
       ],
       "mirofishAgentScores": {
-        "macro": 0.3547,
-        "growth": 0.3694,
-        "semiconductor": 0.3402,
-        "korea": 0.3525,
-        "risk": 0.4032
+        "macro": 0.3028,
+        "growth": 0.3547,
+        "semiconductor": 0.3493,
+        "korea": 0.3512,
+        "risk": 0.3637
       },
       "mirofishLabel": "순풍",
-      "mirofishMarketScore": 36,
-      "mirofishScore": 0.421,
+      "mirofishMarketScore": 34,
+      "mirofishScore": 0.4071,
       "mirofishTone": "tailwind",
       "monthHigh": 137900,
       "monthHighDrawdown": -9.72,
@@ -187,12 +206,13 @@
       "technicalRecommendationStage": "confirmed",
       "weakMarketRegime": false,
       "volumeRatio": 1.83,
-      "marketCapKrw": 1329700000000
+      "marketCapKrw": 1391600000000
     },
     {
       "aboveTenDayAverage": true,
       "aboveTrailing3Average": true,
       "benchmark": "KOSPI",
+      "benchmarkAsOf": "2026-08-13",
       "benchmarkReturn": -0.63,
       "breakout": true,
       "confidenceRank": 0,
@@ -202,29 +222,30 @@
       "dayReturn": 8.81,
       "lastClose": 66700,
       "lastDate": "2026-08-13",
+      "isCompleteBar": true,
       "market": "유가",
       "marketType": "KOSPI",
       "mfi": 92.13,
       "mfiReversalRisk": false,
       "mirofishAdjustedScore": 100,
       "mirofishBonus": 7,
-      "mirofishConfidence": 0.799,
-      "mirofishConsensusStrength": 0.8267,
-      "mirofishDisagreement": 0.017,
+      "mirofishConfidence": 0.7909,
+      "mirofishConsensusStrength": 0.8171,
+      "mirofishDisagreement": 0.0192,
       "mirofishDrivers": [
         "한국 위험선호",
         "합의 안정성"
       ],
       "mirofishAgentScores": {
-        "macro": 0.3547,
-        "growth": 0.3694,
-        "semiconductor": 0.3402,
-        "korea": 0.3525,
-        "risk": 0.4032
+        "macro": 0.3028,
+        "growth": 0.3547,
+        "semiconductor": 0.3493,
+        "korea": 0.3512,
+        "risk": 0.3637
       },
       "mirofishLabel": "순풍",
-      "mirofishMarketScore": 36,
-      "mirofishScore": 0.421,
+      "mirofishMarketScore": 34,
+      "mirofishScore": 0.4071,
       "mirofishTone": "tailwind",
       "monthHigh": 68800,
       "monthHighDrawdown": -3.05,
@@ -258,7 +279,7 @@
       "technicalRecommendationStage": "watch",
       "weakMarketRegime": false,
       "volumeRatio": 1.74,
-      "marketCapKrw": 2184600000000
+      "marketCapKrw": 2400800000000
     }
   ]
 }

@@ -1,7 +1,13 @@
 {
-  "generatedAt": "2026-08-13T13:31:02.806Z",
+  "generatedAt": "2026-08-14T01:45:08.905Z",
   "benchmark": "QQQ",
+  "benchmarkAsOf": "2026-08-13",
   "comparisonMonthCount": 5,
+  "completionPolicy": {
+    "cutoffDate": "2026-08-13",
+    "marketCloseBuffer": "17:00 America/New_York",
+    "requiresBenchmarkDateMatch": true
+  },
   "condition": {
     "breakout": "latest close reaches recent 21-trading-day closing high",
     "dailyMfi": ">= 80",
@@ -14,7 +20,7 @@
     "mirofishAdjustment": "adjust setup score and final ordering with a MiroFish-style market/theme fit score; tailwinds raise priority and headwinds can downgrade confirmed picks to observation",
     "minimumHistoryDays": 127,
     "minimumMarketCapKrw": 10000000000000,
-    "minimumMarketCapUsd": 7045875697,
+    "minimumMarketCapUsd": 7069735875,
     "monthHighDrawdown": ">= -20% from recent 21-trading-day high",
     "monthlyReturn": ">= 15% over recent 21 trading days",
     "recentVolumeRatio": ">= 1.8x vs previous 105-trading-day daily average",
@@ -25,9 +31,12 @@
   },
   "exchangeRate": {
     "pair": "USD/KRW",
-    "value": 1419.27
+    "value": 1414.48
   },
   "marketMonth": "2026-08",
+  "criteriaHash": "sha256:6800e31e07c6c33ae9121f2033e171770ae9eeaf745fccfc2b78eec7f0fa606d",
+  "dataAsOf": "2026-08-13",
+  "isCompleteBar": true,
   "note": "Forward returns are included only for historical review and are not used in the screen.",
   "screenVersion": "us-rolling-21-v10-event-quality",
   "mirofish": {
@@ -105,87 +114,15 @@
     ]
   },
   "universe": "Nasdaq Trader listed U.S. common stocks and ADRs; ETFs, units, warrants, rights, preferreds, funds, SPAC/acquisition vehicles, and test issues excluded",
+  "universeAsOf": "2026-08-13",
   "rawUniverseCount": 4926,
   "prefilter": {
-    "marketCapCoverageCount": 4885,
-    "minimumMarketCapUsd": 7045875697,
+    "marketCapCoverageCount": 4888,
+    "minimumMarketCapUsd": 7069735875,
     "usedMarketCapPrefilter": true
   },
-  "universeCount": 1075,
-  "matchCount": 1,
+  "universeCount": 1077,
+  "matchCount": 0,
   "failureCount": 0,
-  "results": [
-    {
-      "aboveTenDayAverage": true,
-      "aboveTrailing3Average": true,
-      "benchmarkReturn": 0.56,
-      "breakout": true,
-      "confidenceRank": 2,
-      "confidenceTier": "high",
-      "exchange": "NYSE",
-      "firstToLastReturn": 22.14,
-      "dayReturn": 0.37,
-      "lastClose": 54.89,
-      "lastDate": "2026-08-12",
-      "mfi": 88.55,
-      "mfiReversalRisk": false,
-      "mirofishAdjustedScore": 100,
-      "mirofishBonus": 11,
-      "mirofishConfidence": 0.794,
-      "mirofishConsensusStrength": 0.824,
-      "mirofishDisagreement": 0.0309,
-      "mirofishDrivers": [
-        "미국 성장주",
-        "전체 합의"
-      ],
-      "mirofishAgentScores": {
-        "macro": 0.3445,
-        "growth": 0.4043,
-        "semiconductor": 0.3697,
-        "korea": 0.3748,
-        "risk": 0.4491
-      },
-      "mirofishLabel": "순풍",
-      "mirofishMarketScore": 39,
-      "mirofishScore": 0.4593,
-      "mirofishTone": "tailwind",
-      "monthHigh": 55.66,
-      "monthHighDrawdown": -1.38,
-      "monthlyReturn": 22.58,
-      "name": "Ternium S.A. Ternium S.A. American Depositary Shares (each representing ten shares, USD1.00 par value)",
-      "next1mReturn": null,
-      "next3mReturn": null,
-      "next6mReturn": null,
-      "previousAverageVolume": 7341233,
-      "previousCloseHigh": 54.8,
-      "previousDayClose": 54.69,
-      "previousMonthClose": 44.78,
-      "rawSymbol": "TX",
-      "recentVolumeDays": 5,
-      "recentVolumeRatio": 1.95,
-      "recentWorstDailyReturn": -3.39,
-      "recommendationStage": "confirmed",
-      "eventPriceLockRisk": false,
-      "riskStage": "normal",
-      "riskStageLabel": "",
-      "relativeReturn": 22.02,
-      "rollingReturn": 22.58,
-      "rollingWindowDays": 21,
-      "rollingWindowStartDate": "2026-07-15",
-      "setupScore": 100,
-      "signal": "고확신 1개월 상승 후보",
-      "symbol": "TX",
-      "targetMonthVolume": 15995138,
-      "speculativeBiotechRisk": false,
-      "technicalCautionReasons": [],
-      "technicalRecommendationStage": "confirmed",
-      "weakMarketRegime": false,
-      "volumeRatio": 2.18,
-      "country": "Luxembourg",
-      "industry": "Steel/Iron Ore",
-      "marketCapKrw": 15293100402135,
-      "marketCapUsd": 10775328445,
-      "sector": "Industrials"
-    }
-  ]
+  "results": []
 }

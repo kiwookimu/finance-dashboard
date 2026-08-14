@@ -8,7 +8,14 @@ const {
   criteriaNumber,
   criteriaString,
   loadRecommendationCriteria,
+  recommendationCriteriaHash,
 } = require("../lib/recommendationCriteria");
+const {
+  completedSessionCutoffDate,
+  exactDateIndex,
+  latestDateInMonthAtOrBefore,
+  localDateTimeParts,
+} = require("../lib/marketDataPolicy");
 const {
   MIROFISH_MARKET_SYMBOLS,
   applyMirofishSetupScore,
@@ -18,7 +25,14 @@ const {
   scoreRecommendationWithMirofish,
 } = require("../lib/mirofishScreener");
 const RECOMMENDATION_CRITERIA = loadRecommendationCriteria();
+const CRITERIA_HASH = recommendationCriteriaHash(RECOMMENDATION_CRITERIA);
 const MARKET_MONTH = process.argv[2] || "2026-05";
+const SCREEN_NOW = process.env.SCREEN_NOW ? new Date(process.env.SCREEN_NOW) : new Date();
+const COMPLETED_SESSION_CUTOFF = completedSessionCutoffDate({
+  completionHour: 16,
+  now: SCREEN_NOW,
+  timeZone: "Asia/Seoul",
+});
 const SCREEN_VERSION = criteriaString(
   RECOMMENDATION_CRITERIA,
   "screenVersion.domestic",
@@ -223,6 +237,17 @@ const benchmarkRowsByMarket = Object.fromEntries(
     ]),
   ),
 );
+const benchmarkAsOfByMarket = Object.fromEntries(
+  Object.entries(benchmarkRowsByMarket).map(([marketType, rows]) => [
+    marketType,
+    latestDateInMonthAtOrBefore(rows, MARKET_MONTH, COMPLETED_SESSION_CUTOFF),
+  ]),
+);
+const IS_COMPLETE_BAR = Object.keys(BENCHMARKS).every(
+  (marketType) =>
+    Boolean(benchmarkAsOfByMarket[marketType]) &&
+    benchmarkAsOfByMarket[marketType] <= COMPLETED_SESSION_CUTOFF,
+);
 const mirofishMarketHistories = await fetchMirofishMarketHistories({
   kosdaq: benchmarkRowsByMarket.KOSDAQ,
   kospi: benchmarkRowsByMarket.KOSPI,
@@ -260,7 +285,12 @@ let completed = 0;
 await runPool(universe, CONCURRENCY, async (stock) => {
   try {
     const rows = await fetchNaverDaily(stock);
-    const screening = screenStock(stock, rows, benchmarkRowsByMarket[stock.marketType]);
+    const screening = screenStock(
+      stock,
+      rows,
+      benchmarkRowsByMarket[stock.marketType],
+      benchmarkAsOfByMarket[stock.marketType],
+    );
     if (!screening) return;
 
     const marketCapKrw = Number.isFinite(stock.marketCapKrw)
@@ -289,6 +319,7 @@ results.sort(
 
 const payload = {
   generatedAt: new Date().toISOString(),
+  benchmarkAsOfByMarket,
   benchmarkByMarket: Object.fromEntries(
     Object.entries(BENCHMARKS).map(([marketType, source]) => [
       marketType,
@@ -296,6 +327,11 @@ const payload = {
     ]),
   ),
   comparisonMonthCount: COMPARISON_MONTH_COUNT,
+  completionPolicy: {
+    cutoffDate: COMPLETED_SESSION_CUTOFF,
+    marketCloseBuffer: "16:00 Asia/Seoul",
+    requiresBenchmarkDateMatch: true,
+  },
   condition: buildStockRecommendationCondition(
     RECOMMENDATION_CRITERIA,
     MIN_MARKET_CAP_KRW,
@@ -305,6 +341,10 @@ const payload = {
     },
   ),
   marketMonth: MARKET_MONTH,
+  criteriaHash: CRITERIA_HASH,
+  dataAsOf: [...new Set(Object.values(benchmarkAsOfByMarket).filter(Boolean))].join(","),
+  dataAsOfByMarket: benchmarkAsOfByMarket,
+  isCompleteBar: IS_COMPLETE_BAR,
   note:
     "Forward returns are included only for historical review and are not used in the screen.",
   screenVersion: SCREEN_VERSION,
@@ -315,6 +355,7 @@ const payload = {
     availableMarketSeries: Object.keys(mirofishMarketHistories),
   },
   universe: "KRX listed corporations from KIND; KOSPI/KOSDAQ stocks only",
+  universeAsOf: localDateTimeParts(SCREEN_NOW, "Asia/Seoul").date,
   marketCapPrefilter: {
     enabled: universeInfo.usedMarketCapPrefilter,
     failureCount: universeInfo.marketCapFailureCount,
@@ -334,9 +375,10 @@ await writeFile(`${outStem}.csv`, toCsv(results));
 
 console.log(JSON.stringify(payload, null, 2));
 
-function screenStock(stock, rows, benchmarkRows) {
+function screenStock(stock, rows, benchmarkRows, benchmarkAsOf) {
   const sortedRows = rows.slice().sort((a, b) => a.date.localeCompare(b.date));
-  const targetIndex = latestIndexInMonth(sortedRows, MARKET_MONTH);
+  if (!benchmarkAsOf || !benchmarkAsOf.startsWith(MARKET_MONTH)) return null;
+  const targetIndex = exactDateIndex(sortedRows, benchmarkAsOf);
   if (targetIndex < 0) return null;
   if (targetIndex + 1 < MIN_HISTORY_DAYS) return null;
 
@@ -530,6 +572,7 @@ function screenStock(stock, rows, benchmarkRows) {
     aboveTenDayAverage,
     aboveTrailing3Average: aboveTenDayAverage,
     benchmark: BENCHMARKS[stock.marketType]?.label || stock.marketType,
+    benchmarkAsOf,
     benchmarkReturn: round(benchmarkReturn, 2),
     breakout,
     confidenceRank: highConfidenceCandidate ? 2 : confirmationReady ? 1 : 0,
@@ -539,6 +582,7 @@ function screenStock(stock, rows, benchmarkRows) {
     dayReturn: round(percentChange(current.close, previousTradingDay?.close), 2),
     lastClose: current.close,
     lastDate: current.date,
+    isCompleteBar: current.date === benchmarkAsOf && current.date <= COMPLETED_SESSION_CUTOFF,
     market: stock.market,
     marketType: stock.marketType,
     mfi: round(mfi, 2),
@@ -759,7 +803,7 @@ function recentAverageVolumeRatio(rows, targetIndex, recentDays, previousDays) {
 }
 
 function benchmarkRollingReturn(rows, targetDate, windowDays) {
-  const targetIndex = latestIndexAtOrBefore(rows || [], targetDate);
+  const targetIndex = exactDateIndex(rows || [], targetDate);
   if (targetIndex < windowDays) return NaN;
   return percentChange(rows[targetIndex].close, rows[targetIndex - windowDays].close);
 }

@@ -5,7 +5,10 @@ import trafficHtml from "../traffic.html?raw";
 import trafficScript from "../traffic.js?raw";
 import backtestSnapshot from "./backtest-snapshot.json";
 import handler from "vinext/server/app-router-entry";
+import portfolioConfigLib from "../lib/portfolioConfig.js";
 import sitesRecommendation from "../lib/sitesRecommendation.js";
+
+const portfolioConfig = portfolioConfigLib.getPortfolioConfig();
 
 type RecommendationSnapshot = Record<string, unknown> & {
   generatedAt?: string;
@@ -80,6 +83,9 @@ async function handleApi(url: URL) {
   if (url.pathname === "/api/portfolio-metrics") {
     return jsonResponse(await finance.getPortfolioMetrics());
   }
+  if (url.pathname === "/api/portfolio-config") {
+    return jsonResponse(portfolioConfig);
+  }
   if (url.pathname === "/api/stock-recommendations") {
     const payload = domesticRecommendationSnapshot
       ? await finance.getBundledStockRecommendations(domesticRecommendationSnapshot, {
@@ -110,7 +116,7 @@ async function handleApi(url: URL) {
     );
   }
   if (url.pathname === "/api/backtest-summary") {
-    return jsonResponse({ ...backtestSnapshot, generatedAt: new Date().toISOString() });
+    return jsonResponse({ ...backtestSnapshot, servedAt: new Date().toISOString() });
   }
   if (url.pathname === "/api/traffic") {
     return jsonResponse(finance.getTrafficSummary());

@@ -27,6 +27,7 @@ test("Sites recommendation responses block runtime refresh without losing saved 
   assert.equal(response.refreshSupported, false);
   assert.equal(response.refreshMode, "bundled-snapshot");
   assert.equal(response.results[0].symbol, "TEST");
+  assert.ok(Number.isFinite(Date.parse(response.servedAt)));
 });
 
 test("Sites progress never reports a job that cannot run", () => {

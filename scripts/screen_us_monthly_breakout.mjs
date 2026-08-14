@@ -8,7 +8,15 @@ const {
   criteriaNumber,
   criteriaString,
   loadRecommendationCriteria,
+  recommendationCriteriaHash,
 } = require("../lib/recommendationCriteria");
+const {
+  completedSessionCutoffDate,
+  exactDateIndex,
+  latestDateInMonthAtOrBefore,
+  localDateTimeParts,
+  rowsAtOrBefore,
+} = require("../lib/marketDataPolicy");
 const {
   MIROFISH_MARKET_SYMBOLS,
   applyMirofishSetupScore,
@@ -18,7 +26,14 @@ const {
   scoreRecommendationWithMirofish,
 } = require("../lib/mirofishScreener");
 const RECOMMENDATION_CRITERIA = loadRecommendationCriteria();
+const CRITERIA_HASH = recommendationCriteriaHash(RECOMMENDATION_CRITERIA);
 const MARKET_MONTH = process.argv[2] || "2025-09";
+const SCREEN_NOW = process.env.SCREEN_NOW ? new Date(process.env.SCREEN_NOW) : new Date();
+const COMPLETED_SESSION_CUTOFF = completedSessionCutoffDate({
+  completionHour: 17,
+  now: SCREEN_NOW,
+  timeZone: "America/New_York",
+});
 const SCREEN_VERSION = criteriaString(
   RECOMMENDATION_CRITERIA,
   "screenVersion.us",
@@ -229,10 +244,13 @@ const NASDAQ_API_HEADERS = {
 
 const usdKrw = await fetchUsdKrw();
 const minimumMarketCapUsd = MIN_MARKET_CAP_KRW / usdKrw;
-const benchmarkRows = await fetchYahooDaily(
-  BENCHMARK_SYMBOL,
-  historyStartDate(),
-  historyEndDate(),
+const benchmarkRows = rowsAtOrBefore(
+  await fetchYahooDaily(
+    BENCHMARK_SYMBOL,
+    historyStartDate(),
+    historyEndDate(),
+  ),
+  COMPLETED_SESSION_CUTOFF,
 );
 const mirofishMarketHistories = await fetchMirofishMarketHistories(
   BENCHMARK_SYMBOL === "QQQ" ? { qqq: benchmarkRows } : {},
@@ -243,6 +261,13 @@ const mirofishAgentPerformance =
     : loadMirofishAgentPerformance();
 const mirofishSimulationByDate = new Map();
 const EFFECTIVE_MARKET_MONTH = effectiveMarketMonth(MARKET_MONTH, benchmarkRows);
+const BENCHMARK_AS_OF = latestDateInMonthAtOrBefore(
+  benchmarkRows,
+  EFFECTIVE_MARKET_MONTH,
+  COMPLETED_SESSION_CUTOFF,
+);
+const IS_COMPLETE_BAR =
+  Boolean(BENCHMARK_AS_OF) && BENCHMARK_AS_OF <= COMPLETED_SESSION_CUTOFF;
 if (EFFECTIVE_MARKET_MONTH !== MARKET_MONTH) {
   console.error(
     `using ${EFFECTIVE_MARKET_MONTH} because ${MARKET_MONTH} has no ${BENCHMARK_SYMBOL} trading data yet`,
@@ -268,7 +293,7 @@ let completed = 0;
 await runPool(universe, CONCURRENCY, async (stock) => {
   try {
     const rows = await fetchNasdaqDaily(stock);
-    const screening = screenStock(stock, rows, benchmarkRows);
+    const screening = screenStock(stock, rows, benchmarkRows, BENCHMARK_AS_OF);
     if (!screening) return;
 
     const marketCapUsd = Number.isFinite(stock.marketCapUsd)
@@ -305,7 +330,13 @@ results.sort(
 const payload = {
   generatedAt: new Date().toISOString(),
   benchmark: BENCHMARK_SYMBOL,
+  benchmarkAsOf: BENCHMARK_AS_OF,
   comparisonMonthCount: COMPARISON_MONTH_COUNT,
+  completionPolicy: {
+    cutoffDate: COMPLETED_SESSION_CUTOFF,
+    marketCloseBuffer: "17:00 America/New_York",
+    requiresBenchmarkDateMatch: true,
+  },
   condition: buildStockRecommendationCondition(
     RECOMMENDATION_CRITERIA,
     MIN_MARKET_CAP_KRW,
@@ -319,6 +350,9 @@ const payload = {
     value: round(usdKrw, 4),
   },
   marketMonth: EFFECTIVE_MARKET_MONTH,
+  criteriaHash: CRITERIA_HASH,
+  dataAsOf: BENCHMARK_AS_OF,
+  isCompleteBar: IS_COMPLETE_BAR,
   note:
     "Forward returns are included only for historical review and are not used in the screen.",
   ...(EFFECTIVE_MARKET_MONTH !== MARKET_MONTH
@@ -335,6 +369,7 @@ const payload = {
     SYMBOL_FILTER.size > 0
       ? `Manual symbols: ${[...SYMBOL_FILTER].join(", ")}`
       : "Nasdaq Trader listed U.S. common stocks and ADRs; ETFs, units, warrants, rights, preferreds, funds, SPAC/acquisition vehicles, and test issues excluded",
+  universeAsOf: localDateTimeParts(SCREEN_NOW, "America/New_York").date,
   rawUniverseCount: universeInfo.rawCount,
   prefilter: {
     marketCapCoverageCount: universeInfo.marketCapCoverageCount,
@@ -353,9 +388,10 @@ await writeFile(`${outStem}.csv`, toCsv(results));
 
 console.log(JSON.stringify(payload, null, 2));
 
-function screenStock(stock, rows, benchmarkRows) {
+function screenStock(stock, rows, benchmarkRows, benchmarkAsOf) {
   const sortedRows = rows.slice().sort((a, b) => a.date.localeCompare(b.date));
-  const targetIndex = latestIndexInMonth(sortedRows, EFFECTIVE_MARKET_MONTH);
+  if (!benchmarkAsOf || !benchmarkAsOf.startsWith(EFFECTIVE_MARKET_MONTH)) return null;
+  const targetIndex = exactDateIndex(sortedRows, benchmarkAsOf);
   if (targetIndex < 0) return null;
   if (targetIndex + 1 < MIN_HISTORY_DAYS) return null;
 
@@ -546,6 +582,7 @@ function screenStock(stock, rows, benchmarkRows) {
     aboveTenDayAverage,
     aboveTrailing3Average: aboveTenDayAverage,
     benchmarkReturn: round(benchmarkReturn, 2),
+    benchmarkAsOf,
     breakout,
     confidenceRank: highConfidenceCandidate ? 2 : confirmationReady ? 1 : 0,
     confidenceTier: highConfidenceCandidate ? "high" : confirmationReady ? "standard" : "",
@@ -554,6 +591,7 @@ function screenStock(stock, rows, benchmarkRows) {
     dayReturn: round(percentChange(current.close, previousTradingDay?.close), 2),
     lastClose: round(current.close, 4),
     lastDate: current.date,
+    isCompleteBar: current.date === benchmarkAsOf && current.date <= COMPLETED_SESSION_CUTOFF,
     mfi: round(mfi, 2),
     mfiReversalRisk,
     mirofishAdjustedScore,
@@ -811,7 +849,7 @@ function recentAverageVolumeRatio(rows, targetIndex, recentDays, previousDays) {
 }
 
 function benchmarkRollingReturn(rows, targetDate, windowDays) {
-  const targetIndex = latestIndexAtOrBefore(rows || [], targetDate);
+  const targetIndex = exactDateIndex(rows || [], targetDate);
   if (targetIndex < windowDays) return NaN;
   return percentChange(rows[targetIndex].close, rows[targetIndex - windowDays].close);
 }

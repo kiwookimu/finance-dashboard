@@ -1,23 +1,50 @@
 {
-  "generatedAt": "2026-08-13T12:42:44.348Z",
+  "generatedAt": "2026-06-20T12:22:16.003Z",
+  "servedAt": "2026-08-14T01:45:28.310Z",
+  "sourceGeneratedAt": "2026-06-20T12:22:16.003Z",
   "caveat": "공개 데이터 재현 기준입니다. 상장폐지 종목, 정확한 과거 시총, 과거 컨센서스는 완전히 복원하지 못할 수 있습니다.",
   "index": {
-    "fileName": "backtest_index_predictions_2025-05-30_2026-05-29.json",
-    "generatedAt": "2026-06-12T14:17:51.379Z",
+    "fileName": "backtest_index_predictions_2023-01-01_2026-06-20.json",
+    "generatedAt": "2026-06-20T12:01:28.010Z",
     "range": {
-      "endDate": "2026-05-29",
-      "fetchEndDate": "2026-06-06",
-      "fetchStartDate": "2024-03-26",
-      "minCoverage": 1,
+      "endDate": "2026-06-20",
+      "fetchEndDate": "2026-06-28",
+      "fetchStartDate": "2021-10-28",
+      "minCoverage": 10,
       "targetHitRate": 70,
-      "startDate": "2025-05-30"
+      "startDate": "2023-01-01"
     },
     "rows": [
-      { "coverage": 65, "hitRate": 76.6, "label": "KOSPI", "observations": 158 },
-      { "coverage": 86.5, "hitRate": 71, "label": "NASDAQ", "observations": 217 },
-      { "coverage": 86.5, "hitRate": 69.6, "label": "S&P 500", "observations": 217 }
+      {
+        "coverage": 59.4,
+        "hitRate": 72.3,
+        "hitRateLower": 68.2,
+        "hitRateUpper": 76,
+        "label": "KOSPI",
+        "observations": 501
+      },
+      {
+        "coverage": 85,
+        "hitRate": 70.3,
+        "hitRateLower": 66.9,
+        "hitRateUpper": 73.5,
+        "label": "NASDAQ",
+        "observations": 737
+      },
+      {
+        "coverage": 85,
+        "hitRate": 70.3,
+        "hitRateLower": 66.9,
+        "hitRateUpper": 73.5,
+        "label": "S&P 500",
+        "observations": 737
+      }
     ],
-    "total": { "coverage": 79.5, "hitRate": 72, "observations": 592 }
+    "total": {
+      "coverage": 76.6,
+      "hitRate": 70.8,
+      "observations": 1975
+    }
   },
   "recommendation": {
     "fileName": "backtest_monthly_recommendations_both_2025-01_2026-05.json",
@@ -26,13 +53,84 @@
       "endMonth": "2026-05",
       "fetchEndDate": "2026-06-20",
       "fetchStartDate": "2023-12-01",
-      "months": ["2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05"],
+      "months": [
+        "2025-01",
+        "2025-02",
+        "2025-03",
+        "2025-04",
+        "2025-05",
+        "2025-06",
+        "2025-07",
+        "2025-08",
+        "2025-09",
+        "2025-10",
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04",
+        "2026-05"
+      ],
       "startMonth": "2025-01"
     },
     "rows": [
-      { "count": 116, "label": "전체", "oneMonthAverage": 8.69, "oneMonthHitRate": 51.8, "oneMonthSample": 110, "subtitle": "추천+관찰 전체", "threeMonthAverage": 33.61, "threeMonthHitRate": 61, "threeMonthSample": 100 },
-      { "count": 10, "label": "국내 추천", "oneMonthAverage": 35.78, "oneMonthHitRate": 88.9, "oneMonthSample": 9, "subtitle": "확정 후보", "threeMonthAverage": 36.78, "threeMonthHitRate": 87.5, "threeMonthSample": 8 },
-      { "count": 2, "label": "미국 추천", "oneMonthAverage": 17.79, "oneMonthHitRate": 50, "oneMonthSample": 2, "subtitle": "확정 후보", "threeMonthAverage": 132.97, "threeMonthHitRate": 100, "threeMonthSample": 2 }
-    ]
+      {
+        "count": 116,
+        "label": "전체",
+        "oneMonthAverage": 8.69,
+        "oneMonthHitRate": 51.8,
+        "oneMonthSample": 110,
+        "subtitle": "추천+관찰 전체",
+        "threeMonthAverage": 33.61,
+        "threeMonthHitRate": 61,
+        "threeMonthSample": 100
+      },
+      {
+        "count": 10,
+        "label": "국내 추천",
+        "oneMonthAverage": 35.78,
+        "oneMonthHitRate": 88.9,
+        "oneMonthSample": 9,
+        "subtitle": "확정 후보",
+        "threeMonthAverage": 36.78,
+        "threeMonthHitRate": 87.5,
+        "threeMonthSample": 8
+      },
+      {
+        "count": 101,
+        "label": "국내 관찰",
+        "oneMonthAverage": 6.02,
+        "oneMonthHitRate": 47.4,
+        "oneMonthSample": 97,
+        "subtitle": "조기 관찰",
+        "threeMonthAverage": 30.4,
+        "threeMonthHitRate": 56.8,
+        "threeMonthSample": 88
+      },
+      {
+        "count": 2,
+        "label": "미국 추천",
+        "oneMonthAverage": 17.79,
+        "oneMonthHitRate": 50,
+        "oneMonthSample": 2,
+        "subtitle": "확정 후보",
+        "threeMonthAverage": 132.97,
+        "threeMonthHitRate": 100,
+        "threeMonthSample": 2
+      },
+      {
+        "count": 3,
+        "label": "미국 관찰",
+        "oneMonthAverage": 7.02,
+        "oneMonthHitRate": 100,
+        "oneMonthSample": 2,
+        "subtitle": "조기 관찰",
+        "threeMonthAverage": 62.97,
+        "threeMonthHitRate": 100,
+        "threeMonthSample": 2
+      }
+    ],
+    "validationStatus": "동일 구간에서 설계·평가된 규칙이며 독립 홀드아웃은 아직 없습니다."
   }
 }

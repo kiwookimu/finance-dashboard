@@ -4,35 +4,12 @@ const NEXT_DAY_PREDICTION_TARGETS = [
   { id: "nasdaq", label: "NASDAQ", market: "us", profile: "growth" },
   { id: "sp500", label: "S&P 500", market: "us", profile: "broad" },
 ];
-const NEXT_DAY_PREDICTION_BACKTEST_METRICS = {
-  kospi: { coverage: 65.0, hitRate: 76.6 },
-  nasdaq: { coverage: 86.5, hitRate: 71.0 },
-  sp500: { coverage: 86.5, hitRate: 69.6 },
-};
-const PORTFOLIO_HOLDINGS = [
-  { amount: 30041571, benchmark: "kospi", code: "395270", id: "hanaroSemi", name: "HANARO Fn K-반도체", tags: ["semi", "korea"] },
-  { amount: 30003498, benchmark: "kospi", code: "487240", id: "kodexAiPower", name: "KODEX AI전력핵심설비", tags: ["aiPower", "korea"] },
-  { amount: 15064300, benchmark: "sox", code: "442580", id: "plusGlobalHbm", name: "PLUS 글로벌HBM반도체", tags: ["semi", "global"] },
-  { amount: 15032675, benchmark: "sox", code: "381180", id: "tigerSox", name: "TIGER 미국필라델피아반도체", tags: ["semi", "us"] },
-  { amount: 15005736, benchmark: "kospi", code: "0162Z0", id: "riseSamsungHynixBond", name: "RISE 삼성전자SK하이닉스채권혼합", tags: ["semi", "bondMix", "korea"] },
-  { amount: 15005730, benchmark: "nasdaq", code: "0019K0", id: "timeNasdaqBond", name: "TIME 미국나스닥100채권혼합", tags: ["nasdaq", "bondMix", "us"] },
-  { amount: 15002399, benchmark: "kospi", code: "284430", id: "kodex200Treasury", name: "KODEX 200미국채혼합", tags: ["kospi", "bondMix", "korea"] },
-  { amount: 10010605, benchmark: "nasdaq", code: "456600", id: "timeGlobalAi", name: "TIME 글로벌AI인공지능액티브", tags: ["aiPower", "global"] },
-  { amount: 5000440, benchmark: "kospi", code: "466930", id: "solAutoTop3", name: "SOL 자동차TOP3플러스", tags: ["auto", "korea"] },
-  { amount: 5006750, benchmark: "nasdaq", code: "0183J0", id: "tigerUsSpaceTech", name: "TIGER 미국우주테크", tags: ["space", "us"] },
-  { amount: 0, benchmark: "nasdaq", code: "491010", id: "tigerGlobalAiPowerInfra", name: "TIGER 글로벌AI전력인프라액티브", tags: ["aiPower", "global"] },
-  { amount: 0, benchmark: "kospi", code: "367760", id: "riseNetworkInfra", name: "RISE 네트워크인프라", tags: ["network", "korea"] },
-];
-const PORTFOLIO_TOTAL = PORTFOLIO_HOLDINGS.reduce(
-  (sum, holding) => sum + holding.amount,
-  0,
-);
-const PORTFOLIO_HOLDING_META_BY_ID = new Map(
-  PORTFOLIO_HOLDINGS.map((holding) => [holding.id, holding]),
-);
-const PORTFOLIO_HOLDING_META_BY_CODE = new Map(
-  PORTFOLIO_HOLDINGS.map((holding) => [holding.code, holding]),
-);
+let NEXT_DAY_PREDICTION_BACKTEST_METRICS = {};
+let nextDayPredictionBacktestRange = null;
+let PORTFOLIO_HOLDINGS = [];
+let PORTFOLIO_TOTAL = 0;
+let PORTFOLIO_HOLDING_META_BY_ID = new Map();
+let PORTFOLIO_HOLDING_META_BY_CODE = new Map();
 const DEFAULT_PORTFOLIO_EXPOSURE_CONFIG = {
   crisis: 0.5,
   crisisCap: 0.65,
@@ -139,7 +116,7 @@ initializeRecommendationActions();
 initializeRecommendationDetailModal();
 initializeMarketAutoRefresh();
 initializeStockSearch();
-loadIndicators();
+loadPortfolioConfiguration().finally(() => loadIndicators());
 
 function initializeDashboardTabs() {
   initializeTabGroup("main", {
@@ -351,6 +328,33 @@ function initializeStockSearch() {
 function apiEndpoint(path) {
   if (window.location.protocol !== "file:") return path;
   return `http://127.0.0.1:5173${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+async function loadPortfolioConfiguration() {
+  try {
+    const response = await fetch(apiEndpoint("/api/portfolio-config"), {
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error("Portfolio configuration request failed");
+    applyPortfolioConfiguration(await response.json());
+  } catch (error) {
+    console.warn("Portfolio configuration unavailable", error);
+    applyPortfolioConfiguration({ holdings: [] });
+  }
+}
+
+function applyPortfolioConfiguration(payload) {
+  PORTFOLIO_HOLDINGS = Array.isArray(payload?.holdings) ? payload.holdings : [];
+  PORTFOLIO_TOTAL = PORTFOLIO_HOLDINGS.reduce(
+    (sum, holding) => sum + (Number(holding.amount) || 0),
+    0,
+  );
+  PORTFOLIO_HOLDING_META_BY_ID = new Map(
+    PORTFOLIO_HOLDINGS.map((holding) => [holding.id, holding]),
+  );
+  PORTFOLIO_HOLDING_META_BY_CODE = new Map(
+    PORTFOLIO_HOLDINGS.map((holding) => [holding.code, holding]),
+  );
 }
 
 async function runStockSearch(query) {
@@ -1039,7 +1043,11 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
   const showInvalidatedCount = !payload?.logicOutdated && invalidatedCount > 0;
   const statusParts = [
     showCurrentStatus ? payload?.marketMonth : "",
+    showCurrentStatus && payload?.dataAsOf
+      ? `${recommendationDataAsOfText(payload)} 완료 일봉`
+      : "",
     showCurrentStatus && payload?.refreshSupported === false ? "저장본" : "",
+    showCurrentStatus && payload?.isCompleteBar === false ? "기준일 점검 필요" : "",
     showInvalidatedCount ? `무효화 ${invalidatedCount}개 제외` : "",
   ].filter(Boolean);
   setText(
@@ -1093,6 +1101,14 @@ function renderRecommendations(payload, config = RECOMMENDATION_CONFIGS.domestic
     list.innerHTML = recommendationCardsMarkup(results, detailPrefix);
   }
   bindRecommendationDetailCards(list);
+}
+
+function recommendationDataAsOfText(payload) {
+  const dates = String(payload?.dataAsOf || "")
+    .split(",")
+    .map((date) => date.trim())
+    .filter(Boolean);
+  return [...new Set(dates)].map(formatIsoDate).filter(Boolean).join("·");
 }
 
 function recommendationSectionMarkup({
@@ -2156,9 +2172,10 @@ async function loadIndicators() {
 
 async function loadIndicatorsNow() {
   try {
-    const [marketResponse, sentimentResponse] = await Promise.all([
+    const [marketResponse, sentimentResponse, backtestResponse] = await Promise.all([
       fetch("/api/market-overview", { cache: "no-store" }),
       fetch("/api/market-sentiment", { cache: "no-store" }),
+      fetch("/api/backtest-summary", { cache: "no-store" }).catch(() => null),
     ]);
 
     if (!marketResponse.ok || !sentimentResponse.ok) {
@@ -2167,6 +2184,8 @@ async function loadIndicatorsNow() {
 
     const market = await marketResponse.json();
     const sentiment = await sentimentResponse.json();
+    const backtest = backtestResponse?.ok ? await backtestResponse.json() : null;
+    applyIndexPredictionBacktestSummary(backtest);
 
     renderMarketIndicator("kospi", market.quotes.kospi);
     renderMarketIndicator("kosdaq", market.quotes.kosdaq);
@@ -2305,9 +2324,53 @@ function formatPredictionLabel(prediction) {
   return `
     <strong class="prediction-label">
       <span class="prediction-label-main">${escapeHtml(prediction.label)}</span>
-      <span class="prediction-label-metrics">(커버리지 ${metrics.coverage.toFixed(1)}%, 적중률 ${metrics.hitRate.toFixed(1)}%)</span>
+      <span class="prediction-label-metrics">${escapeHtml(indexBacktestMetricText(metrics))}</span>
     </strong>
   `;
+}
+
+function applyIndexPredictionBacktestSummary(payload) {
+  const rows = Array.isArray(payload?.index?.rows) ? payload.index.rows : [];
+  const idByLabel = {
+    KOSPI: "kospi",
+    NASDAQ: "nasdaq",
+    "S&P 500": "sp500",
+  };
+  NEXT_DAY_PREDICTION_BACKTEST_METRICS = Object.fromEntries(
+    rows
+      .map((row) => [idByLabel[row.label], row])
+      .filter(([id, row]) => id && Number.isFinite(Number(row?.hitRate))),
+  );
+  nextDayPredictionBacktestRange = payload?.index?.range || null;
+}
+
+function indexBacktestMetricText(metrics) {
+  const parts = [
+    Number.isFinite(Number(metrics.coverage))
+      ? `커버리지 ${Number(metrics.coverage).toFixed(1)}%`
+      : "",
+    Number.isFinite(Number(metrics.hitRate))
+      ? `적중 ${Number(metrics.hitRate).toFixed(1)}%`
+      : "",
+    Number.isFinite(Number(metrics.observations))
+      ? `n=${Math.round(Number(metrics.observations)).toLocaleString("ko-KR")}`
+      : "",
+    Number.isFinite(Number(metrics.hitRateLower)) &&
+    Number.isFinite(Number(metrics.hitRateUpper))
+      ? `95% CI ${Number(metrics.hitRateLower).toFixed(1)}~${Number(
+          metrics.hitRateUpper,
+        ).toFixed(1)}%`
+      : "",
+  ].filter(Boolean);
+  const period = indexBacktestPeriodText(nextDayPredictionBacktestRange);
+  if (period) parts.push(period);
+  return `(${parts.join(" · ")})`;
+}
+
+function indexBacktestPeriodText(range) {
+  const start = String(range?.startDate || "").slice(0, 7).replace("-", ".");
+  const end = String(range?.endDate || "").slice(0, 7).replace("-", ".");
+  return start && end ? `${start}~${end}` : "";
 }
 
 function renderIndexPredictionError() {
